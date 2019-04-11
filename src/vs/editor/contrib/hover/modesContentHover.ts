@@ -40,6 +40,10 @@ import { IIdentifiedSingleEditOperation } from 'vs/editor/common/model';
 import { EditorOption } from 'vs/editor/common/config/editorOptions';
 import { Constants } from 'vs/base/common/uint';
 
+let global_editor: ICodeEditor | undefined = undefined;
+let global_modeService: IModeService | undefined = undefined;
+let global_openerService: IOpenerService | null = null;
+
 const $ = dom.$;
 
 class ColorHover {
@@ -215,6 +219,11 @@ export class ModesContentHoverWidget extends ContentHoverWidget {
 		private readonly _openerService: IOpenerService = NullOpenerService,
 	) {
 		super(ModesContentHoverWidget.ID, editor);
+
+		global_editor = editor;
+		console.log(global_editor);
+		global_modeService = _modeService;
+		global_openerService = _openerService;
 
 		this._messages = [];
 		this._lastRange = null;
@@ -648,3 +657,148 @@ function hoverContentsEquals(first: HoverPart[], second: HoverPart[]): boolean {
 	}
 	return true;
 }
+
+
+let box: HTMLDivElement | undefined = undefined;
+// let counter = 0;
+// let top = 100;
+// let left = 100;
+
+import * as cp from 'child_process';
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+
+import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
+//import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
+import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
+
+let x:NodeJS.ProcessEnv = process.env;
+
+function onChangeModelContent(e: IModelContentChangedEvent) {
+	if (global_editor === undefined) return;
+	let py3 = process.env["PYTHON3"];
+	if (py3 === undefined) return;
+	let runpy = process.env["RUNPY"];
+	if (runpy === undefined) return;
+	console.log("onChangeModelContent");
+	//console.log(e);
+	let code_fname = os.tmpdir() + path.sep + "tmp.py";
+	let model = global_editor.getModel();
+	if (model === null) return;
+	let lines = model.getLinesContent();
+	fs.writeFileSync(code_fname, lines.join("\n"));
+	let c = cp.spawn(py3, [runpy, code_fname]);
+
+	c.stdout.on("data", (data) => {
+		//console.log(data.toString())
+	});
+	c.stderr.on("data", (data) => {
+		//console.log(data.toString())
+	});
+	c.on('exit', (exit_code,signal_code)=>{
+		console.log("Exit code from run.py: " + exit_code);
+		if (exit_code === 0) {
+			updateData(fs.readFileSync(code_fname + ".out").toString());
+			//console.log(envs);
+		}
+	});
+}
+
+function onChangeCursorPosition(e: ICursorPositionChangedEvent) {
+	console.log(document);
+	console.log("In onChangeCursorPosition");
+	if (global_editor === undefined) return;
+	if (global_modeService === undefined) return;
+	if (box === undefined) return;
+	let cursor = e.position; //global_editor.getPosition();
+	if (cursor === null)
+		return;
+	let pos = global_editor.getScrolledVisiblePosition(cursor);
+	if (pos === null) return;
+	box.style.top = pos.top.toString() + "px";
+	box.style.left = (pos.left+ 100).toString() + "px";
+
+	let keys_set = new Set<string>();
+	//console.log(envs);
+	//console.log(e.position.lineNumber);
+	let envsAtCursor = envs[e.position.lineNumber-1];
+	if (envsAtCursor === undefined) {
+		box.textContent = "";
+		console.log("Did not find entry");
+		return;
+	}
+	envs[e.position.lineNumber-1].forEach((env) => {
+		for (let key in env) {
+			if (key !== "prev_lineno" && key !== "next_lineno" && key !== "lineno") {
+				keys_set.add(key);
+			}
+		}
+	});
+	let header_line_1 = "|";
+	let header_line_2 = "|";
+	keys_set.forEach((v:string) => {
+		header_line_1 = header_line_1 + v + "|";
+		header_line_2 = header_line_2 + "---|";
+	});
+	let mkdn = header_line_1 + "\n" + header_line_2 + "\n";
+	envs[e.position.lineNumber-1].forEach((env) => {
+		mkdn = mkdn + "|";
+		keys_set.forEach((v:string) => {
+			mkdn = mkdn + env[v] + "|";
+		});
+		mkdn = mkdn + "\n";
+	});
+	//console.log(mkdn);
+	box.textContent = "";
+	const renderer = new MarkdownRenderer(global_editor, global_modeService, global_openerService);
+
+	const renderedContents = renderer.render(new MarkdownString(mkdn));
+	box.appendChild(renderedContents.element);
+}
+var envs: { [k:string]: any []; } = {};
+var rws: { [k:string]: string; } = {};
+
+function updateData(str: string) {
+	let data = JSON.parse(str);
+	envs = data[1];
+	rws = data[0];
+}
+
+setInterval(() => {
+	let editor_div = document.getElementsByClassName("monaco-editor")[0];
+	if (editor_div === undefined)
+		return;
+	if (global_editor === undefined)
+		return;
+	//console.log(editor_div);
+	if (box === undefined) {
+		global_editor.onDidChangeCursorPosition(onChangeCursorPosition);
+		global_editor.onDidChangeModelContent(onChangeModelContent);
+		//global_editor.onDidScrollChange((e) => {console.log(e)});
+		box = document.createElement('div');
+		box.textContent = "AAA";
+		box.style.position = "absolute";
+		box.style.top = "100px";
+		box.style.left = "100px";
+		box.style.maxWidth = "1366px";
+		//box.style.zoom = "1";
+		box.className = "monaco-editor-hover";
+		editor_div.appendChild(box);
+	} else {
+		return;
+		// let cursor = global_editor.getPosition();
+		// if (cursor === null)
+		// 	return;
+		// let pos = global_editor.getScrolledVisiblePosition(cursor);
+		// if (pos === null)
+		// 	return;
+		// // console.log(pos);
+		// counter = counter + 1;
+		// let zoom = 1.2 + (Math.sin(counter/50)*0.2);
+		// box.style.top = (pos.top / zoom).toString() + "px";
+		// box.style.left = ((pos.left+ 100) / zoom ).toString() + "px";
+		// //console.log(zoom);
+		// box.style.zoom = zoom.toString();
+	}
+},20);
