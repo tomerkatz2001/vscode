@@ -110,3 +110,7 @@
 	font-size: inherit;
 	vertical-align: middle;
 }
+
+.monaco-editor-hover table {
+	border-spacing: 13px 0px
+}

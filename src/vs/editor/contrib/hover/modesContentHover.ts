@@ -40,9 +40,7 @@ import { IIdentifiedSingleEditOperation } from 'vs/editor/common/model';
 import { EditorOption } from 'vs/editor/common/config/editorOptions';
 import { Constants } from 'vs/base/common/uint';
 
-let global_editor: ICodeEditor | undefined = undefined;
-let global_modeService: IModeService | undefined = undefined;
-let global_openerService: IOpenerService | null = null;
+let global_coordinator: RTVCoordinator | undefined;
 
 const $ = dom.$;
 
@@ -220,10 +218,7 @@ export class ModesContentHoverWidget extends ContentHoverWidget {
 	) {
 		super(ModesContentHoverWidget.ID, editor);
 
-		global_editor = editor;
-		console.log(global_editor);
-		global_modeService = _modeService;
-		global_openerService = _openerService;
+		global_coordinator = new RTVCoordinator(editor, _modeService, _openerService);
 
 		this._messages = [];
 		this._lastRange = null;
@@ -659,11 +654,6 @@ function hoverContentsEquals(first: HoverPart[], second: HoverPart[]): boolean {
 }
 
 
-let box: HTMLDivElement | undefined = undefined;
-// let counter = 0;
-// let top = 100;
-// let left = 100;
-
 import * as cp from 'child_process';
 import * as fs from "fs";
 import * as os from "os";
@@ -673,132 +663,312 @@ import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorE
 //import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
 
-let x:NodeJS.ProcessEnv = process.env;
+// setInterval(() => {
+// 	let editor_div = document.getElementsByClassName("monaco-editor")[0];
+// 	if (editor_div === undefined)
+// 		return;
+// 	if (global_editor === undefined)
+// 		return;
+// 	//console.log(editor_div);
+// 	if (box === undefined) {
+// 		global_editor.onDidChangeCursorPosition(onChangeCursorPosition);
+// 		global_editor.onDidChangeModelContent(onChangeModelContent);
+// 		//global_editor.onDidScrollChange((e) => {console.log(e)});
+// 		box = document.createElement('div');
+// 		box.textContent = "AAA";
+// 		box.style.position = "absolute";
+// 		box.style.top = "100px";
+// 		box.style.left = "100px";
+// 		box.style.maxWidth = "1366px";
+// 		box.style.transitionProperty = "all";
+// 		box.style.transitionDuration = "0.3s";
+// 		box.style.transitionDelay = "0s";
+// 		box.style.transitionTimingFunction = "ease-in";
+// 		//box.style.transform = "scale(2.5)";
+// 		//box.style.zoom = "1";
+// 		box.className = "monaco-editor-hover";
+// 		editor_div.appendChild(box);
+// 	} else {
+// 		return;
+// 		// let currpos = global_editor.getPosition();
+// 		// if (currpos === null)
+// 		// 	return;
+// 		// let pixelP = global_editor.getScrolledVisiblePosition(currpos);
+// 		// if (pixelP === null)
+// 		// 	return;
+// 		// // console.log(pixelP);
+// 		// counter = counter + 1;
+// 		// let zoom = 1.2 + (Math.sin(counter/50)*0.2);
+// 		// box.style.top = (pixelP.top / zoom).toString() + "px";
+// 		// box.style.left = ((pixelP.left+ 100) / zoom ).toString() + "px";
+// 		// //console.log(zoom);
+// 		// box.style.zoom = zoom.toString();
+// 	}
+// },20);
 
-function onChangeModelContent(e: IModelContentChangedEvent) {
-	if (global_editor === undefined) return;
-	let py3 = process.env["PYTHON3"];
-	if (py3 === undefined) return;
-	let runpy = process.env["RUNPY"];
-	if (runpy === undefined) return;
-	console.log("onChangeModelContent");
-	//console.log(e);
-	let code_fname = os.tmpdir() + path.sep + "tmp.py";
-	let model = global_editor.getModel();
-	if (model === null) return;
-	let lines = model.getLinesContent();
-	fs.writeFileSync(code_fname, lines.join("\n"));
-	let c = cp.spawn(py3, [runpy, code_fname]);
-
-	c.stdout.on("data", (data) => {
-		//console.log(data.toString())
-	});
-	c.stderr.on("data", (data) => {
-		//console.log(data.toString())
-	});
-	c.on('exit', (exit_code,signal_code)=>{
-		console.log("Exit code from run.py: " + exit_code);
-		if (exit_code === 0) {
-			updateData(fs.readFileSync(code_fname + ".out").toString());
-			//console.log(envs);
+class RTVDisplayBox {
+	private _box: HTMLDivElement ;
+	private _zoom: number;
+	constructor(
+		private readonly _coordinator:RTVCoordinator,
+		private readonly _editor: ICodeEditor,
+		private readonly _modeService: IModeService,
+		private readonly _openerService: IOpenerService | null,
+		private readonly _lineNumber: number
+	) {
+		let editor_div = document.getElementsByClassName("monaco-editor")[0];
+		if (editor_div === undefined) {
+			throw new Error('Cannot find Monaco Editor');
 		}
-	});
-}
-
-function onChangeCursorPosition(e: ICursorPositionChangedEvent) {
-	console.log(document);
-	console.log("In onChangeCursorPosition");
-	if (global_editor === undefined) return;
-	if (global_modeService === undefined) return;
-	if (box === undefined) return;
-	let cursor = e.position; //global_editor.getPosition();
-	if (cursor === null)
-		return;
-	let pos = global_editor.getScrolledVisiblePosition(cursor);
-	if (pos === null) return;
-	box.style.top = pos.top.toString() + "px";
-	box.style.left = (pos.left+ 100).toString() + "px";
-
-	let keys_set = new Set<string>();
-	//console.log(envs);
-	//console.log(e.position.lineNumber);
-	let envsAtCursor = envs[e.position.lineNumber-1];
-	if (envsAtCursor === undefined) {
-		box.textContent = "";
-		console.log("Did not find entry");
-		return;
-	}
-	envs[e.position.lineNumber-1].forEach((env) => {
-		for (let key in env) {
-			if (key !== "prev_lineno" && key !== "next_lineno" && key !== "lineno") {
-				keys_set.add(key);
-			}
-		}
-	});
-	let header_line_1 = "|";
-	let header_line_2 = "|";
-	keys_set.forEach((v:string) => {
-		header_line_1 = header_line_1 + v + "|";
-		header_line_2 = header_line_2 + "---|";
-	});
-	let mkdn = header_line_1 + "\n" + header_line_2 + "\n";
-	envs[e.position.lineNumber-1].forEach((env) => {
-		mkdn = mkdn + "|";
-		keys_set.forEach((v:string) => {
-			mkdn = mkdn + env[v] + "|";
-		});
-		mkdn = mkdn + "\n";
-	});
-	//console.log(mkdn);
-	box.textContent = "";
-	const renderer = new MarkdownRenderer(global_editor, global_modeService, global_openerService);
-
-	const renderedContents = renderer.render(new MarkdownString(mkdn));
-	box.appendChild(renderedContents.element);
-}
-var envs: { [k:string]: any []; } = {};
-var rws: { [k:string]: string; } = {};
-
-function updateData(str: string) {
-	let data = JSON.parse(str);
-	envs = data[1];
-	rws = data[0];
-}
-
-setInterval(() => {
-	let editor_div = document.getElementsByClassName("monaco-editor")[0];
-	if (editor_div === undefined)
-		return;
-	if (global_editor === undefined)
-		return;
-	//console.log(editor_div);
-	if (box === undefined) {
-		global_editor.onDidChangeCursorPosition(onChangeCursorPosition);
-		global_editor.onDidChangeModelContent(onChangeModelContent);
-		//global_editor.onDidScrollChange((e) => {console.log(e)});
-		box = document.createElement('div');
-		box.textContent = "AAA";
-		box.style.position = "absolute";
-		box.style.top = "100px";
-		box.style.left = "100px";
-		box.style.maxWidth = "1366px";
+		this._box = document.createElement('div');
+		this._box.textContent = this._lineNumber.toString();
+		this._box.style.position = "absolute";
+		this._box.style.top = "100px";
+		this._box.style.left = "100px";
+		this._box.style.maxWidth = "1366px";
+		this._box.style.transitionProperty = "all";
+		this._box.style.transitionDuration = "0.3s";
+		this._box.style.transitionDelay = "0s";
+		this._box.style.transitionTimingFunction = "ease-in";
+		//box.style.transform = "scale(2.5)";
 		//box.style.zoom = "1";
-		box.className = "monaco-editor-hover";
-		editor_div.appendChild(box);
-	} else {
-		return;
-		// let cursor = global_editor.getPosition();
-		// if (cursor === null)
-		// 	return;
-		// let pos = global_editor.getScrolledVisiblePosition(cursor);
-		// if (pos === null)
-		// 	return;
-		// // console.log(pos);
-		// counter = counter + 1;
-		// let zoom = 1.2 + (Math.sin(counter/50)*0.2);
-		// box.style.top = (pos.top / zoom).toString() + "px";
-		// box.style.left = ((pos.left+ 100) / zoom ).toString() + "px";
-		// //console.log(zoom);
-		// box.style.zoom = zoom.toString();
+		this._box.className = "monaco-editor-hover";
+		editor_div.appendChild(this._box);
+		this._zoom = 1;
+		this.update();
 	}
-},20);
+
+	public update() {
+
+		// Get all envs at this line number
+		let envsAtLine = this._coordinator.envs[this._lineNumber-1];
+		if (envsAtLine === undefined) {
+			this._box.textContent = "";
+			console.log("Did not find entry");
+			return;
+		}
+
+		// Compute set of keys in all envs
+		let keys_set = new Set<string>();
+		envsAtLine.forEach((env) => {
+			for (let key in env) {
+				if (key !== "prev_lineno" && key !== "next_lineno" && key !== "lineno") {
+					keys_set.add(key);
+				}
+			}
+		});
+
+		// Generate markdown table of all envs
+		let header_line_1 = "|";
+		let header_line_2 = "|";
+		keys_set.forEach((v:string) => {
+			header_line_1 = header_line_1 + v + "|";
+			header_line_2 = header_line_2 + "---|";
+		});
+
+		let mkdn = header_line_1 + "\n" + header_line_2 + "\n";
+		for (let i = 0; i < envsAtLine.length; i++) {
+			let env = envsAtLine[i];
+			mkdn = mkdn + "|";
+			keys_set.forEach((v:string) => {
+				if (i === 0) {
+					var v_str = env[v];
+				} else if (env[v] === envsAtLine[i-1][v]) {
+					var v_str:any = "&darr;";
+				} else {
+					var v_str = env[v];
+				}
+				mkdn = mkdn + v_str + "|";
+			});
+			mkdn = mkdn + "\n";
+		};
+
+		// Update html content
+		this._box.textContent = "";
+		const renderer = new MarkdownRenderer(this._editor, this._modeService, this._openerService);
+		const renderedContents = renderer.render(new MarkdownString(mkdn));
+		this._box.appendChild(renderedContents.element);
+
+		// Update visuals
+		let currpos = this._editor.getPosition();
+		if (currpos === null) {
+			return;
+		}
+
+		let pixelPos = this._editor.getScrolledVisiblePosition(new Position(this._lineNumber, 1));
+		if (pixelPos === null) {
+			return;
+		}
+
+		let lineDelta = this._lineNumber - currpos.lineNumber;
+		let lineDeltaAbs = Math.abs(lineDelta);
+		this._zoom = 1 / (lineDeltaAbs*0.5 + 1);
+
+		var opacity = 1;
+		if (lineDelta !== 0) {
+			opacity = 1/lineDeltaAbs;
+		}
+
+		let left = pixelPos.left + 300 - ((1-this._zoom) * (this._box.offsetWidth / 2));
+		let top = pixelPos.top - ((1-this._zoom) * (this._box.offsetHeight / 2));
+		top = top + (100*lineDelta);
+		this._box.style.top = top.toString() + "px";
+		this._box.style.left = left.toString() + "px";
+		this._box.style.transform = "scale(" + this._zoom.toString() +")";
+		this._box.style.opacity = opacity.toString();
+
+	}
+}
+
+class RTVCoordinator {
+	public envs: { [k:string]: any []; } = {};
+	public rws: { [k:string]: string; } = {};
+	// private box: HTMLDivElement;
+	private _boxes: RTVDisplayBox[] = [];
+
+	constructor(
+		private readonly _editor: ICodeEditor,
+		private readonly _modeService: IModeService,
+		private readonly _openerService: IOpenerService | null
+	) {
+		let editor_div = document.getElementsByClassName("monaco-editor")[0];
+		if (editor_div === undefined) {
+			throw new Error('Cannot find Monaco Editor');
+		}
+		this._editor.onDidChangeCursorPosition((e) => { this.onChangeCursorPosition(e); });
+		this._editor.onDidChangeModelContent((e) => { this.onChangeModelContent(e); });
+		for (let i = 0; i < this.getLineCount(); i++) {
+			this._boxes.push(new RTVDisplayBox(this, _editor, _modeService, _openerService, i+1));
+		}
+		// this.box = document.createElement('div');
+		// this.box.textContent = "AAA";
+		// this.box.style.opacity = "0.2";
+		// this.box.style.position = "absolute";
+		// this.box.style.top = "100px";
+		// this.box.style.left = "100px";
+		// this.box.style.maxWidth = "1366px";
+		// this.box.style.transitionProperty = "all";
+		// this.box.style.transitionDuration = "0.3s";
+		// this.box.style.transitionDelay = "0s";
+		// this.box.style.transitionTimingFunction = "ease-in";
+		// this.box.className = "monaco-editor-hover";
+		// editor_div.appendChild(this.box);
+	}
+
+	private getLineCount(): number {
+		let model = this._editor.getModel();
+		if (model === null) {
+			return 0;
+		}
+		return model.getLineCount();
+	}
+
+	private onChangeCursorPosition(e: ICursorPositionChangedEvent) {
+		this.updateBoxes();
+	}
+
+	private updateBoxes() {
+		this._boxes.forEach((b) => { b.update(); });
+	}
+	private onChangeModelContent(e: IModelContentChangedEvent) {
+		let py3 = process.env["PYTHON3"];
+		if (py3 === undefined) return;
+		let runpy = process.env["RUNPY"];
+		if (runpy === undefined) return;
+		console.log("onChangeModelContent");
+		//console.log(e);
+		this.envs = {};
+		this.rws = {};
+		let code_fname = os.tmpdir() + path.sep + "tmp.py";
+		let model = this._editor.getModel();
+		if (model === null) return;
+		let lines = model.getLinesContent();
+		fs.writeFileSync(code_fname, lines.join("\n"));
+		let c = cp.spawn(py3, [runpy, code_fname]);
+
+		c.stdout.on("data", (data) => {
+			//console.log(data.toString())
+		});
+		c.stderr.on("data", (data) => {
+			//console.log(data.toString())
+		});
+		c.on('exit', (exit_code,signal_code)=>{
+			console.log("Exit code from run.py: " + exit_code);
+			if (exit_code === 0) {
+				this.updateData(fs.readFileSync(code_fname + ".out").toString());
+				this.updateBoxes();
+				//console.log(envs);
+			}
+		});
+
+	}
+	private updateData(str: string) {
+		let data = JSON.parse(str);
+		this.envs = data[1];
+		this.rws = data[0];
+	}
+
+	// private updateBox() {
+	// 	console.log("In updateBox");
+	// 	let currpos = this._editor.getPosition();
+	// 	if (currpos === null)
+	// 		return;
+	// 	let pixelPos = this._editor.getScrolledVisiblePosition(currpos);
+	// 	if (pixelPos === null) return;
+
+	// 	let keys_set = new Set<string>();
+	// 	let envsAtCursor = this.envs[currpos.lineNumber-1];
+	// 	if (envsAtCursor === undefined) {
+	// 		this.box.textContent = "";
+	// 		console.log("Did not find entry");
+	// 		return;
+	// 	}
+	// 	this.envs[currpos.lineNumber-1].forEach((env) => {
+	// 		for (let key in env) {
+	// 			if (key !== "prev_lineno" && key !== "next_lineno" && key !== "lineno") {
+	// 				keys_set.add(key);
+	// 			}
+	// 		}
+	// 	});
+	// 	let header_line_1 = "|";
+	// 	let header_line_2 = "|";
+	// 	keys_set.forEach((v:string) => {
+	// 		header_line_1 = header_line_1 + v + "|";
+	// 		header_line_2 = header_line_2 + "---|";
+	// 	});
+	// 	let mkdn = header_line_1 + "\n" + header_line_2 + "\n";
+	// 	let env_list = this.envs[currpos.lineNumber-1];
+	// 	for (let i = 0; i < env_list.length; i++) {
+	// 		let env = env_list[i];
+	// 		mkdn = mkdn + "|";
+	// 		keys_set.forEach((v:string) => {
+	// 			if (i === 0) {
+	// 				var v_str = env[v];
+	// 			} else if (env[v] === env_list[i-1][v]) {
+	// 				var v_str:any = "";
+	// 			} else {
+	// 				var v_str = env[v];
+	// 			}
+	// 			mkdn = mkdn + "`" + v_str + "`" + "|";
+	// 		});
+	// 		mkdn = mkdn + "\n";
+	// 	};
+	// 	console.log("Before: " + this.box.offsetHeight);
+	// 	this.box.textContent = "";
+	// 	console.log("In between: " + this.box.offsetHeight);
+	// 	const renderer = new MarkdownRenderer(this._editor, this._modeService, this._openerService);
+
+	// 	const renderedContents = renderer.render(new MarkdownString(mkdn));
+	// 	this.box.appendChild(renderedContents.element);
+	// 	console.log("After: " + this.box.offsetHeight);
+	// 	let zoom = (Math.random() * 0.5) + 1.0;
+	// 	//box.style.zoom = zoom.toString();
+	// 	let left = pixelPos.left + 100 - ((1-zoom) * (this.box.offsetWidth / 2));
+	// 	let top = pixelPos.top - ((1-zoom) * (this.box.offsetHeight / 2));
+	// 	this.box.style.top = top.toString() + "px";
+	// 	this.box.style.left = left.toString() + "px";
+	// 	this.box.style.transform = "scale(" + zoom.toString() +")";
+	// 	this.box.style.opacity = Math.random().toString();
+	// }
+
+}
