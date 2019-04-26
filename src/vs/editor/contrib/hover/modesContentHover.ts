@@ -706,8 +706,48 @@ import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvent
 // 	}
 // },20);
 
+class Line {
+	private _div: HTMLDivElement;
+	constructor(
+		x1: number,
+		y1: number,
+		x2: number,
+		y2: number
+	) {
+		let editor_div = document.getElementsByClassName("monaco-editor")[0];
+		if (editor_div === undefined) {
+			throw new Error('Cannot find Monaco Editor');
+		}
+
+		this._div = document.createElement('div');
+		this._div.style.position = "absolute";
+		this._div.style.borderTop = "1px solid grey";
+		this._div.style.transitionProperty = "all";
+		this._div.style.transitionDuration = "0.3s";
+		this._div.style.transitionDelay = "0s";
+		this._div.style.transitionTimingFunction = "ease-in";
+		this._div.style.transformOrigin = "0% 0%";
+		this.move(x1,y1,x2,y2);
+		editor_div.appendChild(this._div);
+	}
+	public move(x1: number, y1: number, x2: number, y2: number) {
+		this._div.style.left = x1.toString() + "px";
+		this._div.style.top = y1.toString() + "px";
+		let deltaX = (x2 - x1);
+		let deltaY = (y2 - y1);
+		let length = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
+		this._div.style.width = length.toString() + "px";
+		let angle = 0;
+		if (length !== 0) {
+			angle = Math.atan(deltaY / deltaX) * 180 / Math.PI;
+		}
+		this._div.style.transform = "rotate(" + angle.toString() + "deg)";
+	}
+}
+
 class RTVDisplayBox {
-	private _box: HTMLDivElement ;
+	private _box: HTMLDivElement;
+	private _line: Line;
 	private _zoom: number;
 	constructor(
 		private readonly _coordinator:RTVCoordinator,
@@ -721,7 +761,24 @@ class RTVDisplayBox {
 			throw new Error('Cannot find Monaco Editor');
 		}
 		this._box = document.createElement('div');
-		this._box.textContent = this._lineNumber.toString();
+		// let svg = document.createElement("svg");
+		// svg.style.position = "absolute";
+		// svg.style.top = "100px";
+		// svg.style.left = "100px";
+		// svg.style.maxWidth = "1366px";
+		// svg.style.transitionProperty = "all";
+		// svg.style.transitionDuration = "0.3s";
+		// svg.style.transitionDelay = "0s";
+		// svg.style.transitionTimingFunction = "ease-in";
+		// let l = document.createElement("line");
+		// l.setAttribute("x1","0");
+		// l.setAttribute("y1","0");
+		// l.setAttribute("x2","40");
+		// l.setAttribute("y2","40");
+		// l.style.stroke = "red";
+		// l.style.strokeWidth = "2";
+		// svg.appendChild(l);
+		this._box.textContent = "";
 		this._box.style.position = "absolute";
 		this._box.style.top = "100px";
 		this._box.style.left = "100px";
@@ -735,6 +792,8 @@ class RTVDisplayBox {
 		this._box.className = "monaco-editor-hover";
 		editor_div.appendChild(this._box);
 		this._zoom = 1;
+		this._line = new Line(0,0,0,0);
+		// editor_div.appendChild(svg);
 		this.update();
 	}
 
@@ -803,19 +862,24 @@ class RTVDisplayBox {
 		let lineDelta = this._lineNumber - currpos.lineNumber;
 		let lineDeltaAbs = Math.abs(lineDelta);
 		this._zoom = 1 / (lineDeltaAbs*0.5 + 1);
+		//this._zoom = 1;
 
 		var opacity = 1;
 		if (lineDelta !== 0) {
 			opacity = 1/lineDeltaAbs;
 		}
 
-		let left = pixelPos.left + 300 - ((1-this._zoom) * (this._box.offsetWidth / 2));
-		let top = pixelPos.top - ((1-this._zoom) * (this._box.offsetHeight / 2));
-		top = top + (100*lineDelta);
-		this._box.style.top = top.toString() + "px";
-		this._box.style.left = left.toString() + "px";
+		let left = pixelPos.left + 400;
+		let zoom_adjusted_left =  left - ((1-this._zoom) * (this._box.offsetWidth / 2));
+		let top = pixelPos.top + (100*lineDelta);
+		let zoom_adjusted_top = top - ((1-this._zoom) * (this._box.offsetHeight / 2));
+		this._box.style.top = zoom_adjusted_top.toString() + "px";
+		this._box.style.left = zoom_adjusted_left.toString() + "px";
 		this._box.style.transform = "scale(" + this._zoom.toString() +")";
 		this._box.style.opacity = opacity.toString();
+
+		// update the line
+		this._line.move(pixelPos.left+200, pixelPos.top, left, top);
 
 	}
 }
@@ -823,7 +887,6 @@ class RTVDisplayBox {
 class RTVCoordinator {
 	public envs: { [k:string]: any []; } = {};
 	public rws: { [k:string]: string; } = {};
-	// private box: HTMLDivElement;
 	private _boxes: RTVDisplayBox[] = [];
 
 	constructor(
@@ -840,19 +903,6 @@ class RTVCoordinator {
 		for (let i = 0; i < this.getLineCount(); i++) {
 			this._boxes.push(new RTVDisplayBox(this, _editor, _modeService, _openerService, i+1));
 		}
-		// this.box = document.createElement('div');
-		// this.box.textContent = "AAA";
-		// this.box.style.opacity = "0.2";
-		// this.box.style.position = "absolute";
-		// this.box.style.top = "100px";
-		// this.box.style.left = "100px";
-		// this.box.style.maxWidth = "1366px";
-		// this.box.style.transitionProperty = "all";
-		// this.box.style.transitionDuration = "0.3s";
-		// this.box.style.transitionDelay = "0s";
-		// this.box.style.transitionTimingFunction = "ease-in";
-		// this.box.className = "monaco-editor-hover";
-		// editor_div.appendChild(this.box);
 	}
 
 	private getLineCount(): number {
@@ -907,68 +957,5 @@ class RTVCoordinator {
 		this.envs = data[1];
 		this.rws = data[0];
 	}
-
-	// private updateBox() {
-	// 	console.log("In updateBox");
-	// 	let currpos = this._editor.getPosition();
-	// 	if (currpos === null)
-	// 		return;
-	// 	let pixelPos = this._editor.getScrolledVisiblePosition(currpos);
-	// 	if (pixelPos === null) return;
-
-	// 	let keys_set = new Set<string>();
-	// 	let envsAtCursor = this.envs[currpos.lineNumber-1];
-	// 	if (envsAtCursor === undefined) {
-	// 		this.box.textContent = "";
-	// 		console.log("Did not find entry");
-	// 		return;
-	// 	}
-	// 	this.envs[currpos.lineNumber-1].forEach((env) => {
-	// 		for (let key in env) {
-	// 			if (key !== "prev_lineno" && key !== "next_lineno" && key !== "lineno") {
-	// 				keys_set.add(key);
-	// 			}
-	// 		}
-	// 	});
-	// 	let header_line_1 = "|";
-	// 	let header_line_2 = "|";
-	// 	keys_set.forEach((v:string) => {
-	// 		header_line_1 = header_line_1 + v + "|";
-	// 		header_line_2 = header_line_2 + "---|";
-	// 	});
-	// 	let mkdn = header_line_1 + "\n" + header_line_2 + "\n";
-	// 	let env_list = this.envs[currpos.lineNumber-1];
-	// 	for (let i = 0; i < env_list.length; i++) {
-	// 		let env = env_list[i];
-	// 		mkdn = mkdn + "|";
-	// 		keys_set.forEach((v:string) => {
-	// 			if (i === 0) {
-	// 				var v_str = env[v];
-	// 			} else if (env[v] === env_list[i-1][v]) {
-	// 				var v_str:any = "";
-	// 			} else {
-	// 				var v_str = env[v];
-	// 			}
-	// 			mkdn = mkdn + "`" + v_str + "`" + "|";
-	// 		});
-	// 		mkdn = mkdn + "\n";
-	// 	};
-	// 	console.log("Before: " + this.box.offsetHeight);
-	// 	this.box.textContent = "";
-	// 	console.log("In between: " + this.box.offsetHeight);
-	// 	const renderer = new MarkdownRenderer(this._editor, this._modeService, this._openerService);
-
-	// 	const renderedContents = renderer.render(new MarkdownString(mkdn));
-	// 	this.box.appendChild(renderedContents.element);
-	// 	console.log("After: " + this.box.offsetHeight);
-	// 	let zoom = (Math.random() * 0.5) + 1.0;
-	// 	//box.style.zoom = zoom.toString();
-	// 	let left = pixelPos.left + 100 - ((1-zoom) * (this.box.offsetWidth / 2));
-	// 	let top = pixelPos.top - ((1-zoom) * (this.box.offsetHeight / 2));
-	// 	this.box.style.top = top.toString() + "px";
-	// 	this.box.style.left = left.toString() + "px";
-	// 	this.box.style.transform = "scale(" + zoom.toString() +")";
-	// 	this.box.style.opacity = Math.random().toString();
-	// }
 
 }
