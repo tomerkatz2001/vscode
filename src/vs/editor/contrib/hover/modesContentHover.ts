@@ -743,12 +743,21 @@ class Line {
 		}
 		this._div.style.transform = "rotate(" + angle.toString() + "deg)";
 	}
+	public hide(){
+		this._div.style.display = "none";
+	}
+
+	public show(){
+		this._div.style.display = "block";
+	}
+
 }
 
 class RTVDisplayBox {
 	private _box: HTMLDivElement;
 	private _line: Line;
 	private _zoom: number;
+	private _opacity: number;
 	constructor(
 		private readonly _coordinator:RTVCoordinator,
 		private readonly _editor: ICodeEditor,
@@ -794,19 +803,33 @@ class RTVDisplayBox {
 		this._zoom = 1;
 		this._line = new Line(0,0,0,0);
 		// editor_div.appendChild(svg);
-		this.update();
+		//this.updateContent();
+		//this.updateLayout();
+		this.hide();
 	}
 
-	public update() {
+	public hide() {
+		this._box.style.display = "none";
+		this._line.hide();
+	}
+
+	public show() {
+		this._box.style.display = "block";
+		this._line.show();
+	}
+
+	public updateContent() {
 
 		// Get all envs at this line number
 		let envsAtLine = this._coordinator.envs[this._lineNumber-1];
 		if (envsAtLine === undefined) {
 			this._box.textContent = "";
+			this.hide();
 			console.log("Did not find entry");
 			return;
 		}
 
+		this.show();
 		// Compute set of keys in all envs
 		let keys_set = new Set<string>();
 		envsAtLine.forEach((env) => {
@@ -848,40 +871,48 @@ class RTVDisplayBox {
 		const renderedContents = renderer.render(new MarkdownString(mkdn));
 		this._box.appendChild(renderedContents.element);
 
-		// Update visuals
-		let currpos = this._editor.getPosition();
-		if (currpos === null) {
+	}
+
+	public getHeight() {
+		return this._box.offsetHeight*this._zoom;
+	}
+	public updateLayout(top: number) {
+
+		let pixelPosAtLine = this._editor.getScrolledVisiblePosition(new Position(this._lineNumber, 1));
+		if (pixelPosAtLine === null) {
 			return;
 		}
 
-		let pixelPos = this._editor.getScrolledVisiblePosition(new Position(this._lineNumber, 1));
-		if (pixelPos === null) {
-			return;
-		}
-
-		let lineDelta = this._lineNumber - currpos.lineNumber;
-		let lineDeltaAbs = Math.abs(lineDelta);
-		this._zoom = 1 / (lineDeltaAbs*0.5 + 1);
-		//this._zoom = 1;
-
-		var opacity = 1;
-		if (lineDelta !== 0) {
-			opacity = 1/lineDeltaAbs;
-		}
-
-		let left = pixelPos.left + 400;
+		let left = pixelPosAtLine.left + 400;
 		let zoom_adjusted_left =  left - ((1-this._zoom) * (this._box.offsetWidth / 2));
-		let top = pixelPos.top + (100*lineDelta);
 		let zoom_adjusted_top = top - ((1-this._zoom) * (this._box.offsetHeight / 2));
 		this._box.style.top = zoom_adjusted_top.toString() + "px";
 		this._box.style.left = zoom_adjusted_left.toString() + "px";
 		this._box.style.transform = "scale(" + this._zoom.toString() +")";
-		this._box.style.opacity = opacity.toString();
+		this._box.style.opacity = this._opacity.toString();
 
 		// update the line
-		this._line.move(pixelPos.left+200, pixelPos.top, left, top);
+		this._line.move(pixelPosAtLine.left+200, pixelPosAtLine.top, left, top);
 
 	}
+
+	public updateZoomAndOpacity() {
+		let cursorPos = this._editor.getPosition();
+		if (cursorPos === null) {
+			return;
+		}
+
+		let lineDelta = this._lineNumber - cursorPos.lineNumber;
+		let lineDeltaAbs = Math.abs(lineDelta);
+		this._zoom = 1 / (lineDeltaAbs*0.5 + 1);
+		//this._zoom = 1;
+
+		this._opacity = 1;
+		if (lineDelta !== 0) {
+			this._opacity = 1/lineDeltaAbs;
+		}
+	}
+
 }
 
 class RTVCoordinator {
@@ -914,12 +945,50 @@ class RTVCoordinator {
 	}
 
 	private onChangeCursorPosition(e: ICursorPositionChangedEvent) {
-		this.updateBoxes();
+		this.updateLayout();
 	}
 
-	private updateBoxes() {
-		this._boxes.forEach((b) => { b.update(); });
+	private updateContentAndLayout() {
+		this.updateContent();
+		this.updateLayout();
 	}
+	private updateContent() {
+		this._boxes.forEach((b) => {
+			b.updateContent();
+		});
+	}
+
+	private updateLayout() {
+		this._boxes.forEach((b) => {
+			b.updateZoomAndOpacity();
+		});
+
+		let cursorPos = this._editor.getPosition();
+		if (cursorPos === null) {
+			return;
+		}
+
+		let cursorPixelPos = this._editor.getScrolledVisiblePosition(cursorPos);
+		if (cursorPixelPos === null) {
+			return;
+		}
+
+		let top_start = cursorPixelPos.top;
+		let top = top_start;
+		for (let i = cursorPos.lineNumber-1; i>=0; i--) {
+			this._boxes[i].updateLayout(top);
+			if (i>0) {
+				top = top - 20 - this._boxes[i-1].getHeight();
+			}
+		}
+		top = top_start;
+		for (let i = cursorPos.lineNumber; i< this._boxes.length; i++) {
+			top = top + this._boxes[i-1].getHeight() + 20;
+			this._boxes[i].updateLayout(top);
+		}
+
+	}
+
 	private onChangeModelContent(e: IModelContentChangedEvent) {
 		let py3 = process.env["PYTHON3"];
 		if (py3 === undefined) return;
@@ -946,7 +1015,7 @@ class RTVCoordinator {
 			console.log("Exit code from run.py: " + exit_code);
 			if (exit_code === 0) {
 				this.updateData(fs.readFileSync(code_fname + ".out").toString());
-				this.updateBoxes();
+				this.updateContentAndLayout();
 				//console.log(envs);
 			}
 		});
