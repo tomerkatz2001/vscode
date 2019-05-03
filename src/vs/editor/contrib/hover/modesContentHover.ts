@@ -743,6 +743,11 @@ class Line {
 		}
 		this._div.style.transform = "rotate(" + angle.toString() + "deg)";
 	}
+
+	public setOpacity(opacity: number) {
+		this._div.style.opacity = opacity.toString();
+	}
+
 	public hide(){
 		this._div.style.display = "none";
 	}
@@ -770,23 +775,6 @@ class RTVDisplayBox {
 			throw new Error('Cannot find Monaco Editor');
 		}
 		this._box = document.createElement('div');
-		// let svg = document.createElement("svg");
-		// svg.style.position = "absolute";
-		// svg.style.top = "100px";
-		// svg.style.left = "100px";
-		// svg.style.maxWidth = "1366px";
-		// svg.style.transitionProperty = "all";
-		// svg.style.transitionDuration = "0.3s";
-		// svg.style.transitionDelay = "0s";
-		// svg.style.transitionTimingFunction = "ease-in";
-		// let l = document.createElement("line");
-		// l.setAttribute("x1","0");
-		// l.setAttribute("y1","0");
-		// l.setAttribute("x2","40");
-		// l.setAttribute("y2","40");
-		// l.style.stroke = "red";
-		// l.style.strokeWidth = "2";
-		// svg.appendChild(l);
 		this._box.textContent = "";
 		this._box.style.position = "absolute";
 		this._box.style.top = "100px";
@@ -802,9 +790,6 @@ class RTVDisplayBox {
 		editor_div.appendChild(this._box);
 		this._zoom = 1;
 		this._line = new Line(0,0,0,0);
-		// editor_div.appendChild(svg);
-		//this.updateContent();
-		//this.updateLayout();
 		this.hide();
 	}
 
@@ -830,11 +815,27 @@ class RTVDisplayBox {
 		}
 
 		this.show();
+
+		//let envs = envsAtLine;
+		let envs: any[] = [];
+		envsAtLine.forEach((env) => {
+			if (env.next_lineno !== undefined) {
+				let nextEnvs = this._coordinator.envs[env.next_lineno];
+				if (nextEnvs !== undefined) {
+					nextEnvs.forEach((nextEnv) => {
+						if (nextEnv.time === env.time + 1) {
+							envs.push(nextEnv);
+						}
+					});
+				}
+			}
+		});
+
 		// Compute set of keys in all envs
 		let keys_set = new Set<string>();
-		envsAtLine.forEach((env) => {
+		envs.forEach((env) => {
 			for (let key in env) {
-				if (key !== "prev_lineno" && key !== "next_lineno" && key !== "lineno") {
+				if (key !== "prev_lineno" && key !== "next_lineno" && key !== "lineno" && key !== "time") {
 					keys_set.add(key);
 				}
 			}
@@ -849,13 +850,13 @@ class RTVDisplayBox {
 		});
 
 		let mkdn = header_line_1 + "\n" + header_line_2 + "\n";
-		for (let i = 0; i < envsAtLine.length; i++) {
-			let env = envsAtLine[i];
+		for (let i = 0; i < envs.length; i++) {
+			let env = envs[i];
 			mkdn = mkdn + "|";
 			keys_set.forEach((v:string) => {
 				if (i === 0) {
 					var v_str = env[v];
-				} else if (env[v] === envsAtLine[i-1][v]) {
+				} else if (env[v] === envs[i-1][v]) {
 					var v_str:any = "&darr;";
 				} else {
 					var v_str = env[v];
@@ -876,10 +877,12 @@ class RTVDisplayBox {
 	public getHeight() {
 		return this._box.offsetHeight*this._zoom;
 	}
+
 	public updateLayout(top: number) {
 
 		let pixelPosAtLine = this._editor.getScrolledVisiblePosition(new Position(this._lineNumber, 1));
-		if (pixelPosAtLine === null) {
+		let pixelPosAtNextLine = this._editor.getScrolledVisiblePosition(new Position(this._lineNumber+1, 1));
+		if (pixelPosAtLine === null || pixelPosAtNextLine === null) {
 			return;
 		}
 
@@ -892,7 +895,9 @@ class RTVDisplayBox {
 		this._box.style.opacity = this._opacity.toString();
 
 		// update the line
-		this._line.move(pixelPosAtLine.left+200, pixelPosAtLine.top, left, top);
+		let midPointTop = (pixelPosAtLine.top + pixelPosAtNextLine.top)/2;
+		this._line.setOpacity(this._opacity);
+		this._line.move(pixelPosAtLine.left+200, midPointTop, left, top);
 
 	}
 
@@ -944,6 +949,25 @@ class RTVCoordinator {
 		return model.getLineCount();
 	}
 
+	private getBox(lineNumber:number) {
+		let i = lineNumber - 1;
+		if (i >= this._boxes.length) {
+			for (let j = this._boxes.length; j <= i; j++) {
+				this._boxes[j] = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, j+1);
+			}
+		}
+		return this._boxes[i];
+	}
+
+	private addBoxes() {
+		let lineCount = this.getLineCount();
+		if (lineCount > this._boxes.length) {
+			for (let j = this._boxes.length; j < lineCount; j++) {
+				this._boxes[j] = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, j+1);
+			}
+		}
+	}
+
 	private onChangeCursorPosition(e: ICursorPositionChangedEvent) {
 		this.updateLayout();
 	}
@@ -952,13 +976,16 @@ class RTVCoordinator {
 		this.updateContent();
 		this.updateLayout();
 	}
+
 	private updateContent() {
+		this.addBoxes();
 		this._boxes.forEach((b) => {
 			b.updateContent();
 		});
 	}
 
 	private updateLayout() {
+		this.addBoxes();
 		this._boxes.forEach((b) => {
 			b.updateZoomAndOpacity();
 		});
@@ -969,22 +996,23 @@ class RTVCoordinator {
 		}
 
 		let cursorPixelPos = this._editor.getScrolledVisiblePosition(cursorPos);
-		if (cursorPixelPos === null) {
+		let nextLinePixelPos = this._editor.getScrolledVisiblePosition(new Position(cursorPos.lineNumber+1,cursorPos.column));
+		if (cursorPixelPos === null || nextLinePixelPos === null) {
 			return;
 		}
 
-		let top_start = cursorPixelPos.top;
+		let top_start = (cursorPixelPos.top + nextLinePixelPos.top) / 2;
 		let top = top_start;
-		for (let i = cursorPos.lineNumber-1; i>=0; i--) {
-			this._boxes[i].updateLayout(top);
-			if (i>0) {
-				top = top - 20 - this._boxes[i-1].getHeight();
+		for (let line = cursorPos.lineNumber; line >= 1; line--) {
+			this.getBox(line).updateLayout(top);
+			if (line > 1) {
+				top = top - 20 - this.getBox(line-1).getHeight();
 			}
 		}
 		top = top_start;
-		for (let i = cursorPos.lineNumber; i< this._boxes.length; i++) {
-			top = top + this._boxes[i-1].getHeight() + 20;
-			this._boxes[i].updateLayout(top);
+		for (let line = cursorPos.lineNumber+1; line <= this.getLineCount(); line++) {
+			top = top + this.getBox(line-1).getHeight() + 20;
+			this.getBox(line).updateLayout(top);
 		}
 
 	}
