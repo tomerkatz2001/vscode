@@ -662,6 +662,8 @@ import * as path from "path";
 import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
 //import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
+import { IScrollEvent } from 'vs/editor/common/editorCommon';
+import { EditorLayoutInfo } from 'vs/editor/common/config/editorOptions';
 
 // setInterval(() => {
 // 	let editor_div = document.getElementsByClassName("monaco-editor")[0];
@@ -886,7 +888,7 @@ class RTVDisplayBox {
 			return;
 		}
 
-		let left = pixelPosAtLine.left + 400;
+		let left = this._coordinator.maxPixelCol+230;
 		let zoom_adjusted_left =  left - ((1-this._zoom) * (this._box.offsetWidth / 2));
 		let zoom_adjusted_top = top - ((1-this._zoom) * (this._box.offsetHeight / 2));
 		this._box.style.top = zoom_adjusted_top.toString() + "px";
@@ -897,7 +899,7 @@ class RTVDisplayBox {
 		// update the line
 		let midPointTop = (pixelPosAtLine.top + pixelPosAtNextLine.top)/2;
 		this._line.setOpacity(this._opacity);
-		this._line.move(pixelPosAtLine.left+200, midPointTop, left, top);
+		this._line.move(this._coordinator.maxPixelCol+30, midPointTop, left, top);
 
 	}
 
@@ -924,6 +926,7 @@ class RTVCoordinator {
 	public envs: { [k:string]: any []; } = {};
 	public rws: { [k:string]: string; } = {};
 	private _boxes: RTVDisplayBox[] = [];
+	private _maxPixelCol = 0;
 
 	constructor(
 		private readonly _editor: ICodeEditor,
@@ -935,10 +938,17 @@ class RTVCoordinator {
 			throw new Error('Cannot find Monaco Editor');
 		}
 		this._editor.onDidChangeCursorPosition((e) => { this.onChangeCursorPosition(e); });
+		this._editor.onDidScrollChange((e) => { this.onScrollChange(e); });
+		this._editor.onDidLayoutChange((e) => { this.onLayoutChange(e); });
 		this._editor.onDidChangeModelContent((e) => { this.onChangeModelContent(e); });
 		for (let i = 0; i < this.getLineCount(); i++) {
 			this._boxes.push(new RTVDisplayBox(this, _editor, _modeService, _openerService, i+1));
 		}
+		this.updateMaxPixelCol();
+	}
+
+	get maxPixelCol() {
+		return this._maxPixelCol;
 	}
 
 	private getLineCount(): number {
@@ -947,6 +957,23 @@ class RTVCoordinator {
 			return 0;
 		}
 		return model.getLineCount();
+	}
+
+	private updateMaxPixelCol() {
+		let model = this._editor.getModel();
+		if (model === null) {
+			return;
+		}
+		let max = 0;
+		let lineCount = model.getLineCount();
+		for (let line = 1; line <= lineCount; line++) {
+			let col = model.getLineMaxColumn(line);
+			let pixelPos = this._editor.getScrolledVisiblePosition(new Position(line,col));
+			if (pixelPos !== null && pixelPos.left > max) {
+				max = pixelPos.left;
+			}
+		}
+		this._maxPixelCol = max;
 	}
 
 	private getBox(lineNumber:number) {
@@ -969,6 +996,16 @@ class RTVCoordinator {
 	}
 
 	private onChangeCursorPosition(e: ICursorPositionChangedEvent) {
+		this.updateLayout();
+	}
+
+	private onScrollChange(e:IScrollEvent) {
+		this.updateMaxPixelCol();
+		this.updateLayout();
+	}
+
+	private onLayoutChange(e: EditorLayoutInfo) {
+		this.updateMaxPixelCol();
 		this.updateLayout();
 	}
 
@@ -1019,16 +1056,23 @@ class RTVCoordinator {
 
 	private onChangeModelContent(e: IModelContentChangedEvent) {
 		let py3 = process.env["PYTHON3"];
-		if (py3 === undefined) return;
+		if (py3 === undefined) {
+			return;
+		}
 		let runpy = process.env["RUNPY"];
-		if (runpy === undefined) return;
+		if (runpy === undefined) {
+			return;
+		}
 		console.log("onChangeModelContent");
 		//console.log(e);
+		this.updateMaxPixelCol();
 		this.envs = {};
 		this.rws = {};
 		let code_fname = os.tmpdir() + path.sep + "tmp.py";
 		let model = this._editor.getModel();
-		if (model === null) return;
+		if (model === null) {
+			return;
+		}
 		let lines = model.getLinesContent();
 		fs.writeFileSync(code_fname, lines.join("\n"));
 		let c = cp.spawn(py3, [runpy, code_fname]);

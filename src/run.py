@@ -140,31 +140,48 @@ def main():
         lines[i] = strip_comment(lines[i])
 
 
-
-    # version 1
-    original_lines = [lines[i] for i in range(len(lines))]
-    ws = ""
+    ws_computed = ""
     for i in range(len(lines)-1,0,-1):
         line = lines[i]
         if (line.strip() == ""):
+            ws_len_user = len(line.rstrip('\n'))
+            ws_len_computed = len(ws_computed)
+            if ws_len_user > ws_len_computed:
+                ws = line.rstrip('\n')
+            else:
+                ws = ws_computed
             lines[i] = ws + magic_var_name + " = 0\n"
         else:
-            num_ws = len(line) - len(line.lstrip())
-            ws = line[0:num_ws]
+            ws_len = len(line) - len(line.lstrip())
+            ws_computed = line[0:ws_len]
+    code = "".join(lines)
+    print(code)
+    root = ast.parse(code)
 
-    try:
-        code = "".join(lines)
-        print("First")
-        print(code)
-        root = ast.parse(code)
-    except SyntaxError as e:
-        lineno = e.lineno-1 # adjust to count from 0
-        if original_lines[lineno].strip() == "":
-            lines[lineno] = original_lines[lineno].rstrip("\n") + magic_var_name + " = 0\n"
-            code = "".join(lines)
-            print("Second")
-            print(code)
-            root = ast.parse(code)
+    # version 1
+    # original_lines = [lines[i] for i in range(len(lines))]
+    # ws = ""
+    # for i in range(len(lines)-1,0,-1):
+    #     line = lines[i]
+    #     if (line.strip() == ""):
+    #         lines[i] = ws + magic_var_name + " = 0\n"
+    #     else:
+    #         num_ws = len(line) - len(line.lstrip())
+    #         ws = line[0:num_ws]
+
+    # try:
+    #     code = "".join(lines)
+    #     print("First")
+    #     print(code)
+    #     root = ast.parse(code)
+    # except SyntaxError as e:
+    #     lineno = e.lineno-1 # adjust to count from 0
+    #     if original_lines[lineno].strip() == "":
+    #         lines[lineno] = original_lines[lineno].rstrip("\n") + magic_var_name + " = 0\n"
+    #         code = "".join(lines)
+    #         print("Second")
+    #         print(code)
+    #         root = ast.parse(code)
 
     # version 2
     # try:
