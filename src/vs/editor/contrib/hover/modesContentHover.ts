@@ -732,6 +732,11 @@ class Line {
 		this.move(x1,y1,x2,y2);
 		editor_div.appendChild(this._div);
 	}
+
+	public destroy() {
+		this._div.remove();
+	}
+
 	public move(x1: number, y1: number, x2: number, y2: number) {
 		this._div.style.left = x1.toString() + "px";
 		this._div.style.top = y1.toString() + "px";
@@ -763,17 +768,20 @@ class Line {
 class RTVDisplayBox {
 	private _box: HTMLDivElement;
 	private _line: Line;
-	private _zoom: number;
-	private _opacity: number;
+	private _zoom: number = 1;
+	private _opacity: number = 1;
+	private _hiddenByUser: boolean = false;
+	private _hasContent: boolean = false;
 	constructor(
 		private readonly _coordinator:RTVCoordinator,
 		private readonly _editor: ICodeEditor,
 		private readonly _modeService: IModeService,
 		private readonly _openerService: IOpenerService | null,
-		private readonly _lineNumber: number
+		private _lineNumber: number
 	) {
-		let editor_div = document.getElementsByClassName("monaco-editor")[0];
-		if (editor_div === undefined) {
+		let editor_div = this._editor.getDomNode();
+		//let editor_div = document.getElementsByClassName("monaco-editor")[0];
+		if (editor_div === null) {
 			throw new Error('Cannot find Monaco Editor');
 		}
 		this._box = document.createElement('div');
@@ -790,27 +798,55 @@ class RTVDisplayBox {
 		//box.style.zoom = "1";
 		this._box.className = "monaco-editor-hover";
 		editor_div.appendChild(this._box);
-		this._zoom = 1;
 		this._line = new Line(0,0,0,0);
 		this.hide();
 	}
 
+	get visible() {
+		return !this._hiddenByUser && this._hasContent;
+	}
+
+	get hiddenByUser() {
+		return this._hiddenByUser;
+	}
+
+	set hiddenByUser(h:boolean) {
+		this._hiddenByUser = h;
+	}
+
+	set lineNumber(l:number) {
+		this._lineNumber = l;
+	}
+
+	public destroy() {
+		this._box.remove();
+		this._line.destroy();
+	}
+
 	public hide() {
+		this._hasContent = false;
+		this._box.textContent = "";
 		this._box.style.display = "none";
 		this._line.hide();
 	}
 
 	public show() {
+		this._hasContent = true;
 		this._box.style.display = "block";
 		this._line.show();
 	}
 
 	public updateContent() {
 
+		if (this._hiddenByUser) {
+			this.hide();
+			console.log("Hidden by user");
+			return
+		}
+
 		// Get all envs at this line number
 		let envsAtLine = this._coordinator.envs[this._lineNumber-1];
 		if (envsAtLine === undefined) {
-			this._box.textContent = "";
 			this.hide();
 			console.log("Did not find entry");
 			return;
@@ -846,14 +882,20 @@ class RTVDisplayBox {
 		// Generate markdown table of all envs
 		let header_line_1 = "|";
 		let header_line_2 = "|";
+		let header:string[] = [];
 		keys_set.forEach((v:string) => {
 			header_line_1 = header_line_1 + v + "|";
 			header_line_2 = header_line_2 + "---|";
+			header.push(v);
 		});
 
 		let mkdn = header_line_1 + "\n" + header_line_2 + "\n";
+
+		//Stores the rows of the table
+		let rows: string [][] = [];
 		for (let i = 0; i < envs.length; i++) {
 			let env = envs[i];
+			let row:string [] = [];
 			mkdn = mkdn + "|";
 			keys_set.forEach((v:string) => {
 				if (i === 0) {
@@ -863,16 +905,45 @@ class RTVDisplayBox {
 				} else {
 					var v_str = env[v];
 				}
+				row.push(v_str);
 				mkdn = mkdn + v_str + "|";
 			});
+			rows.push(row);
 			mkdn = mkdn + "\n";
 		};
 
 		// Update html content
 		this._box.textContent = "";
 		const renderer = new MarkdownRenderer(this._editor, this._modeService, this._openerService);
-		const renderedContents = renderer.render(new MarkdownString(mkdn));
-		this._box.appendChild(renderedContents.element);
+
+		//Creates the HTML Table and populates it
+		let table = document.createElement('table');
+
+		table.createTHead();
+		if(table.tHead){
+			let headerRow = table.tHead.insertRow(-1);
+			header.forEach((h: string)=>{
+				let newHeaderCell = headerRow.insertCell(-1);
+				let renderedText = renderer.render(new MarkdownString("```python\n"+h+"```"));
+				newHeaderCell.align = 'center';
+				newHeaderCell.appendChild(renderedText.element);
+			});
+		}
+
+		rows.forEach((row:string[]) =>{
+		let newRow = table.insertRow(-1);
+		row.forEach((item: string)=>{
+			let newCell = newRow.insertCell(-1);
+			let renderedText = renderer.render(new MarkdownString("```python\n"+item+"```"));
+				if(item === "&darr;"){
+					renderedText = renderer.render(new MarkdownString(item));
+				}
+				newCell.align = 'center';
+				newCell.appendChild(renderedText.element);
+			});
+		});
+
+		this._box.appendChild(table);
 
 	}
 
@@ -903,20 +974,14 @@ class RTVDisplayBox {
 
 	}
 
-	public updateZoomAndOpacity() {
-		let cursorPos = this._editor.getPosition();
-		if (cursorPos === null) {
-			return;
-		}
-
-		let lineDelta = this._lineNumber - cursorPos.lineNumber;
-		let lineDeltaAbs = Math.abs(lineDelta);
-		this._zoom = 1 / (lineDeltaAbs*0.5 + 1);
+	public updateZoomAndOpacity(dist: number) {
+		let distAbs = Math.abs(dist);
+		this._zoom = 1 / (distAbs*0.5 + 1);
 		//this._zoom = 1;
 
 		this._opacity = 1;
-		if (lineDelta !== 0) {
-			this._opacity = 1/lineDeltaAbs;
+		if (distAbs !== 0) {
+			this._opacity = 1/distAbs;
 		}
 	}
 
@@ -933,10 +998,10 @@ class RTVCoordinator {
 		private readonly _modeService: IModeService,
 		private readonly _openerService: IOpenerService | null
 	) {
-		let editor_div = document.getElementsByClassName("monaco-editor")[0];
-		if (editor_div === undefined) {
-			throw new Error('Cannot find Monaco Editor');
-		}
+		// let editor_div = document.getElementsByClassName("monaco-editor")[0];
+		// if (editor_div === undefined) {
+		// 	throw new Error('Cannot find Monaco Editor');
+		// }
 		this._editor.onDidChangeCursorPosition((e) => { this.onChangeCursorPosition(e); });
 		this._editor.onDidScrollChange((e) => { this.onScrollChange(e); });
 		this._editor.onDidLayoutChange((e) => { this.onLayoutChange(e); });
@@ -944,6 +1009,11 @@ class RTVCoordinator {
 		for (let i = 0; i < this.getLineCount(); i++) {
 			this._boxes.push(new RTVDisplayBox(this, _editor, _modeService, _openerService, i+1));
 		}
+		// for (let i = 0; i < this.getLineCount(); i++) {
+		// 	this._boxes[i].hiddenByUser = true;
+		// }
+		// this._boxes[10].hiddenByUser = false;
+		// this._boxes[5].hiddenByUser = false;
 		this.updateMaxPixelCol();
 	}
 
@@ -973,6 +1043,8 @@ class RTVCoordinator {
 				max = pixelPos.left;
 			}
 		}
+		console.log("Old: " + this._maxPixelCol.toString());
+		console.log("New: " + max.toString());
 		this._maxPixelCol = max;
 	}
 
@@ -1000,11 +1072,16 @@ class RTVCoordinator {
 	}
 
 	private onScrollChange(e:IScrollEvent) {
+		if (e.scrollHeightChanged || e.scrollWidthChanged) {
+			// this means the content also changed, so we will let the onChangeModelContent event handle it
+			return;
+		}
 		this.updateMaxPixelCol();
 		this.updateLayout();
 	}
 
 	private onLayoutChange(e: EditorLayoutInfo) {
+		console.log("onLayoutChange");
 		this.updateMaxPixelCol();
 		this.updateLayout();
 	}
@@ -1023,35 +1100,132 @@ class RTVCoordinator {
 
 	private updateLayout() {
 		this.addBoxes();
-		this._boxes.forEach((b) => {
-			b.updateZoomAndOpacity();
-		});
+		// this._boxes.forEach((b) => {
+		// 	b.updateZoomAndOpacity();
+		// });
 
 		let cursorPos = this._editor.getPosition();
 		if (cursorPos === null) {
 			return;
 		}
 
-		let cursorPixelPos = this._editor.getScrolledVisiblePosition(cursorPos);
-		let nextLinePixelPos = this._editor.getScrolledVisiblePosition(new Position(cursorPos.lineNumber+1,cursorPos.column));
-		if (cursorPixelPos === null || nextLinePixelPos === null) {
+		// Compute focused line, which is the closest line to the cursor with a visible box
+		let minDist = Infinity;
+		let focusedLine = 0;
+		for (let line = 1; line <= this.getLineCount(); line++) {
+			if (this.getBox(line).visible) {
+				let dist = Math.abs(cursorPos.lineNumber - line);
+				if (dist <  minDist) {
+					minDist = dist;
+					focusedLine = line;
+				}
+			}
+		}
+		// this can happen if no boxes are visible
+		if (minDist === Infinity) {
+			return
+		}
+
+		// compute distances from focused line, ignoring hidden lines.
+		// Start from focused line and go outward.
+		let distancesFromFocus: number[] = new Array(this._boxes.length);
+		let dist = 0;
+		for (let line = focusedLine; line >= 1; line--) {
+			if (this.getBox(line).visible) {
+				distancesFromFocus[line-1] = dist;
+				dist = dist - 1;
+			}
+		}
+		dist = 1;
+		for (let line = focusedLine+1; line <= this.getLineCount(); line++) {
+			if (this.getBox(line).visible) {
+				distancesFromFocus[line-1] = dist;
+				dist = dist + 1;
+			}
+		}
+
+		for (let line = 1; line <= this.getLineCount(); line++) {
+			let box = this.getBox(line);
+			if (box.visible) {
+				box.updateZoomAndOpacity(distancesFromFocus[line-1]);
+			}
+		}
+		// let cursorPixelPos = this._editor.getScrolledVisiblePosition(cursorPos);
+		// let nextLinePixelPos = this._editor.getScrolledVisiblePosition(new Position(cursorPos.lineNumber+1,cursorPos.column));
+		// if (cursorPixelPos === null || nextLinePixelPos === null) {
+		// 	return;
+		// }
+
+		let focusedLinePixelPos = this._editor.getScrolledVisiblePosition(new Position(focusedLine, 1));
+		let nextLinePixelPos = this._editor.getScrolledVisiblePosition(new Position(focusedLine+1, 1));
+		if (focusedLinePixelPos === null || nextLinePixelPos === null) {
 			return;
 		}
 
-		let top_start = (cursorPixelPos.top + nextLinePixelPos.top) / 2;
+		let top_start = (focusedLinePixelPos.top + nextLinePixelPos.top) / 2;
 		let top = top_start;
-		for (let line = cursorPos.lineNumber; line >= 1; line--) {
-			this.getBox(line).updateLayout(top);
-			if (line > 1) {
-				top = top - 20 - this.getBox(line-1).getHeight();
+		for (let line = focusedLine-1; line >= 1; line--) {
+			let box = this.getBox(line);
+			if (box.visible) {
+				top = top - 20 - box.getHeight();
+				box.updateLayout(top);
 			}
 		}
 		top = top_start;
-		for (let line = cursorPos.lineNumber+1; line <= this.getLineCount(); line++) {
-			top = top + this.getBox(line-1).getHeight() + 20;
-			this.getBox(line).updateLayout(top);
+		for (let line = focusedLine; line <= this.getLineCount(); line++) {
+			let box = this.getBox(line);
+			if (box.visible) {
+				box.updateLayout(top);
+				top = top + box.getHeight() + 20;
+			}
 		}
 
+	}
+
+	private updateHiddenFlags(e: IModelContentChangedEvent) {
+		let orig = this._boxes.map((x) => x);
+		let changes = e.changes.sort((a,b) => Range.compareRangesUsingStarts(a.range,b.range));
+		console.log(changes);
+		let changeIdx = 0;
+		let origIdx = 0;
+		let i = 0;
+		while (i < this.getLineCount()) {
+			if (changeIdx >= changes.length) {
+				//this._boxes[i++].hiddenByUser = orig[origIdx++];
+				this._boxes[i++] = orig[origIdx++];
+				this._boxes[i-1].lineNumber = i;
+			} else {
+				let line = i + 1;
+				let change = changes[changeIdx];
+				if (change.range.startLineNumber !== line) {
+					// this._boxes[i++].hiddenByUser = orig[origIdx++];
+					this._boxes[i++] = orig[origIdx++];
+					this._boxes[i-1].lineNumber = i;
+				} else {
+					changeIdx++;
+					let numAddedLines = change.text.split("\n").length-1;
+					let numRemovedLines = change.range.endLineNumber - change.range.startLineNumber;
+					let deltaNumLines = numAddedLines - numRemovedLines;
+					if (deltaNumLines === 0) {
+						// nothing to do
+					} else if (deltaNumLines > 0) {
+						for (let j = 0; j < deltaNumLines; j++) {
+							let new_box = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, i+1);
+							new_box.hiddenByUser = orig[origIdx].hiddenByUser;
+							this._boxes[i++] = new_box;
+							// this._boxes[i++].hiddenByUser = orig[origIdx];
+						}
+					} else {
+						for (let j = origIdx; j < origIdx + (-deltaNumLines); j++) {
+							this._boxes[j].destroy();
+						}
+						// need to make the removed boxes disapear
+						origIdx = origIdx + (-deltaNumLines);
+					}
+				}
+			}
+
+		}
 	}
 
 	private onChangeModelContent(e: IModelContentChangedEvent) {
@@ -1065,6 +1239,8 @@ class RTVCoordinator {
 		}
 		console.log("onChangeModelContent");
 		//console.log(e);
+		this.addBoxes();
+		this.updateHiddenFlags(e);
 		this.updateMaxPixelCol();
 		this.envs = {};
 		this.rws = {};
