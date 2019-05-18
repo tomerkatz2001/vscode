@@ -798,6 +798,9 @@ class RTVDisplayBox {
 		//box.style.transform = "scale(2.5)";
 		//box.style.zoom = "1";
 		this._box.className = "monaco-editor-hover";
+		this._box.onclick = (e) => {
+			this.onClick(e);
+		};
 		editor_div.appendChild(this._box);
 		this._line = new Line(0,0,0,0);
 		this.hide();
@@ -813,6 +816,10 @@ class RTVDisplayBox {
 
 	set hiddenByUser(h:boolean) {
 		this._hiddenByUser = h;
+	}
+
+	get lineNumber() {
+		return this._lineNumber;
 	}
 
 	set lineNumber(l:number) {
@@ -835,6 +842,12 @@ class RTVDisplayBox {
 		this._hasContent = true;
 		this._box.style.display = "block";
 		this._line.show();
+	}
+
+	private onClick(e: MouseEvent) {
+		e.stopImmediatePropagation();
+		e.preventDefault();
+		this._coordinator.flipVisMode(this._lineNumber);
 	}
 
 	public updateContent() {
@@ -988,12 +1001,18 @@ class RTVDisplayBox {
 
 }
 
+enum VisibilityMode {
+	AllBoxes,
+	SingleBox
+}
+
 class RTVCoordinator {
 	public envs: { [k:string]: any []; } = {};
 	public rws: { [k:string]: string; } = {};
 	private _boxes: RTVDisplayBox[] = [];
 	private _maxPixelCol = 0;
 	private _prevModel: string[] = [];
+	private _visMode: VisibilityMode = VisibilityMode.AllBoxes;
 
 	constructor(
 		private readonly _editor: ICodeEditor,
@@ -1233,7 +1252,8 @@ class RTVCoordinator {
 					} else if (deltaNumLines > 0) {
 						for (let j = 0; j < deltaNumLines; j++) {
 							let new_box = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, i+1);
-							new_box.hiddenByUser = orig[origIdx].hiddenByUser;
+							//new_box.hiddenByUser = orig[origIdx].hiddenByUser;
+							new_box.hiddenByUser = this._visMode == VisibilityMode.SingleBox;
 							this._boxes[i++] = new_box;
 						}
 					} else {
@@ -1300,5 +1320,28 @@ class RTVCoordinator {
 		this.envs = data[1];
 		this.rws = data[0];
 	}
+
+	public flipVisMode(line: number) {
+		if (this._visMode == VisibilityMode.AllBoxes) {
+			this._visMode = VisibilityMode.SingleBox;
+			this._boxes.forEach((b) => {
+				b.hiddenByUser = (b.lineNumber !== line);
+			});
+		} else {
+			this._visMode = VisibilityMode.AllBoxes;
+			this._boxes.forEach((b) => {
+				b.hiddenByUser = false;
+			});
+		}
+		this.updateContentAndLayout();
+	}
+
+	// public focusOnBox(line: number) {
+	// 	console.log("In focusOnBox: " + line.toString())
+	// 	this._boxes.forEach((b) => {
+	// 		b.hiddenByUser = (b.lineNumber !== line);
+	// 	});
+	// 	this.updateContentAndLayout();
+	// }
 
 }
