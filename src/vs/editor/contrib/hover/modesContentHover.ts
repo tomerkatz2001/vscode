@@ -945,10 +945,10 @@ class RTVDisplayBox {
 		}
 
 		rows.forEach((row:string[]) =>{
-		let newRow = table.insertRow(-1);
-		row.forEach((item: string)=>{
-			let newCell = newRow.insertCell(-1);
-			let renderedText = renderer.render(new MarkdownString("```python\n"+item+"```"));
+			let newRow = table.insertRow(-1);
+			row.forEach((item: string) => {
+				let newCell = newRow.insertCell(-1);
+				let renderedText = renderer.render(new MarkdownString("```python\n"+item+"```"));
 				if(item === "&darr;"){
 					renderedText = renderer.render(new MarkdownString(item));
 				}
@@ -956,6 +956,8 @@ class RTVDisplayBox {
 				newCell.appendChild(renderedText.element);
 			});
 		});
+
+		this._box.style.borderColor = 'rgb(200, 200, 200)';
 
 		this._box.appendChild(table);
 
@@ -993,9 +995,29 @@ class RTVDisplayBox {
 		this._zoom = 1 / (distAbs*0.5 + 1);
 		//this._zoom = 1;
 
-		this._opacity = 1;
-		if (distAbs !== 0) {
-			this._opacity = 1/distAbs;
+		if(global_coordinator && global_coordinator._outOfDate === 0){
+			this._opacity = 1;
+			if (distAbs !== 0) {
+				this._opacity = 1/distAbs;
+			}
+		}
+	}
+
+	public fade(){
+		if(this._box){
+			let oldOpacity = this._box.style.opacity === "" ? '1' : this._box.style.opacity;
+			if(oldOpacity){
+				let newOpacity = parseFloat(oldOpacity) * 0.5;
+				this._box.style.opacity = newOpacity.toString();
+				this._line.setOpacity(newOpacity);
+				this._opacity = newOpacity;
+			}
+		}
+	}
+
+	public updateBorder(opacity: number){
+		if(global_coordinator){
+			this._box.style.borderColor = 'rgba(255, 0, 0, '+(global_coordinator._outOfDate/5)+')';
 		}
 	}
 
@@ -1013,6 +1035,7 @@ class RTVCoordinator {
 	private _maxPixelCol = 0;
 	private _prevModel: string[] = [];
 	private _visMode: VisibilityMode = VisibilityMode.AllBoxes;
+	public _outOfDate: number = 0;
 
 	constructor(
 		private readonly _editor: ICodeEditor,
@@ -1308,13 +1331,26 @@ class RTVCoordinator {
 		c.on('exit', (exit_code,signal_code)=>{
 			console.log("Exit code from run.py: " + exit_code);
 			if (exit_code === 0) {
+				this._outOfDate = 0;
 				this.updateData(fs.readFileSync(code_fname + ".out").toString());
 				this.updateContentAndLayout();
 				//console.log(envs);
 			}
+			else{
+				this._outOfDate++;
+				this.onOutOfDate();
+			}
 		});
 
 	}
+
+	private onOutOfDate(){
+		this._boxes.forEach((box: RTVDisplayBox) => {
+			box.fade();
+			//box.updateBorder(this._outOfDate);
+		});
+	}
+
 	private updateData(str: string) {
 		let data = JSON.parse(str);
 		this.envs = data[1];
