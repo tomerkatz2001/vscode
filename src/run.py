@@ -16,21 +16,23 @@ class Logger(bdb.Bdb):
         self.prev_env = None
         self.data = {}
     def user_line(self, frame):
-        if frame.f_globals["__name__"] != "__main__":
-            return
-        if "__name__" in frame.f_locals:
-            return
-        print("About to execute: " + lines[frame.f_lineno-1])
-        self.record_env(frame, frame.f_lineno-1)
-        #print("")
+        # print("user_line ============================================")
+        # print(frame.f_code.co_name)
+        # print("lineno")
+        # print(frame.f_lineno)
         # print(frame.__dir__())
         # print("globals")
         # print(frame.f_globals)
+        # print("locals")
+        # print(frame.f_locals)
+
+        if frame.f_code.co_name == "<module>" or frame.f_code.co_name == "<listcomp>":
+            return
+
+        print("About to execute: " + lines[frame.f_lineno-1])
+        self.record_env(frame, frame.f_lineno-1)
 
     def record_env(self, frame, adjusted_lineno):
-
-        # print("locals:" + str(frame.f_locals))
-        # print("lineno: " +  str(frame.f_lineno))
         env = {}
         env["time"] = self.time
         self.time = self.time + 1
@@ -51,15 +53,21 @@ class Logger(bdb.Bdb):
 
 
     def user_return(self, frame, rv):
-        if frame.f_globals["__name__"] != "__main__":
+        # print("user_return ============================================")
+        # print(frame.f_code.co_name)
+        # print("lineno")
+        # print(frame.f_lineno)
+        # print(frame.__dir__())
+        # print("globals")
+        # print(frame.f_globals)
+        # print("locals")
+        # print(frame.f_locals)
+
+        if frame.f_code.co_name == "<module>" or frame.f_code.co_name == "<listcomp>":
             return
-        if "__name__" in frame.f_locals:
-            return
+
         print("About to execute return: " + lines[frame.f_lineno-1])
         self.record_env(frame, "R" + str(frame.f_lineno-1))
-        # print("locals:" + str(frame.f_locals))
-        # print("lineno: " +  str(frame.f_lineno))
-        # print("Rv: " + str(rv))
 
     def store_prev_env(self):
         lineno = self.prev_env["lineno"]

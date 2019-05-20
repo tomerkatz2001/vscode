@@ -868,7 +868,7 @@ class RTVDisplayBox {
 
 		this.show();
 
-		//let envs = envsAtLine;
+		// collect all next step envs
 		let envs: any[] = [];
 		envsAtLine.forEach((env) => {
 			if (env.next_lineno !== undefined) {
@@ -882,6 +882,13 @@ class RTVDisplayBox {
 				}
 			}
 		});
+
+		// If this lines is a for loop, remove last env, which is the ending iteration of the for,
+		// which does not execute
+		let lineContent = this._coordinator.getLineContent(this._lineNumber).trim();
+		if (strings.startsWith(lineContent, "for") && strings.endsWith(lineContent, ":")) {
+			envs.pop();
+		}
 
 		// Compute set of keys in all envs
 		let keys_set = new Set<string>();
@@ -1069,6 +1076,14 @@ class RTVCoordinator {
 			return 0;
 		}
 		return model.getLineCount();
+	}
+
+	public getLineContent(lineNumber: number): string {
+		let model = this._editor.getModel();
+		if (model === null) {
+			return "";
+		}
+		return model.getLineContent(lineNumber);
 	}
 
 	private updateMaxPixelCol() {
