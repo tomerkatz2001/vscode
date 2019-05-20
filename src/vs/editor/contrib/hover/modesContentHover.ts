@@ -957,7 +957,7 @@ class RTVDisplayBox {
 			});
 		});
 
-		this._box.style.borderColor = 'rgb(200, 200, 200)';
+		//this._box.style.borderColor = 'rgb(200, 200, 200)';
 
 		this._box.appendChild(table);
 
@@ -995,7 +995,7 @@ class RTVDisplayBox {
 		this._zoom = 1 / (distAbs*0.5 + 1);
 		//this._zoom = 1;
 
-		if(global_coordinator && global_coordinator._outOfDate === 0){
+		if (this._coordinator._outOfDate === 0) {
 			this._opacity = 1;
 			if (distAbs !== 0) {
 				this._opacity = 1/distAbs;
@@ -1003,22 +1003,18 @@ class RTVDisplayBox {
 		}
 	}
 
-	public fade(){
-		if(this._box){
-			let oldOpacity = this._box.style.opacity === "" ? '1' : this._box.style.opacity;
-			if(oldOpacity){
-				let newOpacity = parseFloat(oldOpacity) * 0.5;
-				this._box.style.opacity = newOpacity.toString();
-				this._line.setOpacity(newOpacity);
-				this._opacity = newOpacity;
-			}
+	public fade() {
+		let oldOpacity = this._box.style.opacity === "" ? '1' : this._box.style.opacity;
+		if (oldOpacity) {
+			let newOpacity = parseFloat(oldOpacity) * 0.9;
+			this._box.style.opacity = newOpacity.toString();
+			this._line.setOpacity(newOpacity);
+			this._opacity = newOpacity;
 		}
 	}
 
 	public updateBorder(opacity: number){
-		if(global_coordinator){
-			this._box.style.borderColor = 'rgba(255, 0, 0, '+(global_coordinator._outOfDate/5)+')';
-		}
+		this._box.style.borderColor = 'rgba(255, 0, 0, '+(this._coordinator._outOfDate/5)+')';
 	}
 
 }
@@ -1036,6 +1032,7 @@ class RTVCoordinator {
 	private _prevModel: string[] = [];
 	private _visMode: VisibilityMode = VisibilityMode.AllBoxes;
 	public _outOfDate: number = 0;
+	private _outOfDateTimerId: NodeJS.Timer | null = null;
 
 	constructor(
 		private readonly _editor: ICodeEditor,
@@ -1328,23 +1325,29 @@ class RTVCoordinator {
 		c.stderr.on("data", (data) => {
 			//console.log(data.toString())
 		});
-		c.on('exit', (exit_code,signal_code)=>{
+		c.on('exit', (exit_code,signal_code) => {
 			console.log("Exit code from run.py: " + exit_code);
 			if (exit_code === 0) {
-				this._outOfDate = 0;
+				if (this._outOfDateTimerId !== null) {
+					clearInterval(this._outOfDateTimerId);
+					this._outOfDateTimerId = null;
+					this._outOfDate = 0;
+				}
 				this.updateData(fs.readFileSync(code_fname + ".out").toString());
 				this.updateContentAndLayout();
 				//console.log(envs);
 			}
-			else{
-				this._outOfDate++;
-				this.onOutOfDate();
-			}
+			else if (this._outOfDateTimerId === null) {
+					this._outOfDateTimerId = setInterval(() => {
+						this.onOutOfDate();
+					}, 300);
+				}
 		});
 
 	}
 
 	private onOutOfDate(){
+		this._outOfDate++;
 		this._boxes.forEach((box: RTVDisplayBox) => {
 			box.fade();
 			//box.updateBorder(this._outOfDate);
