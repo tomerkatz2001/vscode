@@ -1323,8 +1323,6 @@ class RTVCoordinator {
 		this.addBoxes();
 		this.updateHiddenFlags(e);
 		this.updateMaxPixelCol();
-		this.envs = {};
-		this.rws = {};
 		let code_fname = os.tmpdir() + path.sep + "tmp.py";
 		let model = this._editor.getModel();
 		if (model === null) {
@@ -1353,10 +1351,11 @@ class RTVCoordinator {
 				//console.log(envs);
 			}
 			else if (this._outOfDateTimerId === null) {
-					this._outOfDateTimerId = setInterval(() => {
-						this.onOutOfDate();
-					}, 300);
-				}
+				this.updateContentAndLayout();
+				this._outOfDateTimerId = setInterval(() => {
+					this.onOutOfDate();
+				}, 300);
+			}
 		});
 
 	}
