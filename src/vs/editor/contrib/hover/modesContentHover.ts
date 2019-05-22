@@ -965,9 +965,25 @@ class RTVDisplayBox {
 		});
 
 		//this._box.style.borderColor = 'rgb(200, 200, 200)';
+		if(this._coordinator._outOfDate !== 0) {
+			this.createOutOfDate();
 
+		}
 		this._box.appendChild(table);
 
+	}
+
+	private createOutOfDate(){
+		let stopElement = document.createElement('div');
+		stopElement.style.width = '8px';
+		stopElement.style.height = '8px';
+		stopElement.style.position = 'absolute';
+		stopElement.style.top = '5px';
+		stopElement.style.left = '3px';
+		stopElement.style.backgroundColor = 'red';
+		stopElement.style.borderRadius = '50%';
+
+		this._box.appendChild(stopElement);
 	}
 
 	public getHeight() {
@@ -1351,6 +1367,7 @@ class RTVCoordinator {
 				//console.log(envs);
 			}
 			else if (this._outOfDateTimerId === null) {
+				this._outOfDate++;
 				this.updateContentAndLayout();
 				this._outOfDateTimerId = setInterval(() => {
 					this.onOutOfDate();
