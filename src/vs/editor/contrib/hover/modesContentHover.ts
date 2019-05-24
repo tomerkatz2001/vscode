@@ -216,8 +216,6 @@ export class ModesContentHoverWidget extends ContentHoverWidget {
 	) {
 		super(ModesContentHoverWidget.ID, editor);
 
-		new RTVCoordinator(editor, _modeService, _openerService);
-
 		this._messages = [];
 		this._lastRange = null;
 		this._computer = new ModesContentComputer(this._editor, markerDecorationsService);
@@ -660,7 +658,8 @@ import * as path from "path";
 import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
 //import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
-import { IScrollEvent } from 'vs/editor/common/editorCommon';
+import { IEditorContribution, IScrollEvent } from 'vs/editor/common/editorCommon';
+import { registerEditorContribution } from 'vs/editor/browser/editorExtensions';
 import { EditorLayoutInfo } from 'vs/editor/common/config/editorOptions';
 import * as strings from 'vs/base/common/strings';
 
@@ -1047,7 +1046,7 @@ enum VisibilityMode {
 	SingleBox
 }
 
-class RTVCoordinator {
+export class RTVCoordinator implements IEditorContribution {
 	public envs: { [k:string]: any []; } = {};
 	public rws: { [k:string]: string; } = {};
 	private _boxes: RTVDisplayBox[] = [];
@@ -1060,8 +1059,8 @@ class RTVCoordinator {
 
 	constructor(
 		private readonly _editor: ICodeEditor,
-		private readonly _modeService: IModeService,
-		private readonly _openerService: IOpenerService | null
+		@IOpenerService private readonly _openerService: IOpenerService,
+		@IModeService private readonly _modeService: IModeService,
 	) {
 		this._editor.onDidChangeCursorPosition((e) => { this.onChangeCursorPosition(e); });
 		this._editor.onDidScrollChange((e) => { this.onScrollChange(e); });
@@ -1077,6 +1076,14 @@ class RTVCoordinator {
 		// this._boxes[5].hiddenByUser = false;
 		this.updateMaxPixelCol();
 		this.updatePrevModel();
+	}
+
+	public getId(): string {
+		return 'editor.contrib.rtv';
+	}
+
+	public dispose(): void {
+
 	}
 
 	get maxPixelCol() {
@@ -1429,3 +1436,5 @@ class RTVCoordinator {
 	// }
 
 }
+
+registerEditorContribution(RTVCoordinator);
