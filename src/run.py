@@ -18,6 +18,10 @@ class Logger(bdb.Bdb):
     def user_line(self, frame):
         # print("user_line ============================================")
         # print(frame.f_code.co_name)
+        # print(frame.f_code.co_names)
+        # print(frame.f_code.co_filename)
+        # print(frame.f_code.co_firstlineno)
+        # print(dir(frame.f_code))
         # print("lineno")
         # print(frame.f_lineno)
         # print(frame.__dir__())
@@ -26,13 +30,16 @@ class Logger(bdb.Bdb):
         # print("locals")
         # print(frame.f_locals)
 
-        if frame.f_code.co_name == "<module>" or frame.f_code.co_name == "<listcomp>":
+        if frame.f_code.co_name == "<module>" or frame.f_code.co_name == "<listcomp>" or frame.f_code.co_filename != "<string>":
             return
 
         print("About to execute: " + lines[frame.f_lineno-1])
         self.record_env(frame, frame.f_lineno-1)
 
     def record_env(self, frame, adjusted_lineno):
+        if self.time >= 100:
+            self.set_quit()
+            return
         env = {}
         env["time"] = self.time
         self.time = self.time + 1
@@ -63,7 +70,7 @@ class Logger(bdb.Bdb):
         # print("locals")
         # print(frame.f_locals)
 
-        if frame.f_code.co_name == "<module>" or frame.f_code.co_name == "<listcomp>":
+        if frame.f_code.co_name == "<module>" or frame.f_code.co_name == "<listcomp>" or frame.f_code.co_filename != "<string>":
             return
 
         print("About to execute return: " + lines[frame.f_lineno-1])
