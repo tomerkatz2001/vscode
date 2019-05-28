@@ -322,27 +322,33 @@ class RTVDisplayBox {
 		this._box.appendChild(table);
 
 		// Add green/red dot to show out of date status
-		let stopElement = document.createElement('div');
-		stopElement.style.width = '5px';
-		stopElement.style.height = '5px';
-		stopElement.style.position = 'absolute';
-		stopElement.style.top = '5px';
-		stopElement.style.left = '3px';
-		stopElement.style.borderRadius = '50%';
+		let stalenessIndicator = document.createElement('div');
+		stalenessIndicator.style.width = '5px';
+		stalenessIndicator.style.height = '5px';
+		stalenessIndicator.style.position = 'absolute';
+		stalenessIndicator.style.top = '5px';
+		stalenessIndicator.style.left = '3px';
+		stalenessIndicator.style.borderRadius = '50%';
 		let x = this._coordinator._changedLinesWhenOutOfDate;
 		if (x === null) {
-			stopElement.style.backgroundColor = 'green';
+			stalenessIndicator.style.backgroundColor = 'green';
 		} else {
 			let green = 165 - (x.size-1) * 35;
 			if (green < 0) {
 				green = 0;
 			}
-			stopElement.style.backgroundColor = 'rgb(255,' + green.toString() + ',0)';
+			stalenessIndicator.style.backgroundColor = 'rgb(255,' + green.toString() + ',0)';
 		}
 
-		this._box.appendChild(stopElement);
+		this._box.appendChild(stalenessIndicator);
+
+		this.addConfigButton();
 
 	}
+
+	public addConfigButton() {
+	}
+
 
 	public getHeight() {
 		return this._box.offsetHeight*this._zoom;
