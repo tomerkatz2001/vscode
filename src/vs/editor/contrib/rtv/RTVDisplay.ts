@@ -347,6 +347,21 @@ class RTVDisplayBox {
 	}
 
 	public addConfigButton() {
+		let configButton = document.createElement('div');
+		configButton.style.width = '5px';
+		configButton.style.height = '5px';
+		configButton.style.position = 'absolute';
+		configButton.style.top = '5px';
+		configButton.style.right = '3px';
+		configButton.style.borderRadius = '50%';
+		configButton.style.backgroundColor = 'red';
+		if(configButton){
+			configButton.onclick = (e) =>{
+				e.stopImmediatePropagation();
+				this._coordinator.addConfigDialogBox();
+			};
+		}
+		this._box.appendChild(configButton);
 	}
 
 
@@ -421,6 +436,7 @@ export class RTVCoordinator implements IEditorContribution {
 	public _outOfDate: number = 0;
 	public _changedLinesWhenOutOfDate: Set<number> | null = new Set();
 	private _outOfDateTimerId: NodeJS.Timer | null = null;
+	private _row: boolean = false;
 
 	constructor(
 		private readonly _editor: ICodeEditor,
@@ -486,6 +502,62 @@ export class RTVCoordinator implements IEditorContribution {
 			}
 		}
 		this._maxPixelCol = max;
+	}
+
+	public addConfigDialogBox(){
+		let editor_div = this._editor.getDomNode();
+		if(!editor_div){
+			return;
+		}
+		let div = document.createElement('div');
+		div.textContent = "";
+		div.style.position = "absolute";
+		div.style.top = "200px";
+		div.style.left = "800px";
+		div.style.width = '180px';
+		div.style.textAlign = 'center';
+		div.style.transitionProperty = "all";
+		div.style.transitionDuration = "0.3s";
+		div.style.transitionDelay = "0s";
+		div.style.transitionTimingFunction = "ease-in";
+		div.className = "monaco-editor-hover";
+
+		//Creates the row selector
+		let row = document.createElement('div');
+		let currColor = '#9effb1';
+		row.textContent = 'Row';
+		row.style.backgroundColor = this._row ? currColor : 'transparent';
+		row.onclick = (e) => {
+			e.stopImmediatePropagation();
+			//Change row
+			this._row = true;
+			row.style.backgroundColor = this._row ? currColor : 'transparent';
+			column.style.backgroundColor = this._row ? 'transparent' : currColor;
+		};
+		row.style.cssFloat = 'left';
+		row.style.width = '35%';
+		row.style.margin = '8px';
+		row.style.padding = '5px';
+		div.appendChild(row);
+
+		//Creates the column selector
+		let column = document.createElement('div');
+		column.textContent = 'Column';
+		column.style.backgroundColor = this._row ? 'transparent' : currColor;
+		column.onclick = (e) => {
+			e.stopImmediatePropagation();
+			//Change col
+			this._row = false;
+			column.style.backgroundColor = this._row ? 'transparent' : currColor;
+			row.style.backgroundColor = this._row ? currColor : 'transparent';
+		};
+		column.style.width = '35%';
+		column.style.margin = '8px';
+		column.style.cssFloat = 'right';
+		column.style.padding = '5px';
+		div.appendChild(column);
+
+		editor_div.appendChild(div);
 	}
 
 	private updateLinesWhenOutOfDate(e: IModelContentChangedEvent, exitCode: number | null) {
