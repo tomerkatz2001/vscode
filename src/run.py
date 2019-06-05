@@ -15,6 +15,13 @@ class Logger(bdb.Bdb):
         self.time = 0
         self.prev_env = None
         self.data = {}
+        self.active_loops = []
+
+    def data_at(self, l):
+        if not(l in self.data):
+            self.data[l] = []
+        return self.data[l]
+
     def user_line(self, frame):
         # print("user_line ============================================")
         # print(frame.f_code.co_name)
@@ -33,30 +40,100 @@ class Logger(bdb.Bdb):
         if frame.f_code.co_name == "<module>" or frame.f_code.co_name == "<listcomp>" or frame.f_code.co_filename != "<string>":
             return
 
-        print("About to execute: " + lines[frame.f_lineno-1])
-        self.record_env(frame, frame.f_lineno-1)
+        adjusted_lineno = frame.f_lineno-1
+        print("---------------------------------------")
+        print("About to execute: " + lines[adjusted_lineno].strip())
+        self.record_loop_end(frame, adjusted_lineno)
+        self.record_env(frame, adjusted_lineno)
+        self.record_loop_begin(frame, adjusted_lineno)
 
-    def record_env(self, frame, adjusted_lineno):
+    def record_loop_end(self, frame, lineno):
+        curr_stmt = lines[lineno]
+        if self.prev_env != None and len(self.active_loops) > 0 and self.active_loops[-1].frame is frame:
+            prev_lineno = self.prev_env["lineno"]
+            if isinstance(prev_lineno, str):
+                prev_lineno = int(prev_lineno[1:])
+            prev_stmt = lines[prev_lineno]
+            if is_loop_str(prev_stmt):
+                loop_indent = self.active_loops[-1].indent
+                curr_indent = indent(curr_stmt)
+                if (curr_indent <= loop_indent):
+                    for l in self.stmts_in_loop(prev_lineno):
+                        self.data_at(l).append({"end_loop":self.active_loops_str()})
+                    del self.active_loops[-1]
+                    #del self.data[prev_lineno][-1]
+
+    def record_loop_begin(self, frame, lineno):
+        for l in self.active_loops:
+            print("Active loop at line " + str(l.lineno) + ", iter " + str(l.iter))
+        curr_stmt = lines[lineno]
+        if is_loop_str(curr_stmt):
+            if len(self.active_loops) > 0 and self.active_loops[-1].lineno == lineno:
+                self.active_loops[-1].iter += 1
+            else:
+                self.active_loops.append(LoopInfo(frame, lineno, indent(curr_stmt)))
+                for l in self.stmts_in_loop(lineno):
+                    self.data_at(l).append({"begin_loop":self.active_loops_str()})
+
+            # in_another_loop = None
+            # for l in range(lineno+1, len(lines)):
+            #     line = lines[l]
+            #     if line.strip() == "":
+            #         continue
+            #     if in_another_loop != None:
+            #         if indent(curr_stmt) <= in_another_loop:
+            #             in_another_loop = None
+            #     if indent(line) <= indent(curr_stmt):
+            #         break
+
+            #     if not(l in self.data):
+            #         self.data[l] = []
+            #     self.data[l].append({})
+
+            #     if is_loop_str(line):
+            #         in_another_loop = indent(line)
+
+
+    #
+    def stmts_in_loop(self, lineno):
+        result = []
+        curr_stmt = lines[lineno]
+        loop_indent = indent(curr_stmt)
+        for l in range(lineno+1, len(lines)):
+            line = lines[l]
+            if line.strip() == "":
+                continue
+            if indent(line) <= loop_indent:
+                break
+            result.append(l)
+        return result
+
+
+    def active_loops_str(self):
+        return ",".join([str(l.iter) for l in self.active_loops])
+
+    def record_env(self, frame, lineno):
         if self.time >= 100:
             self.set_quit()
             return
         env = {}
         env["time"] = self.time
+        env["loops"] = self.active_loops_str()
         self.time = self.time + 1
         for k in frame.f_locals:
             if k != magic_var_name:
                 env[k] = repr(frame.f_locals[k])
-        env["lineno"] = adjusted_lineno
+        env["lineno"] = lineno
 
-        if not(adjusted_lineno in self.data):
-            self.data[adjusted_lineno] = []
-        self.data[adjusted_lineno].append(env)
+        self.data_at(lineno).append(env)
 
         if (self.prev_env != None):
-            self.prev_env["next_lineno"] = adjusted_lineno
+            self.prev_env["next_lineno"] = lineno
             env["prev_lineno"] = self.prev_env["lineno"]
 
         self.prev_env = env
+
+
 
 
     def user_return(self, frame, rv):
@@ -73,15 +150,17 @@ class Logger(bdb.Bdb):
         if frame.f_code.co_name == "<module>" or frame.f_code.co_name == "<listcomp>" or frame.f_code.co_filename != "<string>":
             return
 
-        print("About to execute return: " + lines[frame.f_lineno-1])
-        self.record_env(frame, "R" + str(frame.f_lineno-1))
+        adjusted_lineno = frame.f_lineno-1
+        print("About to return: " + lines[adjusted_lineno].strip())
+        self.record_loop_end(frame, adjusted_lineno)
+        self.record_env(frame, "R" + str(adjusted_lineno))
+        self.record_loop_begin(frame, adjusted_lineno)
 
-    def store_prev_env(self):
-        lineno = self.prev_env["lineno"]
-        if not(lineno in self.data):
-            self.data[lineno] = []
-        self.data[lineno].append(self.prev_env)
-        # print(str(lineno) + "+" + json.dumps(self.prev_env))
+    def pretty_print_data(self):
+        for k in self.data:
+            print("** Line " + str(k))
+            for env in self.data[k]:
+                print(env)
 
 class InsertPrint:
     def __init__(self, lineno, col_offset, name, ctx, before):
@@ -139,6 +218,19 @@ def find_colon_followed_by_empty(lines, start):
                 return lineno+1
             else:
                 return None
+
+def is_loop_str(str):
+    return re.search("(for|while).*:", str.strip()) != None
+
+def indent(str):
+    return len(str) - len(str.lstrip())
+
+class LoopInfo:
+    def __init__(self, frame, lineno, indent):
+        self.frame = frame
+        self.lineno = lineno
+        self.indent = indent
+        self.iter = 0
 
 
 def main():
@@ -255,6 +347,7 @@ def main():
     l = Logger()
     l.run(code)
     print(l.data)
+    l.pretty_print_data()
 
     with open(sys.argv[1] + ".out", "w") as out:
         out.write(json.dumps((rwc.data,l.data)))

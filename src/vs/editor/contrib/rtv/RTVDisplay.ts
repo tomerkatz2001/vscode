@@ -19,6 +19,7 @@ import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { MarkdownRenderer } from 'vs/editor/contrib/markdown/markdownRenderer';
 import { Position } from 'vs/editor/common/core/position';
 import { IMarkdownString, MarkdownString, isEmptyMarkdownString, markedStringsEquals } from 'vs/base/common/htmlContent';
+import { assertMapping } from 'vs/workbench/services/keybinding/test/keyboardMapperTestUtils';
 
 
 
@@ -204,12 +205,61 @@ class RTVDisplayBox {
 		this._coordinator.flipVisMode(this._lineNumber);
 	}
 
+	private isControlLine(): boolean {
+		let lineContent = this._coordinator.getLineContent(this._lineNumber).trim();
+		return strings.endsWith(lineContent, ":") &&
+			   (strings.startsWith(lineContent, "if") ||
+			    strings.startsWith(lineContent, "for") ||
+				strings.startsWith(lineContent, "else") ||
+				strings.startsWith(lineContent, "while"));
+	}
+
+	private bringToLoopCount(envs:any[], active_loops:number[], iterCount:number) {
+		while (active_loops[active_loops.length-1] < iterCount ) {
+			envs.push({ "loops" : active_loops.join(",") });
+			active_loops[active_loops.length-1]++;
+		}
+	}
+
+	private addMissingLines(envs: any[]): any[] {
+		let active_loops: number[] = [];
+		let envs2: any[] = [];
+		for (let i = 0; i < envs.length; i++) {
+			let env = envs[i];
+			if (env.begin_loop !== undefined) {
+				if (active_loops.length > 0) {
+					let loop = env.begin_loop.split(",");
+					this.bringToLoopCount(envs2, active_loops, +loop[loop.length-2]);
+				}
+				active_loops.push(0);
+			} else if (env.end_loop !== undefined) {
+				console.log("end: " + env.end_loop);
+				let loop = env.end_loop.split(",");
+				this.bringToLoopCount(envs2, active_loops, +loop[loop.length-1]);
+				active_loops.pop();
+				active_loops[active_loops.length-1]++;
+			} else {
+				let loop = env.loops.split(",");
+				this.bringToLoopCount(envs2, active_loops, +loop[loop.length-1]);
+				envs2.push(env);
+				active_loops[active_loops.length-1]++;
+			}
+		}
+		return envs2;
+	}
+
 	public updateContent() {
 
 		if (this._hiddenByUser) {
 			this.hide();
 			console.log("Hidden by user");
 			return
+		}
+
+		if (this.isControlLine()) {
+			this.hide();
+			console.log("Control line");
+			return;
 		}
 
 		// Get all envs at this line number
@@ -225,7 +275,11 @@ class RTVDisplayBox {
 		// collect all next step envs
 		let envs: any[] = [];
 		envsAtLine.forEach((env) => {
-			if (env.next_lineno !== undefined) {
+			if (env.begin_loop !== undefined) {
+				envs.push(env);
+			} else if (env.end_loop !== undefined) {
+				envs.push(env);
+			} else if (env.next_lineno !== undefined) {
 				let nextEnvs = this._coordinator.envs[env.next_lineno];
 				if (nextEnvs !== undefined) {
 					nextEnvs.forEach((nextEnv) => {
@@ -237,12 +291,7 @@ class RTVDisplayBox {
 			}
 		});
 
-		// If this lines is a for loop, remove last env, which is the ending iteration of the for,
-		// which does not execute
-		let lineContent = this._coordinator.getLineContent(this._lineNumber).trim();
-		if (strings.startsWith(lineContent, "for") && strings.endsWith(lineContent, ":")) {
-			envs.pop();
-		}
+		envs = this.addMissingLines(envs);
 
 		// Compute set of keys in all envs
 		let keys_set = new Set<string>();
@@ -275,10 +324,13 @@ class RTVDisplayBox {
 			keys_set.forEach((v:string) => {
 				if (i === 0) {
 					var v_str = env[v];
-				} else if (env[v] === envs[i-1][v]) {
+				} else if (env[v] !== undefined && env[v] === envs[i-1][v]) {
 					var v_str:any = "&darr;";
 				} else {
 					var v_str = env[v];
+				}
+				if (v_str === undefined) {
+					v_str = "";
 				}
 				row.push(v_str);
 				mkdn = mkdn + v_str + "|";
@@ -309,12 +361,17 @@ class RTVDisplayBox {
 			let newRow = table.insertRow(-1);
 			row.forEach((item: string) => {
 				let newCell = newRow.insertCell(-1);
-				let renderedText = renderer.render(new MarkdownString("```python\n"+item+"```"));
-				if(item === "&darr;"){
-					renderedText = renderer.render(new MarkdownString(item));
+				let cellContent: HTMLElement;
+				if (strings.startsWith(item, "```html\n") && strings.endsWith(item, "```")) {
+					cellContent = document.createElement('div');
+					cellContent.innerHTML = item;
+				} else {
+					let str = (item === "&darr;") ? (item) : ("```python\n" + item + "```");
+					let renderedText = renderer.render(new MarkdownString(str));
+					cellContent = renderedText.element;
 				}
 				newCell.align = 'center';
-				newCell.appendChild(renderedText.element);
+				newCell.appendChild(cellContent);
 			});
 		});
 
@@ -520,6 +577,7 @@ export class RTVCoordinator implements IEditorContribution {
 		div.style.transitionDuration = "0.3s";
 		div.style.transitionDelay = "0s";
 		div.style.transitionTimingFunction = "ease-in";
+		div.style.boxShadow = "0px 2px 8px black";
 		div.className = "monaco-editor-hover";
 
 		//Creates the row selector
