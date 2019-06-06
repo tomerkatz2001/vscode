@@ -405,17 +405,46 @@ class RTVDisplayBox {
 
 	public addConfigButton() {
 		let configButton = document.createElement('div');
-		configButton.style.width = '5px';
-		configButton.style.height = '5px';
+		let lines: HTMLElement[] = [];
+
+		for(let i = 0; i < 3; i++){
+			let hamburgerIconLine = document.createElement('div');
+			hamburgerIconLine.style.width = '90%';
+			hamburgerIconLine.style.height = '10%';
+			hamburgerIconLine.style.margin =  '20% 0%';
+			hamburgerIconLine.style.backgroundColor = 'black';
+			configButton.appendChild(hamburgerIconLine);
+			lines.push(hamburgerIconLine);
+		}
+		lines[0].style.transition = 'transform 0.2s';
+		lines[2].style.transition = 'transform 0.2s';
+
+		configButton.style.width = '10px';
+		configButton.style.height = '10px';
 		configButton.style.position = 'absolute';
 		configButton.style.top = '5px';
-		configButton.style.right = '3px';
-		configButton.style.borderRadius = '50%';
-		configButton.style.backgroundColor = 'red';
+		configButton.style.right = '2px';
 		if(configButton){
 			configButton.onclick = (e) =>{
-				e.stopImmediatePropagation();
-				this._coordinator.addConfigDialogBox();
+				e.stopPropagation();
+				if(this._coordinator._configBox){
+					console.log(this._coordinator._configBox.style.display);
+					this._coordinator.showOrHideConfigDialogBox();
+				}
+				else{
+					this._coordinator.addConfigDialogBox();
+				}
+				if(lines[1].style.opacity !== '0'){
+					lines[0].style.transform = 'translate(0%, 3px) rotate(-45deg)';
+					lines[2].style.transform = 'translate(0%, -3px) rotate(45deg)';
+					lines[1].style.opacity = '0';
+					console.log(lines[2]);
+				}else{
+					lines[0].style.transform = 'translate(0%, 0px) rotate(0deg)';
+					lines[1].style.opacity = '1';
+					lines[2].style.transform = 'translate(0%, 0px) rotate(0deg)';
+				}
+
 			};
 		}
 		this._box.appendChild(configButton);
@@ -494,6 +523,7 @@ export class RTVCoordinator implements IEditorContribution {
 	public _changedLinesWhenOutOfDate: Set<number> | null = new Set();
 	private _outOfDateTimerId: NodeJS.Timer | null = null;
 	private _row: boolean = false;
+	public _configBox: HTMLDivElement | null = null;
 
 	constructor(
 		private readonly _editor: ICodeEditor,
@@ -561,6 +591,13 @@ export class RTVCoordinator implements IEditorContribution {
 		this._maxPixelCol = max;
 	}
 
+	public showOrHideConfigDialogBox(){
+		if(!this._configBox){
+			return;
+		}
+		this._configBox.style.display = this._configBox.style.display === 'block' ? 'none' : 'block';
+	}
+
 	public addConfigDialogBox(){
 		let editor_div = this._editor.getDomNode();
 		if(!editor_div){
@@ -571,16 +608,17 @@ export class RTVCoordinator implements IEditorContribution {
 		div.style.position = "absolute";
 		div.style.top = "200px";
 		div.style.left = "800px";
-		div.style.width = '180px';
-		div.style.textAlign = 'center';
+		div.style.width = '100px';
+		div.style.textAlign = 'left';
 		div.style.transitionProperty = "all";
 		div.style.transitionDuration = "0.3s";
 		div.style.transitionDelay = "0s";
 		div.style.transitionTimingFunction = "ease-in";
 		div.style.boxShadow = "0px 2px 8px black";
 		div.className = "monaco-editor-hover";
+		div.style.display = 'block';
 
-		//Creates the row selector
+		/*Creates the row selector
 		let row = document.createElement('div');
 		let currColor = '#9effb1';
 		row.textContent = 'Row';
@@ -613,9 +651,35 @@ export class RTVCoordinator implements IEditorContribution {
 		column.style.margin = '8px';
 		column.style.cssFloat = 'right';
 		column.style.padding = '5px';
-		div.appendChild(column);
+		div.appendChild(column);*/
+
+		let row = document.createElement('input');
+		row.type = 'radio';
+		row.name = 'row-or-col';
+		row.value = 'row';
+		row.textContent = 'Row';
+
+		let rowText = document.createElement('label');
+		rowText.innerText = 'Row';
+
+
+		div.appendChild(row);
+		div.appendChild(rowText);
+		div.appendChild(document.createElement('br'));
+
+		let col = document.createElement('input');
+		col.type = 'radio';
+		col.name = 'row-or-col';
+		col.value = 'col';
+
+		let colText = document.createElement('label');
+		colText.innerText = 'Col';
+		div.appendChild(col);
+		div.appendChild(colText);
+		div.appendChild(document.createElement('br'));
 
 		editor_div.appendChild(div);
+		this._configBox = div;
 	}
 
 	private updateLinesWhenOutOfDate(e: IModelContentChangedEvent, exitCode: number | null) {
