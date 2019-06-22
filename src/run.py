@@ -118,7 +118,7 @@ class Logger(bdb.Bdb):
             return
         env = {}
         env["time"] = self.time
-        env["loops"] = self.active_loops_str()
+        env["#"] = self.active_loops_str()
         self.time = self.time + 1
         for k in frame.f_locals:
             if k != magic_var_name:
@@ -132,9 +132,6 @@ class Logger(bdb.Bdb):
             env["prev_lineno"] = self.prev_env["lineno"]
 
         self.prev_env = env
-
-
-
 
     def user_return(self, frame, rv):
         # print("user_return ============================================")
@@ -154,6 +151,7 @@ class Logger(bdb.Bdb):
         print("About to return: " + lines[adjusted_lineno].strip())
         self.record_loop_end(frame, adjusted_lineno)
         self.record_env(frame, "R" + str(adjusted_lineno))
+        self.data_at("R" + str(adjusted_lineno))[-1]["rv"] = repr(rv)
         self.record_loop_begin(frame, adjusted_lineno)
 
     def pretty_print_data(self):

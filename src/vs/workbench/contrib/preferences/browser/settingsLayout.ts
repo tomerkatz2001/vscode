@@ -207,6 +207,10 @@ export const tocData: ITOCEntry = {
 					settings: ['sync.*']
 				}
 			]
+		} , {
+			id: "rtv",
+			label: localize("runtimeValues", "Runtime Values"),
+			settings: ["rtv.*"]
 		}
 	]
 };

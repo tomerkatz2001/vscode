@@ -20,6 +20,10 @@ import { MarkdownRenderer } from 'vs/editor/contrib/markdown/markdownRenderer';
 import { Position } from 'vs/editor/common/core/position';
 import { IMarkdownString, MarkdownString, isEmptyMarkdownString, markedStringsEquals } from 'vs/base/common/htmlContent';
 import { assertMapping } from 'vs/workbench/services/keybinding/test/keyboardMapperTestUtils';
+import { IConfigurationService,  IConfigurationChangeEvent } from 'vs/platform/configuration/common/configuration';
+import { Registry } from 'vs/platform/registry/common/platform';
+import { IConfigurationRegistry, Extensions } from 'vs/platform/configuration/common/configurationRegistry';
+import { localize } from 'vs/nls';
 
 
 
@@ -216,7 +220,7 @@ class RTVDisplayBox {
 
 	private bringToLoopCount(envs:any[], active_loops:number[], iterCount:number) {
 		while (active_loops[active_loops.length-1] < iterCount ) {
-			envs.push({ "loops" : active_loops.join(",") });
+			envs.push({ "#" : active_loops.join(",") });
 			active_loops[active_loops.length-1]++;
 		}
 	}
@@ -239,13 +243,64 @@ class RTVDisplayBox {
 				active_loops.pop();
 				active_loops[active_loops.length-1]++;
 			} else {
-				let loop = env.loops.split(",");
+				let loop = env["#"].split(",");
 				this.bringToLoopCount(envs2, active_loops, +loop[loop.length-1]);
 				envs2.push(env);
 				active_loops[active_loops.length-1]++;
 			}
 		}
 		return envs2;
+	}
+
+	private isHtmlEscape(s:string):boolean {
+		return strings.startsWith(s, "```html\n") && strings.endsWith(s, "```")
+	}
+
+	private computeCellContent(s:string, r:MarkdownRenderer):HTMLElement {
+		let cellContent: HTMLElement;
+		if (this.isHtmlEscape(s)) {
+			cellContent = document.createElement('div');
+			cellContent.innerHTML = s;
+		} else {
+			let renderedText = r.render(new MarkdownString(s));
+			cellContent = renderedText.element;
+		}
+		return cellContent;
+	}
+
+	private createTableByCols(rows: string[][]) {
+		this._box.textContent = "";
+		const renderer = new MarkdownRenderer(this._editor, this._modeService, this._openerService);
+		let table = document.createElement('table');
+		rows.forEach((row:string[]) => {
+			let newRow = table.insertRow(-1);
+			row.forEach((item: string) => {
+				let newCell = newRow.insertCell(-1);
+				newCell.align = 'center';
+				newCell.appendChild(this.computeCellContent(item, renderer));
+			});
+		});
+		this._box.appendChild(table);
+	}
+
+	private createTableByRows(rows: string[][]) {
+		this._box.textContent = "";
+		const renderer = new MarkdownRenderer(this._editor, this._modeService, this._openerService);
+		let table = document.createElement('table');
+		for (let colIdx = 0; colIdx < rows[0].length; colIdx++) {
+			let newRow = table.insertRow(-1);
+			for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+				let newCell = newRow.insertCell(-1);
+				newCell.align = 'center';
+				// if (rows[rowIdx][colIdx] === "") {
+				// 	newCell.width = "105px";
+				// } else {
+				// 	newCell.width = "25px";
+				// }
+				newCell.appendChild(this.computeCellContent(rows[rowIdx][colIdx], renderer));
+			}
+		}
+		this._box.appendChild(table);
 	}
 
 	public updateContent() {
@@ -303,80 +358,40 @@ class RTVDisplayBox {
 			}
 		});
 
-		// Generate markdown table of all envs
-		let header_line_1 = "|";
-		let header_line_2 = "|";
+		// Generate header
+		let rows: string [][] = [];
 		let header:string[] = [];
 		keys_set.forEach((v:string) => {
-			header_line_1 = header_line_1 + v + "|";
-			header_line_2 = header_line_2 + "---|";
-			header.push(v);
+			header.push("**" + v + "**");
 		});
+		rows.push(header);
 
-		let mkdn = header_line_1 + "\n" + header_line_2 + "\n";
-
-		//Stores the rows of the table
-		let rows: string [][] = [];
+		// Generate all rows
 		for (let i = 0; i < envs.length; i++) {
 			let env = envs[i];
 			let row:string [] = [];
-			mkdn = mkdn + "|";
 			keys_set.forEach((v:string) => {
-				if (i === 0) {
-					var v_str = env[v];
-				} else if (env[v] !== undefined && env[v] === envs[i-1][v]) {
-					var v_str:any = "&darr;";
-				} else {
-					var v_str = env[v];
-				}
-				if (v_str === undefined) {
+				var v_str:string;
+				if (env[v] === undefined) {
 					v_str = "";
+				} else if (this.isHtmlEscape(env[v])) {
+					v_str = env[v];
+				} else {
+					v_str = "```python\n" + env[v] + "```";
 				}
+				// if (env[v] !== undefined && i > 0 && env[v] === envs[i-1][v]) {
+				// 	v_str = "&darr;";
+				// }
 				row.push(v_str);
-				mkdn = mkdn + v_str + "|";
 			});
 			rows.push(row);
-			mkdn = mkdn + "\n";
 		};
 
-		// Update html content
-		this._box.textContent = "";
-		const renderer = new MarkdownRenderer(this._editor, this._modeService, this._openerService);
-
-		//Creates the HTML Table and populates it
-		let table = document.createElement('table');
-
-		table.createTHead();
-		if(table.tHead){
-			let headerRow = table.tHead.insertRow(-1);
-			header.forEach((h: string)=>{
-				let newHeaderCell = headerRow.insertCell(-1);
-				let renderedText = renderer.render(new MarkdownString("```python\n"+h+"```"));
-				newHeaderCell.align = 'center';
-				newHeaderCell.appendChild(renderedText.element);
-			});
+		if (this._coordinator.byRowOrCol === RowColMode.ByRow) {
+			this.createTableByRows(rows);
+		} else {
+			this.createTableByCols(rows);
 		}
-
-		rows.forEach((row:string[]) =>{
-			let newRow = table.insertRow(-1);
-			row.forEach((item: string) => {
-				let newCell = newRow.insertCell(-1);
-				let cellContent: HTMLElement;
-				if (strings.startsWith(item, "```html\n") && strings.endsWith(item, "```")) {
-					cellContent = document.createElement('div');
-					cellContent.innerHTML = item;
-				} else {
-					let str = (item === "&darr;") ? (item) : ("```python\n" + item + "```");
-					let renderedText = renderer.render(new MarkdownString(str));
-					cellContent = renderedText.element;
-				}
-				newCell.align = 'center';
-				newCell.appendChild(cellContent);
-			});
-		});
-
-		//this._box.style.borderColor = 'rgb(200, 200, 200)';
-		this._box.appendChild(table);
 
 		// Add green/red dot to show out of date status
 		let stalenessIndicator = document.createElement('div');
@@ -479,16 +494,15 @@ class RTVDisplayBox {
 
 	public updateZoomAndOpacity(dist: number) {
 		let distAbs = Math.abs(dist);
-		this._zoom = 1 / (distAbs*0.5 + 1);
-		//this._zoom = 1;
+		let zoom_upper = 1;
+		let zoom_lower = 1 / (distAbs*0.5 + 1);
+		this._zoom = zoom_lower + (zoom_upper-zoom_lower) * this._coordinator.zoomLevel;
 
-		if (this._coordinator._outOfDate === 0) {
-			this._opacity = 1;
-			if (distAbs !== 0) {
-				this._opacity = 1/distAbs;
-			}
-			this._line.setOpacity(this._opacity);
+		this._opacity = 1;
+		if (distAbs !== 0) {
+			this._opacity = 1/distAbs;
 		}
+		this._line.setOpacity(this._opacity);
 	}
 
 	public fade() {
@@ -501,15 +515,16 @@ class RTVDisplayBox {
 		}
 	}
 
-	public updateBorder(opacity: number){
-		this._box.style.borderColor = 'rgba(255, 0, 0, '+(this._coordinator._outOfDate/5)+')';
-	}
-
 }
 
 enum VisibilityMode {
 	AllBoxes,
 	SingleBox
+}
+
+enum RowColMode {
+	ByRow,
+	ByCol
 }
 
 export class RTVCoordinator implements IEditorContribution {
@@ -519,9 +534,7 @@ export class RTVCoordinator implements IEditorContribution {
 	private _maxPixelCol = 0;
 	private _prevModel: string[] = [];
 	private _visMode: VisibilityMode = VisibilityMode.AllBoxes;
-	public _outOfDate: number = 0;
 	public _changedLinesWhenOutOfDate: Set<number> | null = new Set();
-	private _outOfDateTimerId: NodeJS.Timer | null = null;
 	private _row: boolean = false;
 	public _configBox: HTMLDivElement | null = null;
 
@@ -529,8 +542,9 @@ export class RTVCoordinator implements IEditorContribution {
 		private readonly _editor: ICodeEditor,
 		@IOpenerService private readonly _openerService: IOpenerService,
 		@IModeService private readonly _modeService: IModeService,
+		@IConfigurationService private readonly configurationService: IConfigurationService,
 	) {
-		this._editor.onDidChangeCursorPosition((e) => { this.onChangeCursorPosition(e); });
+		this._editor.onDidChangeCursorPosition((e) => {	this.onChangeCursorPosition(e);	});
 		this._editor.onDidScrollChange((e) => { this.onScrollChange(e); });
 		this._editor.onDidLayoutChange((e) => { this.onLayoutChange(e); });
 		this._editor.onDidChangeModelContent((e) => { this.onChangeModelContent(e); });
@@ -544,18 +558,54 @@ export class RTVCoordinator implements IEditorContribution {
 		// this._boxes[5].hiddenByUser = false;
 		this.updateMaxPixelCol();
 		this.updatePrevModel();
+		this.configurationService.onDidChangeConfiguration((e) => { this.onChangeConfiguration(e); });
 	}
 
 	public getId(): string {
 		return 'editor.contrib.rtv';
 	}
 
-	public dispose(): void {
+	public dispose():void {
+	}
+	public saveViewState(): any {
+		this._boxes = [];
+		console.log("saveViewState");
+	}
+	public restoreViewState(state: any): void {
+		this.updateContentAndLayout();
+		console.log("restoreViewState");
+	}
 
+	get zoomLevel(): number {
+		return this.configurationService.getValue(zoomLeveLKey);
+	}
+
+	set zoomLevel(v: number) {
+		this.configurationService.updateValue(zoomLeveLKey, v);
+	}
+
+	get spaceBetweenBoxes(): number {
+		return this.configurationService.getValue(spaceBetweenBoxesKey);
+	}
+
+	set spaceBetweenBoxes(v: number) {
+		this.configurationService.updateValue(spaceBetweenBoxesKey, v);
+	}
+
+	get byRowOrCol(): RowColMode {
+		return this.configurationService.getValue(byRowOrCol) === 'byRow' ? RowColMode.ByRow : RowColMode.ByCol;
+	}
+
+	set byRowOrCol(v: RowColMode) {
+		this.configurationService.updateValue(byRowOrCol, v ===  RowColMode.ByRow ? 'byRow' : 'byCol');
 	}
 
 	get maxPixelCol() {
 		return this._maxPixelCol;
+	}
+
+	private onChangeConfiguration(e: IConfigurationChangeEvent) {
+		console.log("change configuration");
 	}
 
 	private getLineCount(): number {
@@ -713,7 +763,7 @@ export class RTVCoordinator implements IEditorContribution {
 		if (lineCount > this._boxes.length) {
 			// This should not happen, given our understanding of how changes are reported to us from VSCode.
 			// BUT: just to be safe, we have this here to make sure we're not missing something.
-			console.log("Warning: actually had to add boxes");
+			console.log("Adding boxes");
 			for (let j = this._boxes.length; j < lineCount; j++) {
 				this._boxes[j] = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, j+1);
 			}
@@ -756,9 +806,6 @@ export class RTVCoordinator implements IEditorContribution {
 
 	private updateLayout() {
 		this.padBoxArray();
-		// this._boxes.forEach((b) => {
-		// 	b.updateZoomAndOpacity();
-		// });
 
 		let cursorPos = this._editor.getPosition();
 		if (cursorPos === null) {
@@ -818,12 +865,13 @@ export class RTVCoordinator implements IEditorContribution {
 			return;
 		}
 
+		let spaceBetweenBoxes = this.spaceBetweenBoxes;
 		let top_start = (focusedLinePixelPos.top + nextLinePixelPos.top) / 2;
 		let top = top_start;
 		for (let line = focusedLine-1; line >= 1; line--) {
 			let box = this.getBox(line);
 			if (box.visible) {
-				top = top - 20 - box.getHeight();
+				top = top - spaceBetweenBoxes - box.getHeight();
 				box.updateLayout(top);
 			}
 		}
@@ -832,7 +880,7 @@ export class RTVCoordinator implements IEditorContribution {
 			let box = this.getBox(line);
 			if (box.visible) {
 				box.updateLayout(top);
-				top = top + box.getHeight() + 20;
+				top = top + box.getHeight() + spaceBetweenBoxes;
 			}
 		}
 
@@ -937,32 +985,15 @@ export class RTVCoordinator implements IEditorContribution {
 			console.log("Exit code from run.py: " + exitCode);
 			this.updateLinesWhenOutOfDate(e, exitCode);
 			if (exitCode === 0) {
-				this._outOfDate = 0;
-				// if (this._outOfDateTimerId !== null) {
-				// 	clearInterval(this._outOfDateTimerId);
-				// 	this._outOfDateTimerId = null;
-				// }
 				this.updateData(fs.readFileSync(code_fname + ".out").toString());
 				this.updateContentAndLayout();
 				//console.log(envs);
 			}
-			else if (this._outOfDateTimerId === null) {
-				this._outOfDate++;
+			else {
 				this.updateContentAndLayout();
-				// this._outOfDateTimerId = setInterval(() => {
-				// 	this.onOutOfDate();
-				// }, 300);
 			}
 		});
 
-	}
-
-	private onOutOfDate(){
-		this._outOfDate++;
-		this._boxes.forEach((box: RTVDisplayBox) => {
-			box.fade();
-			//box.updateBorder(this._outOfDate);
-		});
 	}
 
 	private updateData(str: string) {
@@ -997,3 +1028,36 @@ export class RTVCoordinator implements IEditorContribution {
 }
 
 registerEditorContribution(RTVCoordinator);
+
+const zoomLeveLKey = "rtv.zoomLevel";
+const spaceBetweenBoxesKey = 'rtv.spaceBetweenBoxes';
+const byRowOrCol = 'rtv.byRowOrColumn';
+
+Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfiguration({
+	'id': 'rtv',
+	'order': 110,
+	'type': 'object',
+	'title': localize('rtvConfigurationTitle', "RTV"),
+	'properties': {
+		[zoomLeveLKey]: {
+			'type': 'number',
+			'default': 1,
+			'description': localize('zoom','Controls zoom level (value between 0 and 1)')
+		},
+		[spaceBetweenBoxesKey]: {
+			'type': 'number',
+			'default': 20,
+			'description': localize('boxspace','Controls spacing between boxes')
+		},
+		[byRowOrCol]: {
+			'type': 'string',
+			'enum': ['byCol', 'byRow'],
+			'enumDescriptions': [
+				localize('byRowOrColumn.byCol', 'Each column is a variable'),
+				localize('byRowOrColumn.byRow', 'Each row is a variable')
+			],
+			'default': 'byCol',
+			'description': localize('byroworcol', 'Controls if variables are displayed in rows or columns')
+		}
+	}
+});
