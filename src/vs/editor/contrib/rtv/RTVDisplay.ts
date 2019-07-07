@@ -128,6 +128,12 @@ class RTVLine {
 
 }
 
+class TableElement {
+	constructor(public content: string, public loop: string = "") {}
+}
+
+type MapLoopsToCells = { [k:string]: HTMLTableDataCellElement[]; };
+
 class RTVDisplayBox {
 	private _box: HTMLDivElement;
 	private _line: RTVLine;
@@ -237,7 +243,6 @@ class RTVDisplayBox {
 				}
 				active_loops.push(0);
 			} else if (env.end_loop !== undefined) {
-				console.log("end: " + env.end_loop);
 				let loop = env.end_loop.split(",");
 				this.bringToLoopCount(envs2, active_loops, +loop[loop.length-1]);
 				active_loops.pop();
@@ -256,7 +261,17 @@ class RTVDisplayBox {
 		return strings.startsWith(s, "```html\n") && strings.endsWith(s, "```")
 	}
 
-	private computeCellContent(s:string, r:MarkdownRenderer):HTMLElement {
+	private addCellContentAndStyle(cell: HTMLTableCellElement, s:string, r:MarkdownRenderer) {
+		if (this._coordinator.colBorder) {
+			cell.style.borderLeft = "1px solid #454545";
+		}
+		let padding = this._coordinator.cellPadding + "px";
+		cell.style.paddingLeft = padding;
+		cell.style.paddingRight = padding;
+		cell.style.paddingTop = "0";
+		cell.style.paddingBottom = "0";
+		cell.align = 'left';
+
 		let cellContent: HTMLElement;
 		if (this.isHtmlEscape(s)) {
 			cellContent = document.createElement('div');
@@ -265,43 +280,57 @@ class RTVDisplayBox {
 			let renderedText = r.render(new MarkdownString(s));
 			cellContent = renderedText.element;
 		}
-		return cellContent;
+		cell.appendChild(cellContent);
 	}
 
-	private createTableByCols(rows: string[][]) {
-		this._box.textContent = "";
-		const renderer = new MarkdownRenderer(this._editor, this._modeService, this._openerService);
-		let table = document.createElement('table');
-		rows.forEach((row:string[]) => {
+	private populateTableByCols(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
+		rows.forEach((row:TableElement[]) => {
 			let newRow = table.insertRow(-1);
-			row.forEach((item: string) => {
+			row.forEach((item: TableElement) => {
 				let newCell = newRow.insertCell(-1);
-				newCell.align = 'center';
-				newCell.appendChild(this.computeCellContent(item, renderer));
+				this.addCellContentAndStyle(newCell, item.content, renderer);
 			});
 		});
-		this._box.appendChild(table);
 	}
 
-	private createTableByRows(rows: string[][]) {
-		this._box.textContent = "";
-		const renderer = new MarkdownRenderer(this._editor, this._modeService, this._openerService);
-		let table = document.createElement('table');
+	private populateTableByRows(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
+		let tableCellsByLoop = this._coordinator.tableCellsByLoop;
 		for (let colIdx = 0; colIdx < rows[0].length; colIdx++) {
 			let newRow = table.insertRow(-1);
 			for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+				let elmt = rows[rowIdx][colIdx];
 				let newCell = newRow.insertCell(-1);
-				newCell.align = 'center';
-				// if (rows[rowIdx][colIdx] === "") {
-				// 	newCell.width = "105px";
-				// } else {
-				// 	newCell.width = "25px";
-				// }
-				newCell.appendChild(this.computeCellContent(rows[rowIdx][colIdx], renderer));
+				this.addCellContentAndStyle(newCell, elmt.content, renderer);
+				if (elmt.loop !== "") {
+					if (tableCellsByLoop[elmt.loop] === undefined) {
+						tableCellsByLoop[elmt.loop] = [];
+					}
+					tableCellsByLoop[elmt.loop].push(newCell);
+				}
 			}
 		}
-		this._box.appendChild(table);
 	}
+
+	// private createTableByRows2(rows: TableElement[][]) {
+	// 	this._box.textContent = "";
+	// 	let tableCellsByLoop = this._coordinator.tableCellsByLoop;
+	// 	const renderer = new MarkdownRenderer(this._editor, this._modeService, this._openerService);
+	// 	let table = document.createElement('div');
+	// 	table.style.display = "table";
+	// 	for (let colIdx = 0; colIdx < rows[0].length; colIdx++) {
+	// 		let newRow = document.createElement('div');
+	// 		newRow.style.display = "table-row";
+	// 		table.appendChild(newRow);
+	// 		for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+	// 			let elmt = rows[rowIdx][colIdx];
+	// 			let newCell = this.computeCellContent(elmt.content, renderer)
+	// 			newCell.style.display = "table-cell";
+	// 			newCell.style.width = "120px";
+	// 			newRow.appendChild(newCell);
+	// 		}
+	// 	}
+	// 	this._box.appendChild(table);
+	// }
 
 	public updateContent() {
 
@@ -350,26 +379,33 @@ class RTVDisplayBox {
 
 		// Compute set of keys in all envs
 		let keys_set = new Set<string>();
+		console.log(this._coordinator.writes);
+		console.log(this._lineNumber);
+		let writesAtLine = this._coordinator.writes[this._lineNumber-1];
 		envs.forEach((env) => {
 			for (let key in env) {
 				if (key !== "prev_lineno" && key !== "next_lineno" && key !== "lineno" && key !== "time") {
-					keys_set.add(key);
+					if (!this._coordinator.displayOnlyModifiedVars || key === "rv" ||
+					    (writesAtLine !== undefined && writesAtLine.some(x => x === key))) {
+						keys_set.add(key);
+					}
 				}
 			}
 		});
 
 		// Generate header
-		let rows: string [][] = [];
-		let header:string[] = [];
+		let rows: TableElement [][] = [];
+		let header:TableElement[] = [];
 		keys_set.forEach((v:string) => {
-			header.push("**" + v + "**");
+			header.push(new TableElement("**" + v + "**", "header"));
 		});
 		rows.push(header);
 
 		// Generate all rows
 		for (let i = 0; i < envs.length; i++) {
 			let env = envs[i];
-			let row:string [] = [];
+			let loop = env["#"];
+			let row:TableElement [] = [];
 			keys_set.forEach((v:string) => {
 				var v_str:string;
 				if (env[v] === undefined) {
@@ -382,16 +418,31 @@ class RTVDisplayBox {
 				// if (env[v] !== undefined && i > 0 && env[v] === envs[i-1][v]) {
 				// 	v_str = "&darr;";
 				// }
-				row.push(v_str);
+				row.push(new TableElement(v_str, loop));
 			});
 			rows.push(row);
 		};
 
-		if (this._coordinator.byRowOrCol === RowColMode.ByRow) {
-			this.createTableByRows(rows);
+		// Set border
+		if (this._coordinator.boxBorder) {
+			this._box.style.border = "";
 		} else {
-			this.createTableByCols(rows);
+			this._box.style.border = "0";
 		}
+
+		// Create html table from rows
+		this._box.textContent = "";
+		const renderer = new MarkdownRenderer(this._editor, this._modeService, this._openerService);
+		let table = document.createElement('table');
+		table.style.borderSpacing = "0px";
+		table.style.paddingLeft = "13px";
+		table.style.paddingRight = "13px";
+		if (this._coordinator.byRowOrCol === RowColMode.ByRow) {
+			this.populateTableByRows(table, renderer, rows);
+		} else {
+			this.populateTableByCols(table, renderer, rows);
+		}
+		this._box.appendChild(table);
 
 		// Add green/red dot to show out of date status
 		let stalenessIndicator = document.createElement('div');
@@ -471,23 +522,23 @@ class RTVDisplayBox {
 	}
 
 	public updateLayout(top: number) {
+		let pixelPosAtLine = this._coordinator.getLinePixelPos(this._lineNumber);
 
-		let pixelPosAtLine = this._editor.getScrolledVisiblePosition(new Position(this._lineNumber, 1));
-		let pixelPosAtNextLine = this._editor.getScrolledVisiblePosition(new Position(this._lineNumber+1, 1));
-		if (pixelPosAtLine === null || pixelPosAtNextLine === null) {
-			return;
+		let boxTop = top;
+		if (this._coordinator.boxAlignsToTopOfLine) {
+			boxTop = boxTop - (pixelPosAtLine.height/2);
 		}
-
-		let left = this._coordinator.maxPixelCol+230;
+		let left = this._coordinator.maxPixelCol+130;
 		let zoom_adjusted_left =  left - ((1-this._zoom) * (this._box.offsetWidth / 2));
-		let zoom_adjusted_top = top - ((1-this._zoom) * (this._box.offsetHeight / 2));
+		let zoom_adjusted_top = boxTop - ((1-this._zoom) * (this._box.offsetHeight / 2));
 		this._box.style.top = zoom_adjusted_top.toString() + "px";
 		this._box.style.left = zoom_adjusted_left.toString() + "px";
 		this._box.style.transform = "scale(" + this._zoom.toString() +")";
 		this._box.style.opacity = this._opacity.toString();
 
 		// update the line
-		let midPointTop = (pixelPosAtLine.top + pixelPosAtNextLine.top)/2;
+		let midPointTop = pixelPosAtLine.top + (pixelPosAtLine.height / 2);
+
 		this._line.move(this._coordinator.maxPixelCol+30, midPointTop, left, top);
 
 	}
@@ -500,7 +551,9 @@ class RTVDisplayBox {
 
 		this._opacity = 1;
 		if (distAbs !== 0) {
-			this._opacity = 1/distAbs;
+			let opacity_upper = 1;
+			let opacity_lower = 1/distAbs;
+			this._opacity = opacity_lower + (opacity_upper-opacity_lower) * this._coordinator.opacityLevel;
 		}
 		this._line.setOpacity(this._opacity);
 	}
@@ -529,7 +582,7 @@ enum RowColMode {
 
 export class RTVCoordinator implements IEditorContribution {
 	public envs: { [k:string]: any []; } = {};
-	public rws: { [k:string]: string; } = {};
+	public writes: { [k:string]: string[]; } = {};
 	private _boxes: RTVDisplayBox[] = [];
 	private _maxPixelCol = 0;
 	private _prevModel: string[] = [];
@@ -537,6 +590,7 @@ export class RTVCoordinator implements IEditorContribution {
 	public _changedLinesWhenOutOfDate: Set<number> | null = new Set();
 	private _row: boolean = false;
 	public _configBox: HTMLDivElement | null = null;
+	public tableCellsByLoop: MapLoopsToCells;
 
 	constructor(
 		private readonly _editor: ICodeEditor,
@@ -576,36 +630,101 @@ export class RTVCoordinator implements IEditorContribution {
 		console.log("restoreViewState");
 	}
 
-	get zoomLevel(): number {
-		return this.configurationService.getValue(zoomLeveLKey);
+	// Configurable properties
+	get boxAlignsToTopOfLine(): boolean {
+		return this.configurationService.getValue(boxAlignsToTopOfLineKey);
+	}
+	set boxAlignsToTopOfLine(v: boolean) {
+		this.configurationService.updateValue(boxAlignsToTopOfLineKey, v);
 	}
 
-	set zoomLevel(v: number) {
-		this.configurationService.updateValue(zoomLeveLKey, v);
+	get boxBorder(): boolean {
+		return this.configurationService.getValue(boxBorderKey);
+	}
+	set boxBorder(v: boolean) {
+		this.configurationService.updateValue(boxBorderKey, v);
+	}
+
+	get byRowOrCol(): RowColMode {
+		return this.configurationService.getValue(byRowOrColKey) === 'byRow' ? RowColMode.ByRow : RowColMode.ByCol;
+	}
+	set byRowOrCol(v: RowColMode) {
+		this.configurationService.updateValue(byRowOrColKey, v ===  RowColMode.ByRow ? 'byRow' : 'byCol');
+	}
+
+	get cellPadding(): number {
+		return this.configurationService.getValue(cellPaddingKey);
+	}
+	set cellPadding(v: number) {
+		this.configurationService.updateValue(cellPaddingKey, v);
+	}
+
+	get colBorder(): boolean {
+		return this.configurationService.getValue(colBorderKey);
+	}
+	set colBorder(v: boolean) {
+		this.configurationService.updateValue(colBorderKey, v);
+	}
+
+	get displayOnlyModifiedVars(): boolean {
+		return this.configurationService.getValue(displayOnlyModifiedVarsKey);
+	}
+	set displayOnlyModifiedVars(v: boolean) {
+		this.configurationService.updateValue(displayOnlyModifiedVarsKey, v);
+	}
+
+	get opacityLevel(): number {
+		return this.configurationService.getValue(opacityKey);
+	}
+	set opacityLevel(v: number) {
+		this.configurationService.updateValue(opacityKey, v);
 	}
 
 	get spaceBetweenBoxes(): number {
 		return this.configurationService.getValue(spaceBetweenBoxesKey);
 	}
-
 	set spaceBetweenBoxes(v: number) {
 		this.configurationService.updateValue(spaceBetweenBoxesKey, v);
 	}
 
-	get byRowOrCol(): RowColMode {
-		return this.configurationService.getValue(byRowOrCol) === 'byRow' ? RowColMode.ByRow : RowColMode.ByCol;
+	get zoomLevel(): number {
+		return this.configurationService.getValue(zoomKey);
 	}
-
-	set byRowOrCol(v: RowColMode) {
-		this.configurationService.updateValue(byRowOrCol, v ===  RowColMode.ByRow ? 'byRow' : 'byCol');
+	set zoomLevel(v: number) {
+		this.configurationService.updateValue(zoomKey, v);
 	}
+	// End of configurable properties
 
 	get maxPixelCol() {
 		return this._maxPixelCol;
 	}
 
 	private onChangeConfiguration(e: IConfigurationChangeEvent) {
-		console.log("change configuration");
+		if (e.affectedKeys.indexOf(presetsKey) != -1) {
+			let v:string = this.configurationService.getValue(presetsKey);
+			console.log(v);
+			if (v === 'full') {
+				this.boxAlignsToTopOfLine = false;
+				this.boxBorder = true;
+				this.byRowOrCol = RowColMode.ByCol;
+				this.cellPadding = 6;
+				this.colBorder = false;
+				this.displayOnlyModifiedVars = false;
+				this.opacityLevel = 0;
+				this.spaceBetweenBoxes = 20;
+				this.zoomLevel = 0;
+			} else if (v === 'compact') {
+				this.boxAlignsToTopOfLine = true;
+				this.boxBorder = false;
+				this.byRowOrCol = RowColMode.ByRow;
+				this.cellPadding = 6;
+				this.colBorder = true;
+				this.displayOnlyModifiedVars = true;
+				this.opacityLevel = 1;
+				this.spaceBetweenBoxes = -4;
+				this.zoomLevel = 1;
+			}
+		}
 	}
 
 	private getLineCount(): number {
@@ -789,12 +908,73 @@ export class RTVCoordinator implements IEditorContribution {
 		this.updateLayout();
 	}
 
+	private updateCellSizesForNewContent() {
+		if (this.byRowOrCol !== RowColMode.ByRow) {
+			return;
+		}
+
+		// Compute set of loop iterations
+		let loops: string[] = [];
+		for (let loop in this.tableCellsByLoop) {
+			loops.push(loop);
+		}
+		// sort by deeper iterations first
+		loops = loops.sort((a,b) => b.split(',').length - a.split(',').length);
+
+		let widths: { [k:string]: number; } = {};
+		loops.forEach((loop:string) => {
+			widths[loop] = Math.max(...this.tableCellsByLoop[loop].map(e=>e.offsetWidth));
+			console.log("Max for " + loop + " :" + widths[loop]);
+		});
+
+		let spaceBetweenCells = 2 * this.cellPadding;
+		if (this.colBorder) {
+			spaceBetweenCells = spaceBetweenCells + 1;
+		}
+		for (let i = 1; i < loops.length; i++) {
+			let width = 0;
+			let parent_loop = loops[i];
+			for (let j = 0; j < i; j++) {
+				let child_loop = loops[j];
+				if (child_loop.split(',').length === 1 + parent_loop.split(',').length &&
+					strings.startsWith(child_loop, parent_loop)) {
+					width = width + widths[child_loop];
+					//width = width + widths[child_loop] + spaceBetweenCells;
+				}
+			}
+			if (width !== 0) {
+				//width = width - spaceBetweenCells;
+				widths[parent_loop] = width;
+			}
+		}
+
+		loops.forEach((loop:string) => {
+			console.log("Computed width for " + loop + ": " + widths[loop]);
+			this.tableCellsByLoop[loop].forEach(e => { e.width = (widths[loop] - spaceBetweenCells) + "px"; });
+		});
+
+	}
 	private updateContentAndLayout() {
+		this.tableCellsByLoop = {};
 		this.updateContent();
+		// for (let x in this.tableCellsByLoop) {
+		// 	this.tableCellsByLoop[x].forEach(y => {
+		// 		console.log(x + " " + y.offsetWidth + " " + y.clientWidth);
+		// 	});
+		// }
 		// The following seems odd, but it's really a thing in browsers.
 		// We need to let layout threads catch up after we updated content to
 		// get the correct sizes for boxes.
-		setTimeout(() => { this.updateLayout(); }, 0);
+		//setTimeout(() => { this.updateLayout();	}, 0);
+		setTimeout(() => {
+			for (let x in this.tableCellsByLoop) {
+				this.tableCellsByLoop[x].forEach(y => {
+					//console.log("Delayed: " + x + " " + y.offsetWidth + " " + y.clientWidth);
+				});
+			}
+			this.updateCellSizesForNewContent();
+			this.updateLayout();
+		}, 0);
 	}
 
 	private updateContent() {
@@ -866,12 +1046,19 @@ export class RTVCoordinator implements IEditorContribution {
 		}
 
 		let spaceBetweenBoxes = this.spaceBetweenBoxes;
-		let top_start = (focusedLinePixelPos.top + nextLinePixelPos.top) / 2;
+		// let top_start = focusedLinePixelPos.top + (focusedLinePixelPos.height / 2);
+		//let top_start = (focusedLinePixelPos.top + nextLinePixelPos.top) / 2;
+		//let top_start = focusedLinePixelPos.top;
+		let top_start = this.getLinePixelMid(focusedLine);
 		let top = top_start;
 		for (let line = focusedLine-1; line >= 1; line--) {
 			let box = this.getBox(line);
 			if (box.visible) {
 				top = top - spaceBetweenBoxes - box.getHeight();
+				let lineMidPoint = this.getLinePixelMid(line);
+				if (lineMidPoint < top) {
+					top = lineMidPoint;
+				}
 				box.updateLayout(top);
 			}
 		}
@@ -879,11 +1066,28 @@ export class RTVCoordinator implements IEditorContribution {
 		for (let line = focusedLine; line <= this.getLineCount(); line++) {
 			let box = this.getBox(line);
 			if (box.visible) {
+				let lineMidPoint = this.getLinePixelMid(line);
+				if (lineMidPoint > top) {
+					top = lineMidPoint;
+				}
 				box.updateLayout(top);
 				top = top + box.getHeight() + spaceBetweenBoxes;
 			}
 		}
 
+	}
+
+	public getLinePixelPos(line:number): { top: number; left: number; height: number; } {
+		let result = this._editor.getScrolledVisiblePosition(new Position(line, 1));
+		if (result === null) {
+			throw new Error();
+		}
+		return result;
+	}
+
+	public getLinePixelMid(line: number): number {
+		let pixelPos = this.getLinePixelPos(line);
+		return pixelPos.top + (pixelPos.height / 2)
 	}
 
 	private updatePrevModel() {
@@ -999,7 +1203,7 @@ export class RTVCoordinator implements IEditorContribution {
 	private updateData(str: string) {
 		let data = JSON.parse(str);
 		this.envs = data[1];
-		this.rws = data[0];
+		this.writes = data[0];
 	}
 
 	public flipVisMode(line: number) {
@@ -1029,9 +1233,16 @@ export class RTVCoordinator implements IEditorContribution {
 
 registerEditorContribution(RTVCoordinator);
 
-const zoomLeveLKey = "rtv.zoomLevel";
-const spaceBetweenBoxesKey = 'rtv.spaceBetweenBoxes';
-const byRowOrCol = 'rtv.byRowOrColumn';
+const boxAlignsToTopOfLineKey = 'rtv.box.alignsToTopOfLine';
+const boxBorderKey = 'rtv.box.border';
+const byRowOrColKey = 'rtv.box.byRowOrColumn';
+const cellPaddingKey = "rtv.box.cellPadding";
+const colBorderKey = 'rtv.box.colBorder';
+const displayOnlyModifiedVarsKey = 'rtv.box.displayOnlyModifiedVars';
+const opacityKey = 'rtv.box.opacity';
+const spaceBetweenBoxesKey = 'rtv.box.spaceBetweenBoxes';
+const zoomKey = 'rtv.box.zoom';
+const presetsKey = 'rtv.presets';
 
 Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfiguration({
 	'id': 'rtv',
@@ -1039,17 +1250,27 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 	'type': 'object',
 	'title': localize('rtvConfigurationTitle', "RTV"),
 	'properties': {
-		[zoomLeveLKey]: {
-			'type': 'number',
-			'default': 1,
-			'description': localize('zoom','Controls zoom level (value between 0 and 1)')
+		[presetsKey]: {
+			'type': 'string',
+			'enum': ['compact', 'full', 'custom'],
+			'enumDescriptions': [
+				localize('presets.compact', 'Compact mode'),
+				localize('presets.full', 'Full mode')
+			],
+			'default': 'full',
+			'description': localize('mode', 'Allows you to choose some preset configurations')
 		},
-		[spaceBetweenBoxesKey]: {
-			'type': 'number',
-			'default': 20,
-			'description': localize('boxspace','Controls spacing between boxes')
+		[boxAlignsToTopOfLineKey]: {
+			'type': 'boolean',
+			'default': false,
+			'description': localize('boxalignstop', 'Controls whether box aligns to top of line (true: align to top of line; false: align to middle of line )')
 		},
-		[byRowOrCol]: {
+		[boxBorderKey]: {
+			'type': 'boolean',
+			'default': true,
+			'description': localize('boxborder', 'Controls whether boxes have a border')
+		},
+		[byRowOrColKey]: {
 			'type': 'string',
 			'enum': ['byCol', 'byRow'],
 			'enumDescriptions': [
@@ -1058,6 +1279,36 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 			],
 			'default': 'byCol',
 			'description': localize('byroworcol', 'Controls if variables are displayed in rows or columns')
+		},
+		[cellPaddingKey]: {
+			'type': 'number',
+			'default': 6,
+			'description': localize('padding', 'Controls padding for each data cell')
+		},
+		[colBorderKey]: {
+			'type': 'boolean',
+			'default': false,
+			'description': localize('colborder', 'Controls whether columns in box have a border')
+		},
+		[displayOnlyModifiedVarsKey]: {
+			'type': 'boolean',
+			'default': false,
+			'description': localize('modvarsonly', 'Controls whether only modified vars are shown (true: display only mod vars; false: display all vars)')
+		},
+		[opacityKey]: {
+			'type': 'number',
+			'default': 0,
+			'description': localize('zoom', 'Controls opacity level (value between 0 and 1; 0: see-through; 1: no see-through)')
+		},
+		[spaceBetweenBoxesKey]: {
+			'type': 'number',
+			'default': 20,
+			'description': localize('boxspace', 'Controls spacing between boxes')
+		},
+		[zoomKey]: {
+			'type': 'number',
+			'default': 0,
+			'description': localize('zoom', 'Controls zoom level (value between 0 and 1; 0 means shrink; 1 means no shrinking)')
 		}
 	}
 });

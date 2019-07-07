@@ -204,6 +204,42 @@ class RWCollector(ast.NodeVisitor):
         print("arg " + node.arg + " @ line " + str(node.lineno) + " col " + str(node.col_offset))
         self.addRW(node, ast.Store())
 
+class WCollector(ast.NodeVisitor):
+    def __init__(self):
+        ast.NodeVisitor()
+        self.data = {}
+
+    def data_at(self, l):
+        if not(l in self.data):
+            self.data[l] = []
+        return self.data[l]
+
+    def record_write(self, lineno, id):
+        if (id != magic_var_name):
+            self.data_at(lineno-1).append(id)
+
+    def visit_Name(self, node):
+        #print("Name " + node.id + " @ line " + str(node.lineno) + " col " + str(node.col_offset))
+        if isinstance(node.ctx, ast.Store):
+            self.record_write(node.lineno, node.id)
+
+    def visit_Subscript(self, node):
+        #print("Subscript " + str(node.ctx) + " " + str(node.value) + " " + str(node.col_offset))
+        if isinstance(node.ctx, ast.Store):
+            id = self.find_id(node)
+            if id == None:
+                print("Warning: did not find id in subscript")
+            else:
+                self.record_write(node.lineno, id)
+
+    def find_id(self, node):
+        if hasattr(node, "id"):
+            return node.id
+        if hasattr(node, "value"):
+            return self.find_id(node.value)
+        return None
+
+
 def find_colon_followed_by_empty(lines, start):
     lineno = start
     while (True):
@@ -337,18 +373,18 @@ def main():
     #         print(e.lineno)
     #         print(e.text)
 
-    print(ast.dump(root))
-    rwc = RWCollector()
-    rwc.visit(root)
-    print(rwc.data)
+    #print(ast.dump(root))
+    wc = WCollector()
+    wc.visit(root)
+    #print(wc.data)
 
     l = Logger()
     l.run(code)
-    print(l.data)
-    l.pretty_print_data()
+    #print(l.data)
+    #l.pretty_print_data()
 
     with open(sys.argv[1] + ".out", "w") as out:
-        out.write(json.dumps((rwc.data,l.data)))
+        out.write(json.dumps((wc.data,l.data)))
 
 #    ic = InsertCollector()
 #    ic.visit(root)

@@ -208,9 +208,21 @@ export const tocData: ITOCEntry = {
 				}
 			]
 		} , {
-			id: "rtv",
+			id: 'rtv',
 			label: localize("runtimeValues", "Runtime Values"),
-			settings: ["rtv.*"]
+			children: [
+				{
+					id: 'rtv/presets',
+					label: localize('presets', 'Presets'),
+					settings: ['rtv.presets']
+				},
+				{
+					id: 'rtv/box',
+					label: localize('box', 'Box Settings'),
+					settings: ['rtv.box.*']
+				}
+			]
+				// settings: ["rtv.*"]
 		}
 	]
 };
