@@ -27,48 +27,14 @@ import { localize } from 'vs/nls';
 
 
 
-// setInterval(() => {
-// 	let editor_div = document.getElementsByClassName("monaco-editor")[0];
-// 	if (editor_div === undefined)
-// 		return;
-// 	if (global_editor === undefined)
-// 		return;
-// 	//console.log(editor_div);
-// 	if (box === undefined) {
-// 		global_editor.onDidChangeCursorPosition(onChangeCursorPosition);
-// 		global_editor.onDidChangeModelContent(onChangeModelContent);
-// 		//global_editor.onDidScrollChange((e) => {console.log(e)});
-// 		box = document.createElement('div');
-// 		box.textContent = "AAA";
-// 		box.style.position = "absolute";
-// 		box.style.top = "100px";
-// 		box.style.left = "100px";
-// 		box.style.maxWidth = "1366px";
-// 		box.style.transitionProperty = "all";
-// 		box.style.transitionDuration = "0.3s";
-// 		box.style.transitionDelay = "0s";
-// 		box.style.transitionTimingFunction = "ease-in";
-// 		//box.style.transform = "scale(2.5)";
-// 		//box.style.zoom = "1";
-// 		box.className = "monaco-editor-hover";
-// 		editor_div.appendChild(box);
-// 	} else {
-// 		return;
-// 		// let currpos = global_editor.getPosition();
-// 		// if (currpos === null)
-// 		// 	return;
-// 		// let pixelP = global_editor.getScrolledVisiblePosition(currpos);
-// 		// if (pixelP === null)
-// 		// 	return;
-// 		// // console.log(pixelP);
-// 		// counter = counter + 1;
-// 		// let zoom = 1.2 + (Math.sin(counter/50)*0.2);
-// 		// box.style.top = (pixelP.top / zoom).toString() + "px";
-// 		// box.style.left = ((pixelP.left+ 100) / zoom ).toString() + "px";
-// 		// //console.log(zoom);
-// 		// box.style.zoom = zoom.toString();
-// 	}
-// },20);
+// Helper functions
+function indent(s: string): number {
+	return s.length - s.trimLeft().length;
+}
+
+function isHtmlEscape(s:string):boolean {
+	return strings.startsWith(s, "```html\n") && strings.endsWith(s, "```")
+}
 
 class RTVLine {
 	private _div: HTMLDivElement;
@@ -215,12 +181,17 @@ class RTVDisplayBox {
 		this._coordinator.flipVisMode(this._lineNumber);
 	}
 
-	private isControlLine(): boolean {
+	private isConditionalLine(): boolean {
 		let lineContent = this._coordinator.getLineContent(this._lineNumber).trim();
 		return strings.endsWith(lineContent, ":") &&
 			   (strings.startsWith(lineContent, "if") ||
-			    strings.startsWith(lineContent, "for") ||
-				strings.startsWith(lineContent, "else") ||
+				strings.startsWith(lineContent, "else"));
+	}
+
+	private isLoopLine(): boolean {
+		let lineContent = this._coordinator.getLineContent(this._lineNumber).trim();
+		return strings.endsWith(lineContent, ":") &&
+			   (strings.startsWith(lineContent, "for") ||
 				strings.startsWith(lineContent, "while"));
 	}
 
@@ -257,10 +228,6 @@ class RTVDisplayBox {
 		return envs2;
 	}
 
-	private isHtmlEscape(s:string):boolean {
-		return strings.startsWith(s, "```html\n") && strings.endsWith(s, "```")
-	}
-
 	private addCellContentAndStyle(cell: HTMLTableCellElement, s:string, r:MarkdownRenderer) {
 		if (this._coordinator.colBorder) {
 			cell.style.borderLeft = "1px solid #454545";
@@ -273,7 +240,7 @@ class RTVDisplayBox {
 		cell.align = 'left';
 
 		let cellContent: HTMLElement;
-		if (this.isHtmlEscape(s)) {
+		if (isHtmlEscape(s)) {
 			cellContent = document.createElement('div');
 			cellContent.innerHTML = s;
 		} else {
@@ -332,6 +299,10 @@ class RTVDisplayBox {
 	// 	this._box.appendChild(table);
 	// }
 
+	public indentAtLine(lineno: number): number {
+		return indent(this._coordinator.getLineContent(lineno));
+	}
+
 	public updateContent() {
 
 		if (this._hiddenByUser) {
@@ -340,7 +311,7 @@ class RTVDisplayBox {
 			return
 		}
 
-		if (this.isControlLine()) {
+		if (this.isConditionalLine()) {
 			this.hide();
 			console.log("Control line");
 			return;
@@ -358,19 +329,23 @@ class RTVDisplayBox {
 
 		// collect all next step envs
 		let envs: any[] = [];
+		let isLoop = this.isLoopLine();
+		let currIndent = this.indentAtLine(this._lineNumber);
 		envsAtLine.forEach((env) => {
 			if (env.begin_loop !== undefined) {
 				envs.push(env);
 			} else if (env.end_loop !== undefined) {
 				envs.push(env);
 			} else if (env.next_lineno !== undefined) {
-				let nextEnvs = this._coordinator.envs[env.next_lineno];
-				if (nextEnvs !== undefined) {
-					nextEnvs.forEach((nextEnv) => {
-						if (nextEnv.time === env.time + 1) {
-							envs.push(nextEnv);
-						}
-					});
+				if (!isLoop || this.indentAtLine(env.next_lineno+1) > currIndent) {
+					let nextEnvs = this._coordinator.envs[env.next_lineno];
+					if (nextEnvs !== undefined) {
+						nextEnvs.forEach((nextEnv) => {
+							if (nextEnv.time === env.time + 1) {
+								envs.push(nextEnv);
+							}
+						});
+					}
 				}
 			}
 		});
@@ -410,7 +385,7 @@ class RTVDisplayBox {
 				var v_str:string;
 				if (env[v] === undefined) {
 					v_str = "";
-				} else if (this.isHtmlEscape(env[v])) {
+				} else if (isHtmlEscape(env[v])) {
 					v_str = env[v];
 				} else {
 					v_str = "```python\n" + env[v] + "```";
