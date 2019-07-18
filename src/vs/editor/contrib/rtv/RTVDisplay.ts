@@ -24,8 +24,9 @@ import { IConfigurationService,  IConfigurationChangeEvent } from 'vs/platform/c
 import { Registry } from 'vs/platform/registry/common/platform';
 import { IConfigurationRegistry, Extensions } from 'vs/platform/configuration/common/configurationRegistry';
 import { localize } from 'vs/nls';
-
-
+import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
+import { IAction, Action } from 'vs/base/common/actions';
+import { ContextSubMenu } from 'vs/base/browser/contextmenu';
 
 // Helper functions
 function indent(s: string): number {
@@ -107,6 +108,8 @@ class RTVDisplayBox {
 	private _opacity: number = 1;
 	private _hiddenByUser: boolean = false;
 	private _hasContent: boolean = false;
+	private _vars: Set<string> = new Set<string>();
+	private _removedVars: Set<string> = new Set<string>();
 	constructor(
 		private readonly _coordinator:RTVCoordinator,
 		private readonly _editor: ICodeEditor,
@@ -129,9 +132,9 @@ class RTVDisplayBox {
 		this._box.style.transitionDelay = "0s";
 		this._box.style.transitionTimingFunction = "ease-in";
 		this._box.className = "monaco-editor-hover";
-		this._box.onclick = (e) => {
-			this.onClick(e);
-		};
+		// this._box.onclick = (e) => {
+		// 	this.onClick(e);
+		// };
 		editor_div.appendChild(this._box);
 		this._line = new RTVLine(this._editor, 0, 0, 0, 0);
 		this.hide();
@@ -228,7 +231,7 @@ class RTVDisplayBox {
 		return envs2;
 	}
 
-	private addCellContentAndStyle(cell: HTMLTableCellElement, s:string, r:MarkdownRenderer) {
+	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r:MarkdownRenderer) {
 		if (this._coordinator.colBorder) {
 			cell.style.borderLeft = "1px solid #454545";
 		}
@@ -237,15 +240,31 @@ class RTVDisplayBox {
 		cell.style.paddingRight = padding;
 		cell.style.paddingTop = "0";
 		cell.style.paddingBottom = "0";
-		cell.align = 'left';
 
+		if (this._coordinator.byRowOrCol === RowColMode.ByCol) {
+			cell.align = 'center';
+		} else {
+			cell.align = 'left';
+		}
+
+		let s = elmt.content;
 		let cellContent: HTMLElement;
-		if (isHtmlEscape(s)) {
+		if (s === "") {
+			// Make empty strings into a space to make sure it's allocated a space
+			// Otherwise, the divs in a row could become invisible if they are
+			// all empty
+			cellContent = document.createElement('div');
+			cellContent.innerHTML = "&nbsp";
+		}
+		else if (isHtmlEscape(s)) {
 			cellContent = document.createElement('div');
 			cellContent.innerHTML = s;
 		} else {
 			let renderedText = r.render(new MarkdownString(s));
 			cellContent = renderedText.element;
+		}
+		if (this._coordinator.byRowOrCol === RowColMode.ByCol && elmt.loop === "header") {
+			cellContent = this.createVarMenuButton(cellContent, s.substr(2, s.length-4));
 		}
 		cell.appendChild(cellContent);
 	}
@@ -253,9 +272,9 @@ class RTVDisplayBox {
 	private populateTableByCols(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
 		rows.forEach((row:TableElement[]) => {
 			let newRow = table.insertRow(-1);
-			row.forEach((item: TableElement) => {
+			row.forEach((elmt: TableElement) => {
 				let newCell = newRow.insertCell(-1);
-				this.addCellContentAndStyle(newCell, item.content, renderer);
+				this.addCellContentAndStyle(newCell, elmt, renderer);
 			});
 		});
 	}
@@ -267,7 +286,7 @@ class RTVDisplayBox {
 			for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
 				let elmt = rows[rowIdx][colIdx];
 				let newCell = newRow.insertCell(-1);
-				this.addCellContentAndStyle(newCell, elmt.content, renderer);
+				this.addCellContentAndStyle(newCell, elmt, renderer);
 				if (elmt.loop !== "") {
 					if (tableCellsByLoop[elmt.loop] === undefined) {
 						tableCellsByLoop[elmt.loop] = [];
@@ -307,13 +326,13 @@ class RTVDisplayBox {
 
 		if (this._hiddenByUser) {
 			this.hide();
-			console.log("Hidden by user");
+			//console.log("Hidden by user");
 			return
 		}
 
 		if (this.isConditionalLine()) {
 			this.hide();
-			console.log("Control line");
+			//console.log("Control line");
 			return;
 		}
 
@@ -321,7 +340,7 @@ class RTVDisplayBox {
 		let envsAtLine = this._coordinator.envs[this._lineNumber-1];
 		if (envsAtLine === undefined) {
 			this.hide();
-			console.log("Did not find entry");
+			//console.log("Did not find entry");
 			return;
 		}
 
@@ -352,26 +371,37 @@ class RTVDisplayBox {
 
 		envs = this.addMissingLines(envs);
 
-		// Compute set of keys in all envs
-		let keys_set = new Set<string>();
-		console.log(this._coordinator.writes);
-		console.log(this._lineNumber);
+		// Compute set of vars in all envs
+		this._vars = new Set<string>();
 		let writesAtLine = this._coordinator.writes[this._lineNumber-1];
 		envs.forEach((env) => {
 			for (let key in env) {
 				if (key !== "prev_lineno" && key !== "next_lineno" && key !== "lineno" && key !== "time") {
 					if (!this._coordinator.displayOnlyModifiedVars || key === "rv" ||
 					    (writesAtLine !== undefined && writesAtLine.some(x => x === key))) {
-						keys_set.add(key);
+						this._vars.add(key);
 					}
 				}
 			}
 		});
 
+		let vars = new Set<string>(this._vars);
+		this._removedVars.forEach((v) => {
+			if (!vars.delete(v)) {
+				this._removedVars.delete(v);
+			}
+		});
+
+		if (vars.size === 0) {
+			this.hide();
+			//console.log("No vars to display");
+			return;
+		}
+
 		// Generate header
 		let rows: TableElement [][] = [];
 		let header:TableElement[] = [];
-		keys_set.forEach((v:string) => {
+		vars.forEach((v:string) => {
 			header.push(new TableElement("**" + v + "**", "header"));
 		});
 		rows.push(header);
@@ -381,7 +411,7 @@ class RTVDisplayBox {
 			let env = envs[i];
 			let loop = env["#"];
 			let row:TableElement [] = [];
-			keys_set.forEach((v:string) => {
+			vars.forEach((v:string) => {
 				var v_str:string;
 				if (env[v] === undefined) {
 					v_str = "";
@@ -419,6 +449,13 @@ class RTVDisplayBox {
 		}
 		this._box.appendChild(table);
 
+		this.addStalenessIndicator();
+
+		//this.addConfigButton();
+		this.addPlusButton();
+	}
+
+	private addStalenessIndicator() {
 		// Add green/red dot to show out of date status
 		let stalenessIndicator = document.createElement('div');
 		stalenessIndicator.style.width = '5px';
@@ -439,57 +476,197 @@ class RTVDisplayBox {
 		}
 
 		this._box.appendChild(stalenessIndicator);
+	}
 
-		this.addConfigButton();
+	public varRemove(varname: string) {
+		this._removedVars.add(varname);
+	}
+
+	public varKeepOnly(varname: string) {
+		this._removedVars = new Set<string>(this._vars);
+		this._removedVars.delete(varname);
+	}
+
+	public varAdd(varname: string) {
+		this._removedVars.delete(varname);
+	}
+
+	public varAddAll() {
+		this._removedVars.clear();
+	}
+
+	private newAction(label: string, actionCallBack: () => void): Action {
+		return new Action("id", label, "", true, (event?) => {
+			actionCallBack();
+			return new Promise((resolve, reject) => {
+				resolve();
+			});
+		});
+	}
+
+	private createVarMenuButton(elmt: HTMLElement, varname: string): HTMLDivElement {
+		let menubar = document.createElement('div');
+		menubar.className = "menubar";
+		menubar.style.height = "23px";
+		menubar.appendChild(elmt);
+		elmt.className = "menubar-menu-button";
+		let c = this._coordinator;
+		elmt.onclick = (e) => {
+			c.contextMenuService.showContextMenu({
+				getAnchor: () => elmt,
+				getActions: () => [
+					this.newAction("Remove <strong> " + varname + " </strong> in This Box", () => {
+						c.varRemoveInThisBox(varname, this);
+					}),
+					this.newAction("Remove <strong> " + varname + " </strong> in All Boxes", () => {
+						c.varRemoveInAllBoxes(varname);
+					}),
+					this.newAction("Only <strong> " + varname + " </strong> in This Box", () => {
+						c.varKeepOnlyInThisBox(varname, this);
+					}),
+					this.newAction("Only <strong> " + varname + " </strong> in All Boxes", () => {
+						c.varKeepOnlyInAllBoxes(varname);
+					})
+				],
+				onHide: () => {},
+				autoSelectFirstItem: true
+			});
+		}
+		return menubar;
+	}
+
+	private addPlusButton() {
+		let menubar = document.createElement('div');
+		menubar.className = "menubar";
+		menubar.style.height = "23px";
+		menubar.style.position = 'absolute';
+		menubar.style.top = '0px';
+		menubar.style.right = '0px';
+		let addButton = document.createElement('div');
+		menubar.appendChild(addButton)
+		addButton.className = "menubar-menu-button";
+		addButton.innerHTML = "+";
+		addButton.onclick = (e) => {
+			this._coordinator.contextMenuService.showContextMenu({
+				getAnchor: () => addButton,
+				getActions: () => this.createActionsForPlusMenu(),
+				// [
+				// 	new ContextSubMenu("Submenu 1", [
+				// 		new Action("Hi", "Remove from THIS box","",true,(event?) => {
+				// 			console.log("AAAAA");
+				// 			console.log(event);
+				// 			return new Promise((resolve, reject) => {
+				// 				console.log("in promise A");
+				// 				resolve(123);
+				// 			});
+				// 		}),
+				// 		new Action("Hi", "Remove from ALL box","",true,(event?) => {
+				// 			console.log("BBBBB");
+				// 			console.log(event);
+				// 			return new Promise((resolve, reject) => {
+				// 				console.log("in promise B");
+				// 				resolve(123);
+				// 			});
+				// 		})
+				// 	]),
+				// 	new ContextSubMenu("Submenu 2", [
+				// 		new Action("Hi", "Remove from THIS box","",true,(event?) => {
+				// 			console.log("CCCC");
+				// 			console.log(event);
+				// 			return new Promise((resolve, reject) => {
+				// 				console.log("in promise C");
+				// 				resolve(123);
+				// 			});
+				// 		}),
+				// 		new Action("Hi", "Remove from ALL box","",true,(event?) => {
+				// 			console.log("DDDD");
+				// 			console.log(event);
+				// 			return new Promise((resolve, reject) => {
+				// 				console.log("in promise D");
+				// 				resolve(123);
+				// 			});
+				// 		})
+				// 	])
+				// ],
+				onHide: () => {},
+				autoSelectFirstItem: true
+			});
+
+		}
+		this._box.appendChild(menubar);
 
 	}
 
-	public addConfigButton() {
-		let configButton = document.createElement('div');
-		let lines: HTMLElement[] = [];
-
-		for(let i = 0; i < 3; i++){
-			let hamburgerIconLine = document.createElement('div');
-			hamburgerIconLine.style.width = '90%';
-			hamburgerIconLine.style.height = '10%';
-			hamburgerIconLine.style.margin =  '20% 0%';
-			hamburgerIconLine.style.backgroundColor = 'black';
-			configButton.appendChild(hamburgerIconLine);
-			lines.push(hamburgerIconLine);
-		}
-		lines[0].style.transition = 'transform 0.2s';
-		lines[2].style.transition = 'transform 0.2s';
-
-		configButton.style.width = '10px';
-		configButton.style.height = '10px';
-		configButton.style.position = 'absolute';
-		configButton.style.top = '5px';
-		configButton.style.right = '2px';
-		if(configButton){
-			configButton.onclick = (e) =>{
-				e.stopPropagation();
-				if(this._coordinator._configBox){
-					console.log(this._coordinator._configBox.style.display);
-					this._coordinator.showOrHideConfigDialogBox();
-				}
-				else{
-					this._coordinator.addConfigDialogBox();
-				}
-				if(lines[1].style.opacity !== '0'){
-					lines[0].style.transform = 'translate(0%, 3px) rotate(-45deg)';
-					lines[2].style.transform = 'translate(0%, -3px) rotate(45deg)';
-					lines[1].style.opacity = '0';
-					console.log(lines[2]);
-				}else{
-					lines[0].style.transform = 'translate(0%, 0px) rotate(0deg)';
-					lines[1].style.opacity = '1';
-					lines[2].style.transform = 'translate(0%, 0px) rotate(0deg)';
-				}
-
-			};
-		}
-		this._box.appendChild(configButton);
+	private createActionsForPlusMenu(): (IAction | ContextSubMenu)[] {
+		let res: (IAction | ContextSubMenu)[] = [];
+		this._removedVars.forEach((v) => {
+			res.push(new ContextSubMenu("Add <strong> " + v , [
+				this.newAction("to This Box", () => {
+					this._coordinator.varAddInThisBox(v, this);
+				}),
+				this.newAction("to All Boxes", () => {
+					this._coordinator.varAddInAllBoxes(v);
+				})
+			]));
+		});
+		res.push(new ContextSubMenu("Add All Vars ", [
+			this.newAction("to This Box", () => {
+				this._coordinator.varAddAllInThisBox(this);
+			}),
+			this.newAction("to All Boxes", () => {
+				this._coordinator.varAddAllInAllBoxes();
+			})
+		]));
+		return res;
 	}
+
+
+	// public addConfigButton() {
+	// 	let configButton = document.createElement('div');
+	// 	let lines: HTMLElement[] = [];
+
+	// 	for(let i = 0; i < 3; i++){
+	// 		let hamburgerIconLine = document.createElement('div');
+	// 		hamburgerIconLine.style.width = '90%';
+	// 		hamburgerIconLine.style.height = '10%';
+	// 		hamburgerIconLine.style.margin =  '20% 0%';
+	// 		hamburgerIconLine.style.backgroundColor = 'black';
+	// 		configButton.appendChild(hamburgerIconLine);
+	// 		lines.push(hamburgerIconLine);
+	// 	}
+	// 	lines[0].style.transition = 'transform 0.2s';
+	// 	lines[2].style.transition = 'transform 0.2s';
+
+	// 	configButton.style.width = '10px';
+	// 	configButton.style.height = '10px';
+	// 	configButton.style.position = 'absolute';
+	// 	configButton.style.top = '5px';
+	// 	configButton.style.right = '2px';
+	// 	if(configButton){
+	// 		configButton.onclick = (e) =>{
+	// 			e.stopPropagation();
+	// 			if(this._coordinator._configBox){
+	// 				console.log(this._coordinator._configBox.style.display);
+	// 				this._coordinator.showOrHideConfigDialogBox();
+	// 			}
+	// 			else{
+	// 				this._coordinator.addConfigDialogBox();
+	// 			}
+	// 			if(lines[1].style.opacity !== '0'){
+	// 				lines[0].style.transform = 'translate(0%, 3px) rotate(-45deg)';
+	// 				lines[2].style.transform = 'translate(0%, -3px) rotate(45deg)';
+	// 				lines[1].style.opacity = '0';
+	// 				console.log(lines[2]);
+	// 			}else{
+	// 				lines[0].style.transform = 'translate(0%, 0px) rotate(0deg)';
+	// 				lines[1].style.opacity = '1';
+	// 				lines[2].style.transform = 'translate(0%, 0px) rotate(0deg)';
+	// 			}
+
+	// 		};
+	// 	}
+	// 	this._box.appendChild(configButton);
+	// }
 
 
 	public getHeight() {
@@ -572,6 +749,7 @@ export class RTVCoordinator implements IEditorContribution {
 		@IOpenerService private readonly _openerService: IOpenerService,
 		@IModeService private readonly _modeService: IModeService,
 		@IConfigurationService private readonly configurationService: IConfigurationService,
+		@IContextMenuService public readonly contextMenuService: IContextMenuService,
 	) {
 		this._editor.onDidChangeCursorPosition((e) => {	this.onChangeCursorPosition(e);	});
 		this._editor.onDidScrollChange((e) => { this.onScrollChange(e); });
@@ -598,11 +776,9 @@ export class RTVCoordinator implements IEditorContribution {
 	}
 	public saveViewState(): any {
 		this._boxes = [];
-		console.log("saveViewState");
 	}
 	public restoreViewState(state: any): void {
 		this.updateContentAndLayout();
-		console.log("restoreViewState");
 	}
 
 	// Configurable properties
@@ -677,7 +853,6 @@ export class RTVCoordinator implements IEditorContribution {
 	private onChangeConfiguration(e: IConfigurationChangeEvent) {
 		if (e.affectedKeys.indexOf(presetsKey) != -1) {
 			let v:string = this.configurationService.getValue(presetsKey);
-			console.log(v);
 			if (v === 'full') {
 				this.boxAlignsToTopOfLine = false;
 				this.boxBorder = true;
@@ -857,7 +1032,6 @@ export class RTVCoordinator implements IEditorContribution {
 		if (lineCount > this._boxes.length) {
 			// This should not happen, given our understanding of how changes are reported to us from VSCode.
 			// BUT: just to be safe, we have this here to make sure we're not missing something.
-			console.log("Adding boxes");
 			for (let j = this._boxes.length; j < lineCount; j++) {
 				this._boxes[j] = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, j+1);
 			}
@@ -878,7 +1052,6 @@ export class RTVCoordinator implements IEditorContribution {
 	}
 
 	private onLayoutChange(e: EditorLayoutInfo) {
-		console.log("onLayoutChange");
 		this.updateMaxPixelCol();
 		this.updateLayout();
 	}
@@ -899,7 +1072,7 @@ export class RTVCoordinator implements IEditorContribution {
 		let widths: { [k:string]: number; } = {};
 		loops.forEach((loop:string) => {
 			widths[loop] = Math.max(...this.tableCellsByLoop[loop].map(e=>e.offsetWidth));
-			console.log("Max for " + loop + " :" + widths[loop]);
+			//console.log("Max for " + loop + " :" + widths[loop]);
 		});
 
 		let spaceBetweenCells = 2 * this.cellPadding;
@@ -924,12 +1097,12 @@ export class RTVCoordinator implements IEditorContribution {
 		}
 
 		loops.forEach((loop:string) => {
-			console.log("Computed width for " + loop + ": " + widths[loop]);
+			// console.log("Computed width for " + loop + ": " + widths[loop]);
 			this.tableCellsByLoop[loop].forEach(e => { e.width = (widths[loop] - spaceBetweenCells) + "px"; });
 		});
 
 	}
-	private updateContentAndLayout() {
+	public updateContentAndLayout() {
 		this.tableCellsByLoop = {};
 		this.updateContent();
 		// for (let x in this.tableCellsByLoop) {
@@ -1083,7 +1256,6 @@ export class RTVCoordinator implements IEditorContribution {
 	private addRemoveBoxes(e: IModelContentChangedEvent) {
 		let orig = this._boxes.map((x) => x);
 		let changes = e.changes.sort((a,b) => Range.compareRangesUsingStarts(a.range,b.range));
-		console.log(changes);
 		let changeIdx = 0;
 		let origIdx = 0;
 		let i = 0;
@@ -1140,7 +1312,6 @@ export class RTVCoordinator implements IEditorContribution {
 		if (runpy === undefined) {
 			return;
 		}
-		console.log("onChangeModelContent");
 		//console.log(e);
 		this.padBoxArray();
 		this.addRemoveBoxes(e);
@@ -1203,6 +1374,54 @@ export class RTVCoordinator implements IEditorContribution {
 	// 	});
 	// 	this.updateContentAndLayout();
 	// }
+
+	public varRemoveInThisBox(varname: string, box: RTVDisplayBox) {
+		box.varRemove(varname);
+		this.updateContentAndLayout();
+	}
+
+	public varRemoveInAllBoxes(varname: string) {
+		this._boxes.forEach((box) => {
+			box.varRemove(varname);
+		});
+		this.updateContentAndLayout();
+	}
+
+	public varKeepOnlyInThisBox(varname: string, box: RTVDisplayBox) {
+		box.varKeepOnly(varname);
+		this.updateContentAndLayout();
+	}
+
+	public varKeepOnlyInAllBoxes(varname: string) {
+		this._boxes.forEach((box) => {
+			box.varKeepOnly(varname);
+		});
+		this.updateContentAndLayout();
+	}
+
+	public varAddInThisBox(varname: string, box: RTVDisplayBox) {
+		box.varAdd(varname);
+		this.updateContentAndLayout();
+	}
+
+	public varAddInAllBoxes(varname: string) {
+		this._boxes.forEach((box) => {
+			box.varAdd(varname);
+		});
+		this.updateContentAndLayout();
+	}
+
+	public varAddAllInThisBox(box: RTVDisplayBox) {
+		box.varAddAll();
+		this.updateContentAndLayout();
+	}
+
+	public varAddAllInAllBoxes() {
+		this._boxes.forEach((box) => {
+			box.varAddAll();
+		});
+		this.updateContentAndLayout();
+	}
 
 }
 
