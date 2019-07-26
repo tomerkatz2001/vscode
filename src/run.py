@@ -54,14 +54,17 @@ class Logger(bdb.Bdb):
             if isinstance(prev_lineno, str):
                 prev_lineno = int(prev_lineno[1:])
             prev_stmt = lines[prev_lineno]
-            if is_loop_str(prev_stmt):
-                loop_indent = self.active_loops[-1].indent
-                curr_indent = indent(curr_stmt)
-                if (curr_indent <= loop_indent):
-                    for l in self.stmts_in_loop(prev_lineno):
-                        self.data_at(l).append({"end_loop":self.active_loops_str()})
-                    del self.active_loops[-1]
-                    #del self.data[prev_lineno][-1]
+
+            loop_indent = self.active_loops[-1].indent
+            curr_indent = indent(curr_stmt)
+            if (curr_indent <= loop_indent and lineno != self.active_loops[-1].lineno):
+                # break statements don't go through the loop header, so we miss
+                # the last increment in iter, which is why we have to adjust here
+                if is_break_str(prev_stmt):
+                    self.active_loops[-1].iter += 1
+                for l in self.stmts_in_loop(self.active_loops[-1].lineno):
+                    self.data_at(l).append({"end_loop":self.active_loops_str()})
+                del self.active_loops[-1]
 
     def record_loop_begin(self, frame, lineno):
         for l in self.active_loops:
@@ -255,6 +258,9 @@ def find_colon_followed_by_empty(lines, start):
 
 def is_loop_str(str):
     return re.search("(for|while).*:", str.strip()) != None
+
+def is_break_str(str):
+    return re.search("break", str.strip()) != None
 
 def indent(str):
     return len(str) - len(str.lstrip())

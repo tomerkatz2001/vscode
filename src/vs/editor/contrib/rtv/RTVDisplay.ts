@@ -26,7 +26,9 @@ import { IConfigurationRegistry, Extensions } from 'vs/platform/configuration/co
 import { localize } from 'vs/nls';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import { IAction, Action } from 'vs/base/common/actions';
+import { Separator } from 'vs/base/browser/ui/actionbar/actionbar';
 import { ContextSubMenu } from 'vs/base/browser/contextmenu';
+import { Event } from 'vs/base/common/event';
 
 // Helper functions
 function indent(s: string): number {
@@ -36,6 +38,60 @@ function indent(s: string): number {
 function isHtmlEscape(s:string):boolean {
 	return strings.startsWith(s, "```html\n") && strings.endsWith(s, "```")
 }
+
+abstract class VarSet {
+	public abstract getSet(): Set<string>;
+	public add(v: string): VarSet {
+		let vars = new Set<string>(this.getSet());
+		vars.add(v);
+		return new ConcreteVarSet(vars);
+	}
+	public remove(v: string): VarSet {
+		let vars = new Set<string>(this.getSet());
+		vars.delete(v);
+		return new ConcreteVarSet(vars);
+	}
+}
+
+class FullVarSet extends VarSet {
+	constructor(private readonly _b: RTVDisplayBox) {
+		super();
+	}
+	public getSet(): Set<string> {
+		return this._b.allVars();
+	}
+	public add(v: string): VarSet {
+		return this;
+	}
+}
+
+class ConcreteVarSet extends VarSet {
+	constructor(private readonly _set: Set<string>) {
+		super();
+	}
+	public getSet(): Set<string> {
+		return this._set;
+	}
+}
+
+class EmptyVarSet extends ConcreteVarSet {
+	constructor() {
+		super(new Set<string>());
+	}
+	public remove(v: string): VarSet {
+		return this;
+	}
+}
+
+class ModVarSet extends VarSet {
+	constructor(private readonly _b: RTVDisplayBox) {
+		super();
+	}
+	public getSet(): Set<string> {
+		return this._b.modVars();
+	}
+}
+
 
 class RTVLine {
 	private _div: HTMLDivElement;
@@ -106,10 +162,10 @@ class RTVDisplayBox {
 	private _line: RTVLine;
 	private _zoom: number = 1;
 	private _opacity: number = 1;
-	private _hiddenByUser: boolean = false;
 	private _hasContent: boolean = false;
-	private _vars: Set<string> = new Set<string>();
+	private _allVars: Set<string> = new Set<string>();
 	private _removedVars: Set<string> = new Set<string>();
+	private _displayedVars: VarSet;
 	constructor(
 		private readonly _coordinator:RTVCoordinator,
 		private readonly _editor: ICodeEditor,
@@ -117,6 +173,11 @@ class RTVDisplayBox {
 		private readonly _openerService: IOpenerService | null,
 		private _lineNumber: number
 	) {
+		if (this._coordinator.displayOnlyModifiedVars) {
+			this._displayedVars = new ModVarSet(this);
+		} else {
+			this._displayedVars = new FullVarSet(this);
+		}
 		let editor_div = this._editor.getDomNode();
 		if (editor_div === null) {
 			throw new Error('Cannot find Monaco Editor');
@@ -132,24 +193,19 @@ class RTVDisplayBox {
 		this._box.style.transitionDelay = "0s";
 		this._box.style.transitionTimingFunction = "ease-in";
 		this._box.className = "monaco-editor-hover";
-		// this._box.onclick = (e) => {
-		// 	this.onClick(e);
-		// };
+		this._box.onauxclick = (e) => {
+			this.onClick(e);
+		};
+		this._box.onclick = (e) => {
+			this.onClick(e);
+		};
 		editor_div.appendChild(this._box);
 		this._line = new RTVLine(this._editor, 0, 0, 0, 0);
 		this.hide();
 	}
 
 	get visible() {
-		return !this._hiddenByUser && this._hasContent;
-	}
-
-	get hiddenByUser() {
-		return this._hiddenByUser;
-	}
-
-	set hiddenByUser(h:boolean) {
-		this._hiddenByUser = h;
+		return this._hasContent;
 	}
 
 	get lineNumber() {
@@ -178,10 +234,72 @@ class RTVDisplayBox {
 		this._line.show();
 	}
 
+	public modVars() {
+		let writesAtLine = this._coordinator.writes[this._lineNumber-1];
+		if (writesAtLine === undefined) {
+			writesAtLine = []
+		}
+		let result = new Set<string>(writesAtLine);
+		if (this._allVars.has("rv")) {
+			result.add("rv");
+		}
+		return result;
+	}
+
+	public allVars() {
+		return this._allVars;
+	}
+
+	public notDisplayedVars() {
+		let result = new Set<string>();
+		let displayed = this._displayedVars.getSet();
+		this._allVars.forEach((v:string) => {
+			if (!displayed.has(v)) {
+				result.add(v);
+			}
+		});
+		return result;
+	}
+
 	private onClick(e: MouseEvent) {
-		e.stopImmediatePropagation();
-		e.preventDefault();
-		this._coordinator.flipVisMode(this._lineNumber);
+		let c = this._coordinator;
+
+		let fullViewAction = this.newAction("Full", () => {
+			c.changeToFullView();
+		});
+		let compactViewAction = this.newAction("Compact", () => {
+			c.changeToCompactView();
+		});
+
+		let currViewMode = c.viewMode;
+		if (currViewMode === 'full') {
+			fullViewAction.checked = true;
+		} else if (currViewMode === 'compact') {
+			compactViewAction.checked = true;
+		}
+
+		c.contextMenuService.showContextMenu({
+			getAnchor: () => ({x: e.clientX, y: e.clientY }),
+			getActions: () => [
+				this.newAction("Hide This Box", () => {
+					c.hideBox(this);
+				}),
+				this.newAction("Hide All Other Boxes", () => {
+					c.hideAllOtherBoxes(this);
+				}),
+				new Separator(),
+				this.newAction("Restore This Box to Default", () => {
+					c.restoreBoxToDefault(this);
+				}),
+				this.newAction("Restore All Boxes to Default", () => {
+					c.restoreAllBoxesToDefault();
+				}),
+				new Separator(),
+				new ContextSubMenu("Appearance of All Boxes", [ fullViewAction, compactViewAction ])
+			],
+			onHide: () => {},
+			autoSelectFirstItem: true
+		});
 	}
 
 	private isConditionalLine(): boolean {
@@ -263,7 +381,10 @@ class RTVDisplayBox {
 			let renderedText = r.render(new MarkdownString(s));
 			cellContent = renderedText.element;
 		}
-		if (this._coordinator.byRowOrCol === RowColMode.ByCol && elmt.loop === "header") {
+		// if (this._coordinator.byRowOrCol === RowColMode.ByCol && elmt.loop === "header") {
+		// 	cellContent = this.createVarMenuButton(cellContent, s.substr(2, s.length-4));
+		// }
+		if (elmt.loop === "header") {
 			cellContent = this.createVarMenuButton(cellContent, s.substr(2, s.length-4));
 		}
 		cell.appendChild(cellContent);
@@ -324,15 +445,13 @@ class RTVDisplayBox {
 
 	public updateContent() {
 
-		if (this._hiddenByUser) {
+		if (!this._coordinator.showBoxAtLoopStmt && this.isLoopLine()) {
 			this.hide();
-			//console.log("Hidden by user");
-			return
+			return;
 		}
 
 		if (this.isConditionalLine()) {
 			this.hide();
-			//console.log("Control line");
 			return;
 		}
 
@@ -340,7 +459,6 @@ class RTVDisplayBox {
 		let envsAtLine = this._coordinator.envs[this._lineNumber-1];
 		if (envsAtLine === undefined) {
 			this.hide();
-			//console.log("Did not find entry");
 			return;
 		}
 
@@ -372,25 +490,26 @@ class RTVDisplayBox {
 		envs = this.addMissingLines(envs);
 
 		// Compute set of vars in all envs
-		this._vars = new Set<string>();
-		let writesAtLine = this._coordinator.writes[this._lineNumber-1];
+		this._allVars = new Set<string>();
+		//let writesAtLine = this._coordinator.writes[this._lineNumber-1];
 		envs.forEach((env) => {
 			for (let key in env) {
 				if (key !== "prev_lineno" && key !== "next_lineno" && key !== "lineno" && key !== "time") {
-					if (!this._coordinator.displayOnlyModifiedVars || key === "rv" ||
-					    (writesAtLine !== undefined && writesAtLine.some(x => x === key))) {
-						this._vars.add(key);
-					}
+					//if (!this._coordinator.displayOnlyModifiedVars || key === "rv" ||
+					//    (writesAtLine !== undefined && writesAtLine.some(x => x === key))) {
+						this._allVars.add(key);
+					//}
 				}
 			}
 		});
 
-		let vars = new Set<string>(this._vars);
-		this._removedVars.forEach((v) => {
-			if (!vars.delete(v)) {
-				this._removedVars.delete(v);
-			}
-		});
+		let vars = this._displayedVars.getSet();
+		// let vars = new Set<string>(this._allVars);
+		// this._removedVars.forEach((v) => {
+		// 	if (!vars.delete(v)) {
+		// 		this._removedVars.delete(v);
+		// 	}
+		// });
 
 		if (vars.size === 0) {
 			this.hide();
@@ -479,20 +598,37 @@ class RTVDisplayBox {
 	}
 
 	public varRemove(varname: string) {
-		this._removedVars.add(varname);
+		this._displayedVars = this._displayedVars.remove(varname);
+		//this._removedVars.add(varname);
 	}
 
 	public varKeepOnly(varname: string) {
-		this._removedVars = new Set<string>(this._vars);
-		this._removedVars.delete(varname);
+		this._displayedVars = new ConcreteVarSet(new Set<string>([varname]));
+		// this._removedVars = new Set<string>(this._allVars);
+		// this._removedVars.delete(varname);
 	}
 
 	public varAdd(varname: string) {
-		this._removedVars.delete(varname);
+		this._displayedVars = this._displayedVars.add(varname);
+		// this._removedVars.delete(varname);
 	}
 
 	public varAddAll() {
-		this._removedVars.clear();
+		this._displayedVars = new FullVarSet(this);
+		//this._removedVars.clear();
+	}
+
+	public varRemoveAll() {
+		this._displayedVars = new EmptyVarSet();
+		//this._removedVars.clear();
+	}
+
+	public varRestoreToDefault() {
+		if (this._coordinator.displayOnlyModifiedVars) {
+			this._displayedVars = new ModVarSet(this);
+		} else {
+			this._displayedVars = new FullVarSet(this);
+		}
 	}
 
 	private newAction(label: string, actionCallBack: () => void): Action {
@@ -502,16 +638,23 @@ class RTVDisplayBox {
 				resolve();
 			});
 		});
+		//x.checked = true;
+		//return new Separator();
 	}
 
 	private createVarMenuButton(elmt: HTMLElement, varname: string): HTMLDivElement {
 		let menubar = document.createElement('div');
 		menubar.className = "menubar";
-		menubar.style.height = "23px";
+		if (this._coordinator.byRowOrCol === RowColMode.ByCol) {
+			menubar.style.height = "23px";
+		} else {
+			menubar.style.height = "19.5px";
+		}
 		menubar.appendChild(elmt);
 		elmt.className = "menubar-menu-button";
 		let c = this._coordinator;
 		elmt.onclick = (e) => {
+			e.stopImmediatePropagation();
 			c.contextMenuService.showContextMenu({
 				getAnchor: () => elmt,
 				getActions: () => [
@@ -547,6 +690,7 @@ class RTVDisplayBox {
 		addButton.className = "menubar-menu-button";
 		addButton.innerHTML = "+";
 		addButton.onclick = (e) => {
+			e.stopImmediatePropagation();
 			this._coordinator.contextMenuService.showContextMenu({
 				getAnchor: () => addButton,
 				getActions: () => this.createActionsForPlusMenu(),
@@ -599,7 +743,7 @@ class RTVDisplayBox {
 
 	private createActionsForPlusMenu(): (IAction | ContextSubMenu)[] {
 		let res: (IAction | ContextSubMenu)[] = [];
-		this._removedVars.forEach((v) => {
+		this.notDisplayedVars().forEach((v) => {
 			res.push(new ContextSubMenu("Add <strong> " + v , [
 				this.newAction("to This Box", () => {
 					this._coordinator.varAddInThisBox(v, this);
@@ -722,11 +866,6 @@ class RTVDisplayBox {
 
 }
 
-enum VisibilityMode {
-	AllBoxes,
-	SingleBox
-}
-
 enum RowColMode {
 	ByRow,
 	ByCol
@@ -738,17 +877,17 @@ export class RTVCoordinator implements IEditorContribution {
 	private _boxes: RTVDisplayBox[] = [];
 	private _maxPixelCol = 0;
 	private _prevModel: string[] = [];
-	private _visMode: VisibilityMode = VisibilityMode.AllBoxes;
 	public _changedLinesWhenOutOfDate: Set<number> | null = new Set();
 	private _row: boolean = false;
 	public _configBox: HTMLDivElement | null = null;
 	public tableCellsByLoop: MapLoopsToCells;
+	private _config: ConfigurationServiceCache;
 
 	constructor(
 		private readonly _editor: ICodeEditor,
 		@IOpenerService private readonly _openerService: IOpenerService,
 		@IModeService private readonly _modeService: IModeService,
-		@IConfigurationService private readonly configurationService: IConfigurationService,
+		@IConfigurationService configurationService: IConfigurationService,
 		@IContextMenuService public readonly contextMenuService: IContextMenuService,
 	) {
 		this._editor.onDidChangeCursorPosition((e) => {	this.onChangeCursorPosition(e);	});
@@ -758,14 +897,13 @@ export class RTVCoordinator implements IEditorContribution {
 		for (let i = 0; i < this.getLineCount(); i++) {
 			this._boxes.push(new RTVDisplayBox(this, _editor, _modeService, _openerService, i+1));
 		}
-		// for (let i = 0; i < this.getLineCount(); i++) {
-		// 	this._boxes[i].hiddenByUser = true;
-		// }
-		// this._boxes[10].hiddenByUser = false;
-		// this._boxes[5].hiddenByUser = false;
 		this.updateMaxPixelCol();
 		this.updatePrevModel();
-		this.configurationService.onDidChangeConfiguration((e) => { this.onChangeConfiguration(e); });
+		//this.configurationService.onDidChangeConfiguration((e) => { this.onChangeConfiguration(e); });
+		this._config = new ConfigurationServiceCache(configurationService)
+		this._config.onDidUserChangeConfiguration = (e) => {
+			this.onUserChangeConfiguration(e);
+		};
 	}
 
 	public getId(): string {
@@ -774,106 +912,141 @@ export class RTVCoordinator implements IEditorContribution {
 
 	public dispose():void {
 	}
+
 	public saveViewState(): any {
 		this._boxes = [];
+		this.envs = {};
+		this.writes = {};
 	}
+
 	public restoreViewState(state: any): void {
 		this.updateContentAndLayout();
 	}
 
 	// Configurable properties
 	get boxAlignsToTopOfLine(): boolean {
-		return this.configurationService.getValue(boxAlignsToTopOfLineKey);
+		return this._config.getValue(boxAlignsToTopOfLineKey);
 	}
 	set boxAlignsToTopOfLine(v: boolean) {
-		this.configurationService.updateValue(boxAlignsToTopOfLineKey, v);
+		this._config.updateValue(boxAlignsToTopOfLineKey, v);
 	}
 
 	get boxBorder(): boolean {
-		return this.configurationService.getValue(boxBorderKey);
+		return this._config.getValue(boxBorderKey);
 	}
 	set boxBorder(v: boolean) {
-		this.configurationService.updateValue(boxBorderKey, v);
+		this._config.updateValue(boxBorderKey, v);
 	}
 
 	get byRowOrCol(): RowColMode {
-		return this.configurationService.getValue(byRowOrColKey) === 'byRow' ? RowColMode.ByRow : RowColMode.ByCol;
+		return this._config.getValue(byRowOrColKey) === 'byRow' ? RowColMode.ByRow : RowColMode.ByCol;
 	}
 	set byRowOrCol(v: RowColMode) {
-		this.configurationService.updateValue(byRowOrColKey, v ===  RowColMode.ByRow ? 'byRow' : 'byCol');
+		this._config.updateValue(byRowOrColKey, v ===  RowColMode.ByRow ? 'byRow' : 'byCol');
 	}
 
 	get cellPadding(): number {
-		return this.configurationService.getValue(cellPaddingKey);
+		return this._config.getValue(cellPaddingKey);
 	}
 	set cellPadding(v: number) {
-		this.configurationService.updateValue(cellPaddingKey, v);
+		this._config.updateValue(cellPaddingKey, v);
 	}
 
 	get colBorder(): boolean {
-		return this.configurationService.getValue(colBorderKey);
+		return this._config.getValue(colBorderKey);
 	}
 	set colBorder(v: boolean) {
-		this.configurationService.updateValue(colBorderKey, v);
+		this._config.updateValue(colBorderKey, v);
 	}
 
 	get displayOnlyModifiedVars(): boolean {
-		return this.configurationService.getValue(displayOnlyModifiedVarsKey);
+		return this._config.getValue(displayOnlyModifiedVarsKey);
 	}
 	set displayOnlyModifiedVars(v: boolean) {
-		this.configurationService.updateValue(displayOnlyModifiedVarsKey, v);
+		this._config.updateValue(displayOnlyModifiedVarsKey, v);
 	}
 
 	get opacityLevel(): number {
-		return this.configurationService.getValue(opacityKey);
+		return this._config.getValue(opacityKey);
 	}
 	set opacityLevel(v: number) {
-		this.configurationService.updateValue(opacityKey, v);
+		this._config.updateValue(opacityKey, v);
+	}
+
+	get showBoxAtLoopStmt(): boolean {
+		return this._config.getValue(showBoxAtLoopStmtKey);
+	}
+	set showBoxAtLoopStmt(v: boolean) {
+		this._config.updateValue(showBoxAtLoopStmtKey, v);
 	}
 
 	get spaceBetweenBoxes(): number {
-		return this.configurationService.getValue(spaceBetweenBoxesKey);
+		return this._config.getValue(spaceBetweenBoxesKey);
 	}
 	set spaceBetweenBoxes(v: number) {
-		this.configurationService.updateValue(spaceBetweenBoxesKey, v);
+		this._config.updateValue(spaceBetweenBoxesKey, v);
 	}
 
 	get zoomLevel(): number {
-		return this.configurationService.getValue(zoomKey);
+		return this._config.getValue(zoomKey);
 	}
 	set zoomLevel(v: number) {
-		this.configurationService.updateValue(zoomKey, v);
+		this._config.updateValue(zoomKey, v);
 	}
+
+	get viewMode(): string {
+		return this._config.getValue(presetsKey);
+	}
+	set viewMode(v: string) {
+		this._config.updateValue(presetsKey, v);
+	}
+
 	// End of configurable properties
 
 	get maxPixelCol() {
 		return this._maxPixelCol;
 	}
 
-	private onChangeConfiguration(e: IConfigurationChangeEvent) {
+	public changeToCompactView() {
+		this.viewMode = 'compact';
+		this.boxAlignsToTopOfLine = true;
+		this.boxBorder = false;
+		this.byRowOrCol = RowColMode.ByRow;
+		this.cellPadding = 6;
+		this.colBorder = true;
+		this.displayOnlyModifiedVars = true;
+		this.opacityLevel = 1;
+		this.showBoxAtLoopStmt = true;
+		this.spaceBetweenBoxes = -4;
+		this.zoomLevel = 1;
+		this.restoreAllBoxesToDefault();
+	}
+
+	public changeToFullView() {
+		this.viewMode = 'full';
+		this.boxAlignsToTopOfLine = false;
+		this.boxBorder = true;
+		this.byRowOrCol = RowColMode.ByCol;
+		this.cellPadding = 6;
+		this.colBorder = false;
+		this.displayOnlyModifiedVars = false;
+		this.opacityLevel = 0;
+		this.showBoxAtLoopStmt = false;
+		this.spaceBetweenBoxes = 20;
+		this.zoomLevel = 0;
+		this.restoreAllBoxesToDefault();
+	}
+
+	private onUserChangeConfiguration(e: IConfigurationChangeEvent) {
 		if (e.affectedKeys.indexOf(presetsKey) != -1) {
-			let v:string = this.configurationService.getValue(presetsKey);
+			let v:string = this.viewMode;
 			if (v === 'full') {
-				this.boxAlignsToTopOfLine = false;
-				this.boxBorder = true;
-				this.byRowOrCol = RowColMode.ByCol;
-				this.cellPadding = 6;
-				this.colBorder = false;
-				this.displayOnlyModifiedVars = false;
-				this.opacityLevel = 0;
-				this.spaceBetweenBoxes = 20;
-				this.zoomLevel = 0;
+				this.changeToFullView();
 			} else if (v === 'compact') {
-				this.boxAlignsToTopOfLine = true;
-				this.boxBorder = false;
-				this.byRowOrCol = RowColMode.ByRow;
-				this.cellPadding = 6;
-				this.colBorder = true;
-				this.displayOnlyModifiedVars = true;
-				this.opacityLevel = 1;
-				this.spaceBetweenBoxes = -4;
-				this.zoomLevel = 1;
+				this.changeToCompactView();
 			}
+		} else if (e.affectedKeys.some((s) => strings.startsWith(s, 'rtv'))) {
+			this.viewMode = 'custom';
 		}
 	}
 
@@ -1030,8 +1203,6 @@ export class RTVCoordinator implements IEditorContribution {
 	private padBoxArray() {
 		let lineCount = this.getLineCount();
 		if (lineCount > this._boxes.length) {
-			// This should not happen, given our understanding of how changes are reported to us from VSCode.
-			// BUT: just to be safe, we have this here to make sure we're not missing something.
 			for (let j = this._boxes.length; j < lineCount; j++) {
 				this._boxes[j] = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, j+1);
 			}
@@ -1254,12 +1425,14 @@ export class RTVCoordinator implements IEditorContribution {
 	}
 
 	private addRemoveBoxes(e: IModelContentChangedEvent) {
-		let orig = this._boxes.map((x) => x);
+		let orig = this._boxes;
 		let changes = e.changes.sort((a,b) => Range.compareRangesUsingStarts(a.range,b.range));
 		let changeIdx = 0;
 		let origIdx = 0;
 		let i = 0;
-		while (i < this.getLineCount()) {
+		this._boxes = [];
+		let lineCount = this.getLineCount();
+		while (i < lineCount) {
 			if (changeIdx >= changes.length) {
 				this._boxes[i++] = orig[origIdx++];
 				this._boxes[i-1].lineNumber = i;
@@ -1281,13 +1454,11 @@ export class RTVCoordinator implements IEditorContribution {
 					} else if (deltaNumLines > 0) {
 						for (let j = 0; j < deltaNumLines; j++) {
 							let new_box = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, i+1);
-							//new_box.hiddenByUser = orig[origIdx].hiddenByUser;
-							new_box.hiddenByUser = this._visMode == VisibilityMode.SingleBox;
 							this._boxes[i++] = new_box;
 						}
 					} else {
 						for (let j = origIdx; j < origIdx + (-deltaNumLines); j++) {
-							this._boxes[j].destroy();
+							orig[j].destroy();
 						}
 						// need to make the removed boxes disapear
 						origIdx = origIdx + (-deltaNumLines);
@@ -1298,7 +1469,6 @@ export class RTVCoordinator implements IEditorContribution {
 					this._boxes[i-1].lineNumber = i;
 				}
 			}
-
 		}
 		this.updatePrevModel();
 	}
@@ -1332,7 +1502,7 @@ export class RTVCoordinator implements IEditorContribution {
 			//console.log(data.toString())
 		});
 		c.on('exit', (exitCode, signalCode) => {
-			console.log("Exit code from run.py: " + exitCode);
+			//console.log("Exit code from run.py: " + exitCode);
 			this.updateLinesWhenOutOfDate(e, exitCode);
 			if (exitCode === 0) {
 				this.updateData(fs.readFileSync(code_fname + ".out").toString());
@@ -1351,29 +1521,6 @@ export class RTVCoordinator implements IEditorContribution {
 		this.envs = data[1];
 		this.writes = data[0];
 	}
-
-	public flipVisMode(line: number) {
-		if (this._visMode == VisibilityMode.AllBoxes) {
-			this._visMode = VisibilityMode.SingleBox;
-			this._boxes.forEach((b) => {
-				b.hiddenByUser = (b.lineNumber !== line);
-			});
-		} else {
-			this._visMode = VisibilityMode.AllBoxes;
-			this._boxes.forEach((b) => {
-				b.hiddenByUser = false;
-			});
-		}
-		this.updateContentAndLayout();
-	}
-
-	// public focusOnBox(line: number) {
-	// 	console.log("In focusOnBox: " + line.toString())
-	// 	this._boxes.forEach((b) => {
-	// 		b.hiddenByUser = (b.lineNumber !== line);
-	// 	});
-	// 	this.updateContentAndLayout();
-	// }
 
 	public varRemoveInThisBox(varname: string, box: RTVDisplayBox) {
 		box.varRemove(varname);
@@ -1423,6 +1570,32 @@ export class RTVCoordinator implements IEditorContribution {
 		this.updateContentAndLayout();
 	}
 
+	public hideBox(box: RTVDisplayBox) {
+		box.varRemoveAll();
+		this.updateContentAndLayout();
+	}
+
+	public hideAllOtherBoxes(box: RTVDisplayBox) {
+		this._boxes.forEach((b) => {
+			if (b !== box) {
+				b.varRemoveAll();
+			}
+		});
+		this.updateContentAndLayout();
+	}
+
+	public restoreBoxToDefault(box: RTVDisplayBox) {
+		box.varRestoreToDefault();
+		this.updateContentAndLayout();
+	}
+
+	public restoreAllBoxesToDefault() {
+		this._boxes.forEach((box) => {
+			box.varRestoreToDefault();
+		});
+		this.updateContentAndLayout();
+	}
+
 }
 
 registerEditorContribution(RTVCoordinator);
@@ -1430,10 +1603,11 @@ registerEditorContribution(RTVCoordinator);
 const boxAlignsToTopOfLineKey = 'rtv.box.alignsToTopOfLine';
 const boxBorderKey = 'rtv.box.border';
 const byRowOrColKey = 'rtv.box.byRowOrColumn';
-const cellPaddingKey = "rtv.box.cellPadding";
+const cellPaddingKey = 'rtv.box.cellPadding';
 const colBorderKey = 'rtv.box.colBorder';
 const displayOnlyModifiedVarsKey = 'rtv.box.displayOnlyModifiedVars';
 const opacityKey = 'rtv.box.opacity';
+const showBoxAtLoopStmtKey = 'rtv.box.showBoxAtLoopStatements';
 const spaceBetweenBoxesKey = 'rtv.box.spaceBetweenBoxes';
 const zoomKey = 'rtv.box.zoom';
 const presetsKey = 'rtv.presets';
@@ -1446,13 +1620,13 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 	'properties': {
 		[presetsKey]: {
 			'type': 'string',
-			'enum': ['compact', 'full', 'custom'],
+			'enum': ['full', 'compact', 'custom'],
 			'enumDescriptions': [
-				localize('presets.compact', 'Compact mode'),
-				localize('presets.full', 'Full mode')
+				localize('presets.full', 'Full View'),
+				localize('presets.compact', 'Compact View')
 			],
 			'default': 'full',
-			'description': localize('mode', 'Allows you to choose some preset configurations')
+			'description': localize('presetDescr', 'Allows you to choose different mdoes (which are preset configurations)')
 		},
 		[boxAlignsToTopOfLineKey]: {
 			'type': 'boolean',
@@ -1494,6 +1668,11 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 			'default': 0,
 			'description': localize('zoom', 'Controls opacity level (value between 0 and 1; 0: see-through; 1: no see-through)')
 		},
+		[showBoxAtLoopStmtKey]: {
+			'type': 'boolean',
+			'default': false,
+			'description': localize('showboxatloop', 'Controls whether boxes are displayed at loop statements')
+		},
 		[spaceBetweenBoxesKey]: {
 			'type': 'number',
 			'default': 20,
@@ -1506,3 +1685,39 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 		}
 	}
 });
+
+class ConfigurationServiceCache {
+	private _vals: { [k:string]: any; } = {};
+	public onDidUserChangeConfiguration: (e:IConfigurationChangeEvent)=>void;
+	constructor(private readonly configurationService: IConfigurationService) {
+		this.configurationService.onDidChangeConfiguration((e) => { this.onChangeConfiguration(e); });
+	}
+
+	public getValue<T>(key: string): T {
+		let result = this._vals[key];
+		if (result === undefined) {
+			result = this.configurationService.getValue(key);
+			this._vals[key] = result;
+		}
+		return result;
+	}
+
+	public updateValue(key: string, value: any) {
+		this._vals[key] = value;
+		this.configurationService.updateValue(key, value);
+	}
+
+	private onChangeConfiguration(e: IConfigurationChangeEvent) {
+		e.affectedKeys.forEach((key: string) => {
+			if (strings.startsWith(key, 'rtv')) {
+				let v = this.configurationService.getValue(key);
+				if (v !== this._vals[key]) {
+					this._vals[key] = v;
+					if (this.onDidUserChangeConfiguration !== undefined) {
+						this.onDidUserChangeConfiguration(e);
+					}
+				}
+			}
+		});
+	}
+}
