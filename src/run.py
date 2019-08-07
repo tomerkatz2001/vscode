@@ -63,7 +63,7 @@ class Logger(bdb.Bdb):
                 if is_break_str(prev_stmt):
                     self.active_loops[-1].iter += 1
                 for l in self.stmts_in_loop(self.active_loops[-1].lineno):
-                    self.data_at(l).append({"end_loop":self.active_loops_str()})
+                    self.data_at(l).append({"end_loop":self.active_loops_iter_str()})
                 del self.active_loops[-1]
 
     def record_loop_begin(self, frame, lineno):
@@ -76,7 +76,7 @@ class Logger(bdb.Bdb):
             else:
                 self.active_loops.append(LoopInfo(frame, lineno, indent(curr_stmt)))
                 for l in self.stmts_in_loop(lineno):
-                    self.data_at(l).append({"begin_loop":self.active_loops_str()})
+                    self.data_at(l).append({"begin_loop":self.active_loops_iter_str()})
 
             # in_another_loop = None
             # for l in range(lineno+1, len(lines)):
@@ -112,8 +112,11 @@ class Logger(bdb.Bdb):
         return result
 
 
-    def active_loops_str(self):
+    def active_loops_iter_str(self):
         return ",".join([str(l.iter) for l in self.active_loops])
+
+    def active_loops_id_str(self):
+        return ",".join([str(l.lineno) for l in self.active_loops])
 
     def record_env(self, frame, lineno):
         if self.time >= 100:
@@ -121,7 +124,8 @@ class Logger(bdb.Bdb):
             return
         env = {}
         env["time"] = self.time
-        env["#"] = self.active_loops_str()
+        env["#"] = self.active_loops_iter_str()
+        env["$"] = self.active_loops_id_str()
         self.time = self.time + 1
         for k in frame.f_locals:
             if k != magic_var_name:
