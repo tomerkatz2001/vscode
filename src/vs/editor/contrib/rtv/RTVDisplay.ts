@@ -26,7 +26,8 @@ import { Separator } from 'vs/base/browser/ui/actionbar/actionbar';
 import { ContextSubMenu } from 'vs/base/browser/contextmenu';
 import { IMouseWheelEvent } from 'vs/base/browser/mouseEvent';
 import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
-import { KeyCode } from 'vs/base/common/keyCodes';
+import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
+import { KeybindingWeight } from 'vs/platform/keybinding/common/keybindingsRegistry';
 import { EnvironmentService } from 'vs/platform/environment/node/environmentService';
 
 // Helper functions
@@ -214,7 +215,7 @@ class RTVDisplayBox {
 		this._box.textContent = "";
 		this._box.style.position = "absolute";
 		this._box.style.top = "100px";
-		this._box.style.left = "100px";
+		this._box.style.left = "800px";
 		this._box.style.maxWidth = "1366px";
 		this._box.style.transitionProperty = "all";
 		this._box.style.transitionDuration = "0.3s";
@@ -229,7 +230,7 @@ class RTVDisplayBox {
 		};
 		this._box.onkeyup = (e) => {console.log(e)};
 		editor_div.appendChild(this._box);
-		this._line = new RTVLine(this._editor, 0, 0, 0, 0);
+		this._line = new RTVLine(this._editor, 800, 100, 800, 100);
 		this.hide();
 	}
 
@@ -1004,7 +1005,7 @@ export class RTVController implements IEditorContribution {
 	private _boxes: RTVDisplayBox[] = [];
 	private _maxPixelCol = 0;
 	private _prevModel: string[] = [];
-	public _changedLinesWhenOutOfDate: Set<number> | null = new Set();
+	public _changedLinesWhenOutOfDate: Set<number> | null = null;
 	public _configBox: HTMLDivElement | null = null;
 	public tableCellsByLoop: MapLoopsToCells;
 	private _config: ConfigurationServiceCache;
@@ -1025,7 +1026,8 @@ export class RTVController implements IEditorContribution {
 		this._editor.onDidChangeCursorPosition((e) => {this.onChangeCursorPosition(e);	});
 		this._editor.onDidScrollChange((e) => { this.onScrollChange(e); });
 		this._editor.onDidLayoutChange((e) => { this.onLayoutChange(e); });
-		this._editor.onDidChangeModelContent((e) => { this.onChangeModelContent(e); });
+		this._editor.onDidChangeModelContent((e) => { this.runProgram(e); });
+		//this._editor.onDidChangeModelLanguage((e) => { this.runProgram(); });
 		this._editor.onMouseWheel((e) => { this.onMouseWheel(e); });
 		this._editor.onKeyUp((e) => { this.onKeyUp(e); });
 
@@ -1034,8 +1036,6 @@ export class RTVController implements IEditorContribution {
 		}
 
 		this.updateMaxPixelCol();
-
-		this.updatePrevModel();
 
 		this._config = new ConfigurationServiceCache(configurationService)
 		this._config.onDidUserChangeConfiguration = (e) => {
@@ -1061,7 +1061,7 @@ export class RTVController implements IEditorContribution {
 	}
 
 	public restoreViewState(state: any): void {
-		this.updateContentAndLayout();
+		this.runProgram();
 	}
 
 	// Configurable properties
@@ -1323,20 +1323,23 @@ export class RTVController implements IEditorContribution {
 		this._configBox = div;
 	}
 
-	private updateLinesWhenOutOfDate(e: IModelContentChangedEvent, exitCode: number | null) {
+	private updateLinesWhenOutOfDate(exitCode: number | null, e?: IModelContentChangedEvent) {
+		if (e === undefined) {
+			return;
+		}
 		if (exitCode === 0) {
 			this._changedLinesWhenOutOfDate = null;
-		} else {
-			if (this._changedLinesWhenOutOfDate === null) {
-				this._changedLinesWhenOutOfDate = new Set();
-			}
-			let s = this._changedLinesWhenOutOfDate;
-			e.changes.forEach((change) => {
-				for (let i = change.range.startLineNumber; i <= change.range.endLineNumber; i++){
-					s.add(i);
-				}
-			});
+			return;
 		}
+		if (this._changedLinesWhenOutOfDate === null) {
+			this._changedLinesWhenOutOfDate = new Set();
+		}
+		let s = this._changedLinesWhenOutOfDate;
+		e.changes.forEach((change) => {
+			for (let i = change.range.startLineNumber; i <= change.range.endLineNumber; i++){
+				s.add(i);
+			}
+		});
 	}
 
 	private getBox(lineNumber:number) {
@@ -1565,23 +1568,29 @@ export class RTVController implements IEditorContribution {
 		}
 	}
 
-	public getLineLastNonWhitespaceColumn(lineNumber: number): number {
-		const result = strings.lastNonWhitespaceIndex(this._prevModel[lineNumber-1]);
+	public lastNonWhitespaceCol(lineNumber: number, lines?: string[]): number {
+		let line = (lines === undefined) ? this.getLineContent(lineNumber) : lines[lineNumber-1];
+		const result = strings.lastNonWhitespaceIndex(line);
 		if (result === -1) {
 			return 0;
 		}
 		return result + 2;
 	}
 
-	public getLineFirstNonWhitespaceColumn(lineNumber: number): number {
-		const result = strings.firstNonWhitespaceIndex(this._prevModel[lineNumber-1]);
+	public firstNonWhitespaceCol(lineNumber: number, lines?: string[]): number {
+		let line = (lines === undefined) ? this.getLineContent(lineNumber) : lines[lineNumber-1];
+		const result = strings.firstNonWhitespaceIndex(line);
 		if (result === -1) {
 			return 0;
 		}
 		return result + 1;
 	}
 
-	private addRemoveBoxes(e: IModelContentChangedEvent) {
+	private addRemoveBoxes(e?: IModelContentChangedEvent) {
+		if (e === undefined) {
+			this.updatePrevModel();
+			return;
+		}
 		let orig = this._boxes;
 		let changes = e.changes.sort((a,b) => Range.compareRangesUsingStarts(a.range,b.range));
 		let changeIdx = 0;
@@ -1603,8 +1612,8 @@ export class RTVController implements IEditorContribution {
 				let deltaNumLines = numAddedLines - numRemovedLines;
 				let changeStartCol = change.range.startColumn;
 				if ((deltaNumLines <= 0 && changeStartLine === line) ||
-					(deltaNumLines > 0 && ((changeStartLine === line && changeStartCol < this.getLineLastNonWhitespaceColumn(line)) ||
-						 				   (changeStartLine === line-1 && changeStartCol >= this.getLineLastNonWhitespaceColumn(line-1))))) {
+					(deltaNumLines > 0 && ((changeStartLine === line && changeStartCol < this.lastNonWhitespaceCol(line, this._prevModel)) ||
+						 				   (changeStartLine === line-1 && changeStartCol >= this.lastNonWhitespaceCol(line-1, this._prevModel))))) {
 					changeIdx++;
 					if (deltaNumLines === 0) {
 						// nothing to do
@@ -1686,8 +1695,8 @@ export class RTVController implements IEditorContribution {
 			// found a line number here, so this is a runtime error)
 			// match[0] is entire "line N" match, match[1] is just the number N
 			lineNumber = +match[1];
-			colStart = this.getLineFirstNonWhitespaceColumn(lineNumber);
-			colEnd = this.getLineLastNonWhitespaceColumn(lineNumber)
+			colStart = this.firstNonWhitespaceCol(lineNumber);
+			colEnd = this.lastNonWhitespaceCol(lineNumber)
 		} else {
 			// No line number here so this is a syntax error, so we in fact
 			// didn't get the error line number, we got the line with the caret
@@ -1719,7 +1728,7 @@ export class RTVController implements IEditorContribution {
 				// found a line number here, so this is a runtime error)
 				// match[0] is entire "line N" match, match[1] is just the number N
 				lineNumber = +match[1];
-				colStart = this.getLineFirstNonWhitespaceColumn(lineNumber) + caretIndex;
+				colStart = this.firstNonWhitespaceCol(lineNumber) + caretIndex;
 				colEnd = colStart + 1;
 			}
 		}
@@ -1744,7 +1753,11 @@ export class RTVController implements IEditorContribution {
 		}
 	}
 
-	private onChangeModelContent(e: IModelContentChangedEvent) {
+	// private onChangeModelContent(e: IModelContentChangedEvent) {
+	// 	this.runProgram(e);
+	// }
+
+	private runProgram(e?: IModelContentChangedEvent) {
 		let py3 = process.env["PYTHON3"];
 		if (py3 === undefined) {
 			return;
@@ -1755,7 +1768,9 @@ export class RTVController implements IEditorContribution {
 		}
 		//console.log(e);
 		this.padBoxArray();
+
 		this.addRemoveBoxes(e);
+
 		this.updateMaxPixelCol();
 		let code_fname = os.tmpdir() + path.sep + "tmp.py";
 		let model = this._editor.getModel();
@@ -1774,7 +1789,7 @@ export class RTVController implements IEditorContribution {
 			errorMsg = errorMsg + data.toString();
 		});
 		c.on('exit', (exitCode, signalCode) => {
-			this.updateLinesWhenOutOfDate(e, exitCode);
+			this.updateLinesWhenOutOfDate(exitCode, e);
 			if (exitCode === 0) {
 				this.clearError();
 				this.updateData(fs.readFileSync(code_fname + ".out").toString());
@@ -1789,9 +1804,15 @@ export class RTVController implements IEditorContribution {
 	}
 
 	private updateData(str: string) {
-		let data = JSON.parse(str);
-		this.envs = data[1];
-		this.writes = data[0];
+		try {
+			let data = JSON.parse(str);
+			this.envs = data[1];
+			this.writes = data[0];
+		}
+		catch (e) {
+			console.log(str);
+			console.log(e);
+		}
 	}
 
 	public varRemoveInThisBox(varname: string, box: RTVDisplayBox) {
@@ -2030,6 +2051,8 @@ class ConfigurationServiceCache {
 	}
 }
 
+import { EditorContextKeys } from 'vs/editor/common/editorContextKeys';
+
 export class Test extends EditorAction {
 	constructor() {
 		super({
@@ -2040,6 +2063,11 @@ export class Test extends EditorAction {
 			menuOpts: {
 				group: 'navigation',
 				order: 1
+			},
+			kbOpts: {
+				kbExpr: EditorContextKeys.editorTextFocus,
+				primary: KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KEY_1,
+				weight: KeybindingWeight.EditorCore
 			}
 		});
 	}
