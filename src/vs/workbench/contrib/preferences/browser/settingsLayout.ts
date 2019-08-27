@@ -212,9 +212,9 @@ export const tocData: ITOCEntry = {
 			label: localize("runtimeValues", "Runtime Values"),
 			children: [
 				{
-					id: 'rtv/presets',
-					label: localize('presets', 'Presets'),
-					settings: ['rtv.presets']
+					id: 'rtv/viewmode',
+					label: localize('rtv.viewmode', 'View Mode'),
+					settings: ['rtv.viewMode']
 				},
 				{
 					id: 'rtv/box',

@@ -28,7 +28,6 @@ import { IMouseWheelEvent } from 'vs/base/browser/mouseEvent';
 import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
 import { KeybindingWeight } from 'vs/platform/keybinding/common/keybindingsRegistry';
-import { EnvironmentService } from 'vs/platform/environment/node/environmentService';
 
 // Helper functions
 function indent(s: string): number {
@@ -163,14 +162,6 @@ class RTVLine {
 		this._div.style.opacity = opacity.toString();
 	}
 
-	public hide(){
-		this._div.style.display = "none";
-	}
-
-	public show(){
-		this._div.style.display = "block";
-	}
-
 }
 
 class TableElement {
@@ -231,10 +222,14 @@ class RTVDisplayBox {
 		this._box.onkeyup = (e) => {console.log(e)};
 		editor_div.appendChild(this._box);
 		this._line = new RTVLine(this._editor, 800, 100, 800, 100);
-		this.hide();
+		this.setContentFalse();
 	}
 
 	get visible() {
+		return this._hasContent;
+	}
+
+	public hasContent() {
 		return this._hasContent;
 	}
 
@@ -243,17 +238,19 @@ class RTVDisplayBox {
 		this._line.destroy();
 	}
 
-	public hide() {
+	public setContentFalse() {
+		// Set content to false. Boxes with no content don't get processed during layout pass,
+		// so we take care of layout here, which is to make  invisible (opacity 0).
 		this._hasContent = false;
 		this._box.textContent = "";
-		this._box.style.display = "none";
-		this._line.hide();
+		this._box.style.opacity = "0";
+		this._line.setOpacity(0);
 	}
 
-	public show() {
+	public setContentTrue() {
+		// Set content to true. All other layout properties will be set during
+		// layout pass
 		this._hasContent = true;
-		this._box.style.display = "block";
-		this._line.show();
 	}
 
 	public modVars() {
@@ -322,20 +319,18 @@ class RTVDisplayBox {
 
 	private onClick(e: MouseEvent) {
 		let c = this._controller;
-
-		let fullViewAction = this.newAction("Full", () => {
-			c.changeToFullView();
-		});
-		let compactViewAction = this.newAction("Compact", () => {
-			c.changeToCompactView();
-		});
-
 		let currViewMode = c.viewMode;
-		if (currViewMode === 'full') {
-			fullViewAction.checked = true;
-		} else if (currViewMode === 'compact') {
-			compactViewAction.checked = true;
-		}
+
+		let viewModes = [ViewMode.Full, ViewMode.CursorAndReturn, ViewMode.Compact, ViewMode.Stealth];
+		let viewModeActions = viewModes.map((v) => {
+			let action = this.newAction(v, () => {
+				c.changeViewMode(v);
+			});
+			if (currViewMode === v) {
+				action.checked = true;
+			}
+			return action;
+		});
 
 		c.contextMenuService.showContextMenu({
 			getAnchor: () => ({x: e.clientX, y: e.clientY }),
@@ -354,7 +349,7 @@ class RTVDisplayBox {
 					c.restoreAllBoxesToDefault();
 				}),
 				new Separator(),
-				new ContextSubMenu("Appearance of All Boxes", [ fullViewAction, compactViewAction ]),
+				new ContextSubMenu("Appearance of All Boxes", viewModeActions),
 				new Separator(),
 				this.newAction("See All Loop Iterations", () => {
 					c.loopIterController = null;
@@ -377,6 +372,11 @@ class RTVDisplayBox {
 		return strings.endsWith(lineContent, ":") &&
 			   (strings.startsWith(lineContent, "for") ||
 				strings.startsWith(lineContent, "while"));
+	}
+
+	public isReturnLine(): boolean {
+		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
+		return strings.startsWith(lineContent, "return");
 	}
 
 	private bringToLoopCount(envs:any[], active_loops:number[], iterCount:number) {
@@ -518,23 +518,23 @@ class RTVDisplayBox {
 	public updateContent() {
 
 		if (!this._controller.showBoxAtLoopStmt && this.isLoopLine()) {
-			this.hide();
+			this.setContentFalse();
 			return;
 		}
 
 		if (this.isConditionalLine()) {
-			this.hide();
+			this.setContentFalse();
 			return;
 		}
 
 		// Get all envs at this line number
 		let envsAtLine = this._controller.envs[this.lineNumber-1];
 		if (envsAtLine === undefined) {
-			this.hide();
+			this.setContentFalse();
 			return;
 		}
 
-		this.show();
+		this.setContentTrue();
 
 		// collect all next step envs
 		let envs: any[] = [];
@@ -576,7 +576,7 @@ class RTVDisplayBox {
 		let vars = this._displayedVars.getSet();
 
 		if (vars.size === 0) {
-			this.hide();
+			this.setContentFalse();
 			return;
 		}
 
@@ -755,11 +755,6 @@ class RTVDisplayBox {
 		elmt.className = "menubar-menu-button";
 		elmt.style.padding = "0px";
 		let c = this._controller;
-		// elmt.addEventListener("mousewheel", (e) => {
-		// 	console.log(e);
-		// 	e.stopImmediatePropagation();
-		// })
-		elmt.removeEventListener
 		elmt.onclick = (e) => {
 			e.stopImmediatePropagation();
 			c.contextMenuService.showContextMenu({
@@ -792,44 +787,6 @@ class RTVDisplayBox {
 			this._controller.contextMenuService.showContextMenu({
 				getAnchor: () => addButton,
 				getActions: () => this.createActionsForPlusMenu(),
-				// [
-				// 	new ContextSubMenu("Submenu 1", [
-				// 		new Action("Hi", "Remove from THIS box","",true,(event?) => {
-				// 			console.log("AAAAA");
-				// 			console.log(event);
-				// 			return new Promise((resolve, reject) => {
-				// 				console.log("in promise A");
-				// 				resolve(123);
-				// 			});
-				// 		}),
-				// 		new Action("Hi", "Remove from ALL box","",true,(event?) => {
-				// 			console.log("BBBBB");
-				// 			console.log(event);
-				// 			return new Promise((resolve, reject) => {
-				// 				console.log("in promise B");
-				// 				resolve(123);
-				// 			});
-				// 		})
-				// 	]),
-				// 	new ContextSubMenu("Submenu 2", [
-				// 		new Action("Hi", "Remove from THIS box","",true,(event?) => {
-				// 			console.log("CCCC");
-				// 			console.log(event);
-				// 			return new Promise((resolve, reject) => {
-				// 				console.log("in promise C");
-				// 				resolve(123);
-				// 			});
-				// 		}),
-				// 		new Action("Hi", "Remove from ALL box","",true,(event?) => {
-				// 			console.log("DDDD");
-				// 			console.log(event);
-				// 			return new Promise((resolve, reject) => {
-				// 				console.log("in promise D");
-				// 				resolve(123);
-				// 			});
-				// 		})
-				// 	])
-				// ],
 				onHide: () => {},
 				autoSelectFirstItem: true
 			});
@@ -937,7 +894,7 @@ class RTVDisplayBox {
 
 	}
 
-	public updateZoomAndOpacity(dist: number) {
+	public updateZoomAndOpacity(dist: number, opacityMult: number) {
 		let distAbs = Math.abs(dist);
 		let zoom_upper = 1;
 		let zoom_lower = 1 / (distAbs*0.5 + 1);
@@ -949,6 +906,7 @@ class RTVDisplayBox {
 			let opacity_lower = 1/distAbs;
 			this._opacity = opacity_lower + (opacity_upper-opacity_lower) * this._controller.opacityLevel;
 		}
+		this._opacity = this._opacity * opacityMult;
 		this._line.setOpacity(this._opacity);
 	}
 
@@ -965,8 +923,16 @@ class RTVDisplayBox {
 }
 
 enum RowColMode {
-	ByRow,
-	ByCol
+	ByRow = 'By Row',
+	ByCol = 'By Col'
+}
+
+enum ViewMode {
+	Full = 'Full',
+	CursorAndReturn = 'Cursor and Return',
+	Compact = 'Compact',
+	Stealth = 'Stealth',
+	Custom = 'Custom'
 }
 
 class LoopIterController {
@@ -999,6 +965,25 @@ class LoopIterController {
 
 }
 
+
+type VisibilityPolicy = (b: RTVDisplayBox, cursorLineNumber: number) => boolean;
+
+function visibilityAll(b: RTVDisplayBox, cursorLineNumber: number) {
+	return true;
+}
+
+function visibilityNone(b: RTVDisplayBox, cursorLineNumber: number) {
+	return false;
+}
+
+function visibilityCursor(b: RTVDisplayBox, cursorLineNumber: number) {
+	return b.lineNumber === cursorLineNumber;
+}
+
+function visibilityCursorAndReturn(b: RTVDisplayBox, cursorLineNumber: number) {
+	return b.lineNumber === cursorLineNumber || b.isReturnLine();
+}
+
 export class RTVController implements IEditorContribution {
 	public envs: { [k:string]: any []; } = {};
 	public writes: { [k:string]: string[]; } = {};
@@ -1013,6 +998,9 @@ export class RTVController implements IEditorContribution {
 	private _loopIterController: LoopIterController | null = null;
 	private _errorDecorationID: string | null = null;
 	private _errorDisplayTimer: NodeJS.Timer | null = null;
+	private _visibilityPolicy: VisibilityPolicy = visibilityAll;
+	private _peekCounter: number = 0;
+	private _peekTimer: NodeJS.Timer | null = null;
 
 	private static readonly ID = 'editor.contrib.rtv';
 
@@ -1030,6 +1018,7 @@ export class RTVController implements IEditorContribution {
 		//this._editor.onDidChangeModelLanguage((e) => { this.runProgram(); });
 		this._editor.onMouseWheel((e) => { this.onMouseWheel(e); });
 		this._editor.onKeyUp((e) => { this.onKeyUp(e); });
+		this._editor.onKeyDown((e) => { this.onKeyDown(e); });
 
 		for (let i = 0; i < this.getLineCount(); i++) {
 			this._boxes.push(new RTVDisplayBox(this, _editor, _modeService, _openerService, i+1));
@@ -1041,6 +1030,7 @@ export class RTVController implements IEditorContribution {
 		this._config.onDidUserChangeConfiguration = (e) => {
 			this.onUserChangeConfiguration(e);
 		};
+		this.changeViewMode(this.viewMode);
 	}
 
 	public static get(editor: ICodeEditor): RTVController {
@@ -1080,10 +1070,10 @@ export class RTVController implements IEditorContribution {
 	}
 
 	get byRowOrCol(): RowColMode {
-		return this._config.getValue(byRowOrColKey) === 'byRow' ? RowColMode.ByRow : RowColMode.ByCol;
+		return this._config.getValue(byRowOrColKey);
 	}
 	set byRowOrCol(v: RowColMode) {
-		this._config.updateValue(byRowOrColKey, v ===  RowColMode.ByRow ? 'byRow' : 'byCol');
+		this._config.updateValue(byRowOrColKey, v);
 	}
 
 	get cellPadding(): number {
@@ -1135,11 +1125,11 @@ export class RTVController implements IEditorContribution {
 		this._config.updateValue(zoomKey, v);
 	}
 
-	get viewMode(): string {
-		return this._config.getValue(presetsKey);
+	get viewMode(): ViewMode {
+		return this._config.getValue(viewModeKey);
 	}
-	set viewMode(v: string) {
-		this._config.updateValue(presetsKey, v);
+	set viewMode(v: ViewMode) {
+		this._config.updateValue(viewModeKey, v);
 	}
 
 	// End of configurable properties
@@ -1158,7 +1148,6 @@ export class RTVController implements IEditorContribution {
 	}
 
 	public changeToCompactView() {
-		this.viewMode = 'compact';
 		this.boxAlignsToTopOfLine = true;
 		this.boxBorder = false;
 		this.byRowOrCol = RowColMode.ByRow;
@@ -1173,7 +1162,6 @@ export class RTVController implements IEditorContribution {
 	}
 
 	public changeToFullView() {
-		this.viewMode = 'full';
 		this.boxAlignsToTopOfLine = false;
 		this.boxBorder = true;
 		this.byRowOrCol = RowColMode.ByCol;
@@ -1188,15 +1176,10 @@ export class RTVController implements IEditorContribution {
 	}
 
 	private onUserChangeConfiguration(e: IConfigurationChangeEvent) {
-		if (e.affectedKeys.indexOf(presetsKey) != -1) {
-			let v:string = this.viewMode;
-			if (v === 'full') {
-				this.changeToFullView();
-			} else if (v === 'compact') {
-				this.changeToCompactView();
-			}
+		if (e.affectedKeys.indexOf(viewModeKey) != -1) {
+			this.changeViewMode(this.viewMode);
 		} else if (e.affectedKeys.some((s) => strings.startsWith(s, 'rtv'))) {
-			this.viewMode = 'custom';
+			this.viewMode = ViewMode.Custom;
 		}
 	}
 
@@ -1455,7 +1438,7 @@ export class RTVController implements IEditorContribution {
 		});
 	}
 
-	private updateLayout() {
+	private updateLayoutHelper(toProcess: (b: RTVDisplayBox) => boolean, opacityMult: number) {
 		this.padBoxArray();
 
 		let cursorPos = this._editor.getPosition();
@@ -1467,7 +1450,7 @@ export class RTVController implements IEditorContribution {
 		let minDist = Infinity;
 		let focusedLine = 0;
 		for (let line = 1; line <= this.getLineCount(); line++) {
-			if (this.getBox(line).visible) {
+			if (toProcess(this.getBox(line))) {
 				let dist = Math.abs(cursorPos.lineNumber - line);
 				if (dist <  minDist) {
 					minDist = dist;
@@ -1475,7 +1458,7 @@ export class RTVController implements IEditorContribution {
 				}
 			}
 		}
-		// this can happen if no boxes are visible
+		// this can happen if no boxes are to be processed
 		if (minDist === Infinity) {
 			return
 		}
@@ -1485,14 +1468,14 @@ export class RTVController implements IEditorContribution {
 		let distancesFromFocus: number[] = new Array(this._boxes.length);
 		let dist = 0;
 		for (let line = focusedLine; line >= 1; line--) {
-			if (this.getBox(line).visible) {
+			if (toProcess(this.getBox(line))) {
 				distancesFromFocus[line-1] = dist;
 				dist = dist - 1;
 			}
 		}
 		dist = 1;
 		for (let line = focusedLine+1; line <= this.getLineCount(); line++) {
-			if (this.getBox(line).visible) {
+			if (toProcess(this.getBox(line))) {
 				distancesFromFocus[line-1] = dist;
 				dist = dist + 1;
 			}
@@ -1500,8 +1483,8 @@ export class RTVController implements IEditorContribution {
 
 		for (let line = 1; line <= this.getLineCount(); line++) {
 			let box = this.getBox(line);
-			if (box.visible) {
-				box.updateZoomAndOpacity(distancesFromFocus[line-1]);
+			if (toProcess(this.getBox(line))) {
+				box.updateZoomAndOpacity(distancesFromFocus[line-1], opacityMult);
 			}
 		}
 		// let cursorPixelPos = this._editor.getScrolledVisiblePosition(cursorPos);
@@ -1524,7 +1507,7 @@ export class RTVController implements IEditorContribution {
 		let top = top_start;
 		for (let line = focusedLine-1; line >= 1; line--) {
 			let box = this.getBox(line);
-			if (box.visible) {
+			if (toProcess(box)) {
 				top = top - spaceBetweenBoxes - box.getHeight();
 				let lineMidPoint = this.getLinePixelMid(line);
 				if (lineMidPoint < top) {
@@ -1536,7 +1519,7 @@ export class RTVController implements IEditorContribution {
 		top = top_start;
 		for (let line = focusedLine; line <= this.getLineCount(); line++) {
 			let box = this.getBox(line);
-			if (box.visible) {
+			if (toProcess(box)) {
 				let lineMidPoint = this.getLinePixelMid(line);
 				if (lineMidPoint > top) {
 					top = lineMidPoint;
@@ -1546,6 +1529,16 @@ export class RTVController implements IEditorContribution {
 			}
 		}
 
+	}
+
+	private updateLayout() {
+		let cursorPos = this._editor.getPosition();
+		if (cursorPos === null) {
+			return;
+		}
+		let curr = cursorPos.lineNumber;
+		this.updateLayoutHelper(b => b.hasContent(), 0);
+		this.updateLayoutHelper(b => b.hasContent() && this._visibilityPolicy(b,curr), 1);
 	}
 
 	public getLinePixelPos(line:number): { top: number; left: number; height: number; } {
@@ -1711,7 +1704,7 @@ export class RTVController implements IEditorContribution {
 			// It's always indented 4 extra spaces
 			caretIndex = caretIndex - 4;
 
-			// Next line going backwards is a the line of code above the caret
+			// Next line going backwards is the line of code above the caret
 			errorLines.pop();
 
 			// this should now be the line number
@@ -1729,6 +1722,9 @@ export class RTVController implements IEditorContribution {
 				// match[0] is entire "line N" match, match[1] is just the number N
 				lineNumber = +match[1];
 				colStart = this.firstNonWhitespaceCol(lineNumber) + caretIndex;
+				if (colStart < 1) {
+					colStart = 1;
+				}
 				colEnd = colStart + 1;
 			}
 		}
@@ -1903,6 +1899,89 @@ export class RTVController implements IEditorContribution {
 		this.updateContentAndLayout();
 	}
 
+	public setVisibilityAll() {
+		this._visibilityPolicy = visibilityAll;
+	}
+
+	public setVisibilityNone() {
+		this._visibilityPolicy = visibilityNone;
+	}
+
+	public setVisibilityCursor() {
+		this._visibilityPolicy = visibilityCursor;
+	}
+
+	public setVisibilityCursorAndReturn() {
+		this._visibilityPolicy = visibilityCursorAndReturn;
+	}
+
+	public flipThroughViewModes() {
+		function computeNextViewMode(v: ViewMode) {
+			if (v === ViewMode.Full) return ViewMode.CursorAndReturn;
+			if (v === ViewMode.CursorAndReturn) return ViewMode.Compact;
+			if (v === ViewMode.Compact)	return ViewMode.Stealth;
+			if (v === ViewMode.Stealth)	 return ViewMode.Full;
+			return ViewMode.Full;
+		}
+
+		this.changeViewMode(computeNextViewMode(this.viewMode));
+	}
+
+	public changeViewMode(m: ViewMode) {
+		this.viewMode = m;
+		switch (m) {
+			case ViewMode.Full:
+				this.setVisibilityAll();
+				this.changeToFullView();
+				break;
+			case ViewMode.CursorAndReturn:
+				this.setVisibilityCursorAndReturn();
+				this.changeToFullView();
+				break;
+			case ViewMode.Compact:
+				this.setVisibilityAll();
+				this.changeToCompactView();
+				break;
+			case ViewMode.Stealth:
+				this.setVisibilityNone();
+				this.updateLayout();
+				setTimeout(() => { this.changeToFullView(); }, 300);
+				break;
+		}
+	}
+
+	public zoomIn() {
+		if (this.byRowOrCol === RowColMode.ByCol) {
+			let newZoom = this.zoomLevel + 0.1;
+			if (newZoom > 1) {
+				newZoom = 1;
+			}
+			this.zoomLevel = newZoom;
+			let newOpacity = this.opacityLevel + 0.1;
+			if (newOpacity > 1) {
+				newOpacity = 1;
+			}
+			this.opacityLevel = newOpacity;
+			this.updateLayout();
+		}
+	}
+
+	public zoomOut() {
+		if (this.byRowOrCol === RowColMode.ByCol) {
+			let newZoom = this.zoomLevel - 0.1;
+			if (newZoom < 0) {
+				newZoom = 0;
+			}
+			this.zoomLevel = newZoom;
+			let newOpacity = this.opacityLevel - 0.1;
+			if (newOpacity < 0) {
+				newOpacity = 0;
+			}
+			this.opacityLevel = newOpacity;
+			this.updateLayout();
+		}
+	}
+
 	private onMouseWheel(e: IMouseWheelEvent) {
 		if (this.loopIterController !== null) {
 			e.stopImmediatePropagation();
@@ -1915,12 +1994,47 @@ export class RTVController implements IEditorContribution {
 	}
 
 	private onKeyUp(e: IKeyboardEvent) {
-		// console.log("In controller:");
-		// console.log(e);
+		// console.log("In controller Up:" + e.code);
 		if (e.keyCode === KeyCode.Escape) {
 			if (this.loopIterController !== null) {
 				e.stopPropagation();
 				this.loopIterController = null;
+			}
+		}
+		if (e.keyCode === KeyCode.Ctrl) {
+			this._peekCounter = 0;
+			if (this._peekTimer !== null) {
+				clearTimeout(this._peekTimer);
+			}
+			if (this.viewMode === ViewMode.Stealth) {
+				this.setVisibilityNone();
+				this.updateLayout();
+			}
+		}
+	}
+
+	private onKeyDown(e: IKeyboardEvent) {
+		// console.log("In controller Down:" + e.code);
+		if (e.keyCode === KeyCode.Ctrl) {
+			this._peekCounter = this._peekCounter + 1;
+			if (this._peekCounter > 1) {
+				if (this._peekTimer !== null) {
+					clearTimeout(this._peekTimer);
+				}
+				this._peekTimer = setTimeout(() => {
+					this._peekTimer = null;
+					this._peekCounter = 0;
+					if (this.viewMode === ViewMode.Stealth) {
+						this.setVisibilityNone();
+						this.updateLayout();
+					}
+				}, 500);
+				if (this._peekCounter === 2) {
+					if (this.viewMode === ViewMode.Stealth) {
+						this.setVisibilityCursor();
+						this.updateLayout();
+					}
+				}
 			}
 		}
 	}
@@ -1939,7 +2053,7 @@ const opacityKey = 'rtv.box.opacity';
 const showBoxAtLoopStmtKey = 'rtv.box.showBoxAtLoopStatements';
 const spaceBetweenBoxesKey = 'rtv.box.spaceBetweenBoxes';
 const zoomKey = 'rtv.box.zoom';
-const presetsKey = 'rtv.presets';
+const viewModeKey = 'rtv.viewMode';
 
 Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfiguration({
 	'id': 'rtv',
@@ -1947,15 +2061,17 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 	'type': 'object',
 	'title': localize('rtvConfigurationTitle', "RTV"),
 	'properties': {
-		[presetsKey]: {
+		[viewModeKey]: {
 			'type': 'string',
-			'enum': ['full', 'compact', 'custom'],
+			'enum': [ViewMode.Full, ViewMode.CursorAndReturn, ViewMode.Compact, ViewMode.Stealth, ViewMode.Custom],
 			'enumDescriptions': [
-				localize('rtv.presets.full', 'Full View'),
-				localize('rtv.presets.compact', 'Compact View')
+				localize('rtv.viewMode.full', 'All boxes are visible'),
+				localize('rtv.viewMode.cursor', 'Boxes are visible at cursor and return'),
+				localize('rtv.viewMode.compact', 'All boxes are visible and they are in compact view'),
+				localize('rtv.viewMode.stealth', 'All boxes are invisible (hold ctrl to see box at cursor)')
 			],
-			'default': 'full',
-			'description': localize('rtv.presetDescr', 'Allows you to choose different mdoes (which are preset configurations)')
+			'default': ViewMode.Full,
+			'description': localize('rtv.viewMode', 'Allows you to choose different view modes')
 		},
 		[boxAlignsToTopOfLineKey]: {
 			'type': 'boolean',
@@ -1969,12 +2085,12 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 		},
 		[byRowOrColKey]: {
 			'type': 'string',
-			'enum': ['byCol', 'byRow'],
+			'enum': [ RowColMode.ByCol, RowColMode.ByRow],
 			'enumDescriptions': [
 				localize('rtv.byRowOrColumn.byCol', 'Each column is a variable'),
 				localize('rtv.byRowOrColumn.byRow', 'Each row is a variable')
 			],
-			'default': 'byCol',
+			'default': RowColMode.ByCol,
 			'description': localize('rtv.byroworcol', 'Controls if variables are displayed in rows or columns')
 		},
 		[cellPaddingKey]: {
@@ -2015,6 +2131,7 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 	}
 });
 
+
 class ConfigurationServiceCache {
 	private _vals: { [k:string]: any; } = {};
 	public onDidUserChangeConfiguration: (e:IConfigurationChangeEvent)=>void;
@@ -2053,29 +2170,63 @@ class ConfigurationServiceCache {
 
 import { EditorContextKeys } from 'vs/editor/common/editorContextKeys';
 
-export class Test extends EditorAction {
-	constructor() {
-		super({
-			id: 'rtv.show',
-			label: localize('rtv.show', "Show Box at This Line"),
-			alias: 'Show Box at This Line',
-			precondition: null,
-			menuOpts: {
-				group: 'navigation',
-				order: 1
-			},
-			kbOpts: {
-				kbExpr: EditorContextKeys.editorTextFocus,
-				primary: KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KEY_1,
-				weight: KeybindingWeight.EditorCore
+
+function createRTVAction(id: string, name: string, key: number, callback: (c:RTVController) => void) {
+	class RTVAction extends EditorAction {
+		private _callback: (c:RTVController) => void;
+		constructor() {
+			super({
+				id: id,
+				label: localize(id, name),
+				alias: name,
+				precondition: null,
+				menuOpts: {
+					group: 'navigation',
+					order: 1
+				},
+				kbOpts: {
+					kbExpr: EditorContextKeys.editorTextFocus,
+					primary: key,
+					weight: KeybindingWeight.EditorCore
+				}
+			});
+			this._callback = callback;
+		}
+		public run(accessor: ServicesAccessor, editor: ICodeEditor): void {
+			let controller = RTVController.get(editor);
+			if (controller) {
+				this._callback(controller);
 			}
-		});
-	}
-	public run(accessor: ServicesAccessor, editor: ICodeEditor): void {
-		let controller = RTVController.get(editor);
-		if (controller) {
-			controller.showBoxAtCurrLine();
 		}
 	}
+
+	registerEditorAction(RTVAction);
 }
-registerEditorAction(Test);
+
+createRTVAction(
+	'rtv.flipview',
+	"Flip View Mode",
+	KeyMod.Shift | KeyCode.Space,
+	(c) => {
+		c.flipThroughViewModes();
+	}
+);
+
+createRTVAction(
+	'rtv.zoomin',
+	"Zoom In",
+	KeyMod.Alt | KeyCode.US_EQUAL,
+	(c) => {
+		c.zoomIn();
+	}
+);
+
+createRTVAction(
+	'rtv.zoomout',
+	"Zoom Out",
+	KeyMod.Alt | KeyCode.US_MINUS,
+	(c) => {
+		c.zoomOut();
+	}
+);
+
