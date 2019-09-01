@@ -6,7 +6,7 @@ import * as path from "path";
 import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
 import { IEditorContribution, IScrollEvent } from 'vs/editor/common/editorCommon';
-import { EditorAction, ServicesAccessor, registerEditorAction, registerEditorContribution } from 'vs/editor/browser/editorExtensions';
+import { EditorAction, EditorCommand, registerEditorCommand, ServicesAccessor, registerEditorAction, registerEditorContribution } from 'vs/editor/browser/editorExtensions';
 import { EditorLayoutInfo } from 'vs/editor/common/config/editorOptions';
 import * as strings from 'vs/base/common/strings';
 import { Range } from 'vs/editor/common/core/range';
@@ -28,6 +28,9 @@ import { IMouseWheelEvent } from 'vs/base/browser/mouseEvent';
 import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
 import { KeybindingWeight } from 'vs/platform/keybinding/common/keybindingsRegistry';
+import { RenameInputField, CONTEXT_RENAME_INPUT_VISIBLE } from 'vs/editor/contrib/rename/renameInputField';
+import { IThemeService } from 'vs/platform/theme/common/themeService';
+import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 
 // Helper functions
 function indent(s: string): number {
@@ -58,6 +61,12 @@ function arrayStartsWith<T>(haystack: T[], needle: T[]): boolean {
 
 function strNumsToArray(s: string): number[] {
 	return s.split(",").map(e => +e)
+}
+
+// returns true if s matches regExp
+function regExpMatchEntireString(s: string, regExp: string) {
+	let res = s.match(regExp);
+	return res !== null && res.index === 0 && res[0] === s;
 }
 
 abstract class VarSet {
@@ -113,6 +122,63 @@ class ModVarSet extends VarSet {
 	}
 }
 
+class DeltaVarSet {
+	private _plus: Set<string>;
+	private _minus: Set<string>;
+	constructor(other?: DeltaVarSet) {
+		if (other === undefined) {
+			this._plus = new Set();
+			this._minus = new Set();
+		} else {
+			this._plus = new Set(other._plus);
+			this._minus = new Set(other._minus);
+		}
+	}
+	public add(v: string) {
+		if (this._minus.has(v)) {
+			this._minus.delete(v);
+		} else {
+			this._plus.add(v);
+		}
+	}
+	public delete(v: string) {
+		if (this._plus.has(v)) {
+			this._plus.delete(v);
+		} else {
+			this._minus.add(v);
+		}
+	}
+	public applyTo(s: Set<string>, all: Set<string>) {
+		let res = new Set<string>(s);
+		this._plus.forEach(v => {
+			if (all.has(v)) {
+				if (res.has(v)) {
+					this._plus.delete(v);
+				} else {
+					res.add(v);
+				}
+			} else {
+				this._plus.delete(v);
+			}
+		});
+		this._minus.forEach(v => {
+			if (all.has(v)) {
+				if (res.has(v)) {
+					res.delete(v);
+				} else {
+					this._minus.delete(v);
+				}
+			} else {
+				this._minus.delete(v);
+			}
+		});
+		return res;
+	}
+	public clear() {
+		this._plus.clear();
+		this._minus.clear();
+	}
+}
 
 class RTVLine {
 	private _div: HTMLDivElement;
@@ -184,20 +250,22 @@ class RTVDisplayBox {
 	private _hasContent: boolean = false;
 	private _allEnvs: any[];
 	private _allVars: Set<string> = new Set<string>();
-	private _displayedVars: VarSet;
+	private _displayedVars: Set<string> = new Set<string>();
+	private _deltaVarSet: DeltaVarSet;
 
 	constructor(
 		private readonly _controller: RTVController,
 		private readonly _editor: ICodeEditor,
 		private readonly _modeService: IModeService,
 		private readonly _openerService: IOpenerService | null,
-		public lineNumber: number
+		public lineNumber: number,
+		deltaVarSet: DeltaVarSet
 	) {
-		if (this._controller.displayOnlyModifiedVars) {
-			this._displayedVars = new ModVarSet(this);
-		} else {
-			this._displayedVars = new FullVarSet(this);
-		}
+		// if (this._controller.displayOnlyModifiedVars) {
+		// 	this._displayedVars = new ModVarSet(this);
+		// } else {
+		// 	this._displayedVars = new FullVarSet(this);
+		// }
 		let editor_div = this._editor.getDomNode();
 		if (editor_div === null) {
 			throw new Error('Cannot find Monaco Editor');
@@ -223,6 +291,7 @@ class RTVDisplayBox {
 		editor_div.appendChild(this._box);
 		this._line = new RTVLine(this._editor, 800, 100, 800, 100);
 		this.setContentFalse();
+		this._deltaVarSet = new DeltaVarSet(deltaVarSet);
 	}
 
 	get visible() {
@@ -271,7 +340,7 @@ class RTVDisplayBox {
 
 	public notDisplayedVars() {
 		let result = new Set<string>();
-		let displayed = this._displayedVars.getSet();
+		let displayed = this._displayedVars;
 		this._allVars.forEach((v:string) => {
 			if (!displayed.has(v)) {
 				result.add(v);
@@ -573,7 +642,16 @@ class RTVDisplayBox {
 			}
 		});
 
-		let vars = this._displayedVars.getSet();
+		let startingVars: Set<string>;
+		if (this._controller.displayOnlyModifiedVars) {
+			startingVars = this.modVars();
+		} else {
+			startingVars = this._allVars;
+		}
+
+		let vars = this._deltaVarSet.applyTo(startingVars, this._allVars);
+		this._displayedVars = vars;
+		//let vars = this._displayedVars.getSet();
 
 		if (vars.size === 0) {
 			this.setContentFalse();
@@ -663,36 +741,54 @@ class RTVDisplayBox {
 		this._box.appendChild(stalenessIndicator);
 	}
 
-	public varRemove(varname: string) {
-		this._displayedVars = this._displayedVars.remove(varname);
+	public varRemove(regExp: string, removed?: Set<string>) {
+		if (regExp === "*") {
+			regExp = ".*";
+		}
+		this.allVars().forEach((v) => {
+			if (regExpMatchEntireString(v, regExp) && this._displayedVars.has(v)) {
+				this._deltaVarSet.delete(v);
+				if (removed !== undefined) {
+					removed.add(v);
+				}
+			}
+		});
 	}
 
-	public varKeepOnly(varname: string) {
-		this._displayedVars = new ConcreteVarSet(new Set<string>([varname]));
+	public varRemoveAll(removed?: Set<string>) {
+		this.varRemove("*", removed);
 	}
 
-	public varAdd(varname: string) {
-		this._displayedVars = this._displayedVars.add(varname);
+	public varAdd(regExp: string, added?: Set<string>) {
+		if (regExp === "*") {
+			regExp = ".*";
+		}
+		this.allVars().forEach((v) => {
+			if (regExpMatchEntireString(v, regExp) && !this._displayedVars.has(v)) {
+				this._deltaVarSet.add(v);
+				if (added !== undefined) {
+					added.add(v);
+				}
+			}
+		});
 	}
 
-	public varAddAll() {
-		this._displayedVars = new FullVarSet(this);
+	public varKeepOnly(regExp: string, added?: Set<string>, removed?: Set<string>) {
+		this.varRemoveAll(removed);
+		this._displayedVars.clear();
+		this.varAdd(regExp, added);
 	}
 
-	public varRemoveAll() {
-		this._displayedVars = new EmptyVarSet();
+	public varAddAll(added?: Set<string>) {
+		this.varAdd("*", added);
 	}
 
 	public varRestoreToDefault() {
-		if (this._controller.displayOnlyModifiedVars) {
-			this._displayedVars = new ModVarSet(this);
-		} else {
-			this._displayedVars = new FullVarSet(this);
-		}
+		this._deltaVarSet.clear();
 	}
 
 	public varMakeVisible() {
-		if (this._displayedVars.getSet().size == 0) {
+		if (this._displayedVars.size == 0) {
 			this.varRestoreToDefault();
 		}
 	}
@@ -935,6 +1031,17 @@ enum ViewMode {
 	Custom = 'Custom'
 }
 
+enum ChangeVarsWhere {
+	Here = 'here',
+	All = 'all',
+}
+
+enum ChangeVarsOp {
+	Add = 'add',
+	Del = 'del',
+	Only = 'only'
+}
+
 class LoopIterController {
 
 	private loopIDArr: number[];
@@ -1001,8 +1108,11 @@ export class RTVController implements IEditorContribution {
 	private _visibilityPolicy: VisibilityPolicy = visibilityAll;
 	private _peekCounter: number = 0;
 	private _peekTimer: NodeJS.Timer | null = null;
+	private _changeVarsInputField?: RenameInputField;
+	private _globalDeltaVarSet: DeltaVarSet = new DeltaVarSet();
 
 	private static readonly ID = 'editor.contrib.rtv';
+
 
 	constructor(
 		private readonly _editor: ICodeEditor,
@@ -1010,6 +1120,8 @@ export class RTVController implements IEditorContribution {
 		@IModeService private readonly _modeService: IModeService,
 		@IConfigurationService configurationService: IConfigurationService,
 		@IContextMenuService public readonly contextMenuService: IContextMenuService,
+		@IThemeService private readonly _themeService: IThemeService,
+		@IContextKeyService private readonly _contextKeyService: IContextKeyService,
 	) {
 		this._editor.onDidChangeCursorPosition((e) => {this.onChangeCursorPosition(e);	});
 		this._editor.onDidScrollChange((e) => { this.onScrollChange(e); });
@@ -1021,7 +1133,7 @@ export class RTVController implements IEditorContribution {
 		this._editor.onKeyDown((e) => { this.onKeyDown(e); });
 
 		for (let i = 0; i < this.getLineCount(); i++) {
-			this._boxes.push(new RTVDisplayBox(this, _editor, _modeService, _openerService, i+1));
+			this._boxes.push(new RTVDisplayBox(this, _editor, _modeService, _openerService, i+1, this._globalDeltaVarSet));
 		}
 
 		this.updateMaxPixelCol();
@@ -1031,6 +1143,9 @@ export class RTVController implements IEditorContribution {
 			this.onUserChangeConfiguration(e);
 		};
 		this.changeViewMode(this.viewMode);
+
+		this._changeVarsInputField = new RenameInputField(this._editor, this._themeService, this._contextKeyService);
+		//this._modVarsInputField.getDomNode().style.width = "300px";
 	}
 
 	public static get(editor: ICodeEditor): RTVController {
@@ -1154,24 +1269,29 @@ export class RTVController implements IEditorContribution {
 		this.cellPadding = 6;
 		this.colBorder = true;
 		this.displayOnlyModifiedVars = true;
-		this.opacityLevel = 1;
 		this.showBoxAtLoopStmt = true;
 		this.spaceBetweenBoxes = -4;
 		this.zoomLevel = 1;
+		this.opacityLevel = 1;
 		this.restoreAllBoxesToDefault();
 	}
 
-	public changeToFullView() {
+	public changeToFullView(zoom?: 0 | 1) {
 		this.boxAlignsToTopOfLine = false;
 		this.boxBorder = true;
 		this.byRowOrCol = RowColMode.ByCol;
 		this.cellPadding = 6;
 		this.colBorder = false;
 		this.displayOnlyModifiedVars = false;
-		this.opacityLevel = 0;
 		this.showBoxAtLoopStmt = false;
 		this.spaceBetweenBoxes = 20;
-		this.zoomLevel = 0;
+		if (zoom === 1) {
+			this.zoomLevel = 1;
+			this.opacityLevel = 1;
+		} else {
+			this.zoomLevel = 0;
+			this.opacityLevel = 0;
+		}
 		this.restoreAllBoxesToDefault();
 	}
 
@@ -1329,17 +1449,26 @@ export class RTVController implements IEditorContribution {
 		let i = lineNumber - 1;
 		if (i >= this._boxes.length) {
 			for (let j = this._boxes.length; j <= i; j++) {
-				this._boxes[j] = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, j+1);
+				this._boxes[j] = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, j+1, this._globalDeltaVarSet);
 			}
 		}
 		return this._boxes[i];
+	}
+
+	public getBoxAtCurrLine() {
+		let cursorPos = this._editor.getPosition();
+		if (cursorPos === null) {
+			throw new Error("No position to get box at");
+		}
+
+		return this.getBox(cursorPos.lineNumber);
 	}
 
 	private padBoxArray() {
 		let lineCount = this.getLineCount();
 		if (lineCount > this._boxes.length) {
 			for (let j = this._boxes.length; j < lineCount; j++) {
-				this._boxes[j] = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, j+1);
+				this._boxes[j] = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, j+1, this._globalDeltaVarSet);
 			}
 		}
 	}
@@ -1612,7 +1741,8 @@ export class RTVController implements IEditorContribution {
 						// nothing to do
 					} else if (deltaNumLines > 0) {
 						for (let j = 0; j < deltaNumLines; j++) {
-							let new_box = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, i+1);
+							let new_box = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, i+1, this._globalDeltaVarSet);
+							console.log(this._globalDeltaVarSet);
 							if (!this._makeNewBoxesVisible) {
 								new_box.varRemoveAll();
 							}
@@ -1817,8 +1947,12 @@ export class RTVController implements IEditorContribution {
 	}
 
 	public varRemoveInAllBoxes(varname: string) {
+		let removed = new Set<string>();
 		this._boxes.forEach((box) => {
-			box.varRemove(varname);
+			box.varRemove(varname, removed);
+		});
+		removed.forEach((v) => {
+			this._globalDeltaVarSet.delete(v);
 		});
 		this.updateContentAndLayout();
 	}
@@ -1829,8 +1963,16 @@ export class RTVController implements IEditorContribution {
 	}
 
 	public varKeepOnlyInAllBoxes(varname: string) {
+		let removed = new Set<string>();
+		let added = new Set<string>();
 		this._boxes.forEach((box) => {
-			box.varKeepOnly(varname);
+			box.varKeepOnly(varname, added, removed);
+		});
+		removed.forEach((v) => {
+			this._globalDeltaVarSet.delete(v);
+		});
+		added.forEach((v) => {
+			this._globalDeltaVarSet.add(v);
 		});
 		this.updateContentAndLayout();
 	}
@@ -1840,10 +1982,18 @@ export class RTVController implements IEditorContribution {
 		this.updateContentAndLayout();
 	}
 
-	public varAddInAllBoxes(varname: string) {
+	public varAddInAllBoxes(regExp: string) {
+		let added = new Set<string>();
 		this._boxes.forEach((box) => {
-			box.varAdd(varname);
+			box.varAdd(regExp, added);
 		});
+		if (!this.displayOnlyModifiedVars && (regExp === "*" || regExp === ".*")) {
+			this._globalDeltaVarSet.clear();
+		} else {
+			added.forEach((v) => {
+				this._globalDeltaVarSet.add(v);
+			});
+		}
 		this.updateContentAndLayout();
 	}
 
@@ -1882,6 +2032,7 @@ export class RTVController implements IEditorContribution {
 
 	public restoreAllBoxesToDefault() {
 		this._makeNewBoxesVisible = true;
+		this._globalDeltaVarSet.clear();
 		this._boxes.forEach((box) => {
 			box.varRestoreToDefault();
 		});
@@ -1889,13 +2040,7 @@ export class RTVController implements IEditorContribution {
 	}
 
 	public showBoxAtCurrLine() {
-		let cursorPos = this._editor.getPosition();
-		if (cursorPos === null) {
-			return;
-		}
-
-		let box = this.getBox(cursorPos.lineNumber);
-		box.varMakeVisible();
+		this.getBoxAtCurrLine().varMakeVisible();
 		this.updateContentAndLayout();
 	}
 
@@ -1936,7 +2081,7 @@ export class RTVController implements IEditorContribution {
 				break;
 			case ViewMode.CursorAndReturn:
 				this.setVisibilityCursorAndReturn();
-				this.changeToFullView();
+				this.changeToFullView(1);
 				break;
 			case ViewMode.Compact:
 				this.setVisibilityAll();
@@ -1949,6 +2094,18 @@ export class RTVController implements IEditorContribution {
 				break;
 		}
 	}
+
+	public flipZoom() {
+		if (this.zoomLevel === 0) {
+			this.zoomLevel = 1;
+			this.opacityLevel = 1;
+		} else {
+			this.zoomLevel = 0;
+			this.opacityLevel = 0;
+		}
+		this.updateLayout();
+	}
+
 
 	public zoomIn() {
 		if (this.byRowOrCol === RowColMode.ByCol) {
@@ -1979,6 +2136,80 @@ export class RTVController implements IEditorContribution {
 			}
 			this.opacityLevel = newOpacity;
 			this.updateLayout();
+		}
+	}
+
+	public changeVars(op?: ChangeVarsOp, where?: ChangeVarsWhere) {
+		if (this._changeVarsInputField == undefined) {
+			return;
+		}
+
+		let cursorPos = this._editor.getPosition();
+		if (cursorPos === null) {
+			return;
+		}
+
+		let range = new Range(cursorPos.lineNumber-1, cursorPos.column, cursorPos.lineNumber-1, cursorPos.column + 40);
+
+		let text: string;
+		let selectionEnd: number;
+		let selectionStart: number;
+
+		if (op !== undefined && where != undefined) {
+			text = op;
+			if (where === ChangeVarsWhere.All) {
+				text = text + '@' + ChangeVarsWhere.All;
+			}
+			let varNameText = "<VarNameRegExp>";
+			text = text + ' ' + varNameText;
+
+			selectionEnd = text.length;
+			selectionStart = selectionEnd - varNameText.length;
+		} else {
+			text = "add|del|keep [@all] <RegExp>";
+			selectionStart = 0;
+			selectionEnd = text.length;
+		}
+
+		this._changeVarsInputField.getInput(range, text, selectionStart, selectionEnd).then(newNameOrFocusFlag => {
+			if (typeof newNameOrFocusFlag === 'boolean') {
+				if (newNameOrFocusFlag) {
+					this._editor.focus();
+				}
+				return;
+			}
+
+			this._editor.focus();
+			this.runChangeVarsCommand(newNameOrFocusFlag);
+		});
+	}
+
+	private runChangeVarsCommand(cmd: string) {
+		let a = cmd.split(/[ ]+/);
+		if (a.length === 2) {
+			let op = a[0].trim();
+			let varName = a[1].trim();
+			switch (op) {
+				case ChangeVarsOp.Add:
+					this.varAddInThisBox(varName, this.getBoxAtCurrLine());
+					break;
+				case ChangeVarsOp.Add + "@" + ChangeVarsWhere.All:
+					this.varAddInAllBoxes(varName);
+					break;
+				case ChangeVarsOp.Del:
+					this.varRemoveInThisBox(varName, this.getBoxAtCurrLine());
+					break;
+				case ChangeVarsOp.Del + "@" + ChangeVarsWhere.All:
+					this.varRemoveInAllBoxes(varName);
+					break;
+				case ChangeVarsOp.Only:
+					this.varKeepOnlyInThisBox(varName, this.getBoxAtCurrLine());
+					break;
+				case ChangeVarsOp.Only + "@" + ChangeVarsWhere.All:
+					this.varKeepOnlyInAllBoxes(varName);
+					break;
+			}
+			console.log(this._globalDeltaVarSet);
 		}
 	}
 
@@ -2038,6 +2269,20 @@ export class RTVController implements IEditorContribution {
 			}
 		}
 	}
+
+	public acceptChangeVarsInput(): void {
+		if (this._changeVarsInputField) {
+			this._changeVarsInputField.acceptInput();
+		}
+	}
+
+	public cancelChangeVarsInput(): void {
+		console.log("Canceled");
+		if (this._changeVarsInputField) {
+			this._changeVarsInputField.cancelInput(true);
+		}
+	}
+
 
 }
 
@@ -2206,7 +2451,7 @@ function createRTVAction(id: string, name: string, key: number, callback: (c:RTV
 createRTVAction(
 	'rtv.flipview',
 	"Flip View Mode",
-	KeyMod.Shift | KeyCode.Space,
+	KeyMod.Alt | KeyCode.Enter,
 	(c) => {
 		c.flipThroughViewModes();
 	}
@@ -2214,19 +2459,89 @@ createRTVAction(
 
 createRTVAction(
 	'rtv.zoomin',
-	"Zoom In",
-	KeyMod.Alt | KeyCode.US_EQUAL,
+	"Flip Zoom",
+	KeyMod.Alt | KeyCode.US_BACKSLASH,
 	(c) => {
-		c.zoomIn();
+		//c.flipZoom();
+		c.changeVars();
 	}
 );
 
 createRTVAction(
-	'rtv.zoomout',
-	"Zoom Out",
-	KeyMod.Alt | KeyCode.US_MINUS,
+	'rtv.addVarHere',
+	"Add Var to This Box",
+	KeyMod.Alt | KeyCode.US_EQUAL,
 	(c) => {
-		c.zoomOut();
+		c.changeVars(ChangeVarsOp.Add, ChangeVarsWhere.Here);
 	}
 );
 
+createRTVAction(
+	'rtv.addVarEverywhere',
+	"Add Var to All Boxes",
+	KeyMod.Alt | KeyMod.Shift | KeyCode.US_EQUAL,
+	(c) => {
+		c.changeVars(ChangeVarsOp.Add, ChangeVarsWhere.All);
+	}
+);
+
+createRTVAction(
+	'rtv.delVarHere',
+	"Delete Var from This Box",
+	KeyMod.Alt | KeyCode.US_MINUS,
+	(c) => {
+		c.changeVars(ChangeVarsOp.Del, ChangeVarsWhere.Here);
+	}
+);
+
+createRTVAction(
+	'rtv.delVarEverywhere',
+	"Delete Var from All Boxes",
+	KeyMod.Alt | KeyMod.Shift | KeyCode.US_MINUS,
+	(c) => {
+		c.changeVars(ChangeVarsOp.Del, ChangeVarsWhere.All);
+	}
+);
+
+createRTVAction(
+	'rtv.keepVarHere',
+	"Keep Only Var in This Box",
+	KeyMod.Alt | KeyCode.Backspace,
+	(c) => {
+		c.changeVars(ChangeVarsOp.Only, ChangeVarsWhere.Here);
+	}
+);
+
+createRTVAction(
+	'rtv.keepVarEverywhere',
+	"Keep Only Var in All Boxes",
+	KeyMod.Alt | KeyMod.Shift | KeyCode.Backspace,
+	(c) => {
+		c.changeVars(ChangeVarsOp.Only, ChangeVarsWhere.All);
+	}
+);
+
+const ModVarsCommand = EditorCommand.bindToContribution<RTVController>(RTVController.get);
+
+registerEditorCommand(new ModVarsCommand({
+	id: 'rtv.acceptModVar',
+	precondition: CONTEXT_RENAME_INPUT_VISIBLE,
+	handler: x => x.acceptChangeVarsInput(),
+	kbOpts: {
+		weight: KeybindingWeight.EditorContrib + 99,
+		kbExpr: EditorContextKeys.focus,
+		primary: KeyCode.Enter
+	}
+}));
+
+registerEditorCommand(new ModVarsCommand({
+	id: 'rtv.cancelModVar',
+	precondition: CONTEXT_RENAME_INPUT_VISIBLE,
+	handler: x => x.cancelChangeVarsInput(),
+	kbOpts: {
+		weight: KeybindingWeight.EditorContrib + 99,
+		kbExpr: EditorContextKeys.focus,
+		primary: KeyCode.Escape,
+		secondary: [KeyMod.Shift | KeyCode.Escape]
+	}
+}));
