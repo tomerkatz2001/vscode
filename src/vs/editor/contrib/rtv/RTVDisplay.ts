@@ -1039,7 +1039,7 @@ enum ChangeVarsWhere {
 enum ChangeVarsOp {
 	Add = 'add',
 	Del = 'del',
-	Only = 'only'
+	Keep = 'keep'
 }
 
 class LoopIterController {
@@ -2202,10 +2202,10 @@ export class RTVController implements IEditorContribution {
 				case ChangeVarsOp.Del + "@" + ChangeVarsWhere.All:
 					this.varRemoveInAllBoxes(varName);
 					break;
-				case ChangeVarsOp.Only:
+				case ChangeVarsOp.Keep:
 					this.varKeepOnlyInThisBox(varName, this.getBoxAtCurrLine());
 					break;
-				case ChangeVarsOp.Only + "@" + ChangeVarsWhere.All:
+				case ChangeVarsOp.Keep + "@" + ChangeVarsWhere.All:
 					this.varKeepOnlyInAllBoxes(varName);
 					break;
 			}
@@ -2462,7 +2462,15 @@ createRTVAction(
 	"Flip Zoom",
 	KeyMod.Alt | KeyCode.US_BACKSLASH,
 	(c) => {
-		//c.flipZoom();
+		c.flipZoom();
+	}
+);
+
+createRTVAction(
+	'rtv.changevars',
+	"Add/Remove/Keep Vars",
+	KeyMod.Alt | KeyCode.Backspace,
+	(c) => {
 		c.changeVars();
 	}
 );
@@ -2470,7 +2478,7 @@ createRTVAction(
 createRTVAction(
 	'rtv.addVarHere',
 	"Add Var to This Box",
-	KeyMod.Alt | KeyCode.US_EQUAL,
+	KeyMod.Alt | KeyCode.Insert,
 	(c) => {
 		c.changeVars(ChangeVarsOp.Add, ChangeVarsWhere.Here);
 	}
@@ -2479,7 +2487,7 @@ createRTVAction(
 createRTVAction(
 	'rtv.addVarEverywhere',
 	"Add Var to All Boxes",
-	KeyMod.Alt | KeyMod.Shift | KeyCode.US_EQUAL,
+	KeyMod.Alt | KeyMod.Shift | KeyCode.Insert,
 	(c) => {
 		c.changeVars(ChangeVarsOp.Add, ChangeVarsWhere.All);
 	}
@@ -2488,7 +2496,7 @@ createRTVAction(
 createRTVAction(
 	'rtv.delVarHere',
 	"Delete Var from This Box",
-	KeyMod.Alt | KeyCode.US_MINUS,
+	KeyMod.Alt | KeyCode.Delete,
 	(c) => {
 		c.changeVars(ChangeVarsOp.Del, ChangeVarsWhere.Here);
 	}
@@ -2497,7 +2505,7 @@ createRTVAction(
 createRTVAction(
 	'rtv.delVarEverywhere',
 	"Delete Var from All Boxes",
-	KeyMod.Alt | KeyMod.Shift | KeyCode.US_MINUS,
+	KeyMod.Alt | KeyMod.Shift | KeyCode.Delete,
 	(c) => {
 		c.changeVars(ChangeVarsOp.Del, ChangeVarsWhere.All);
 	}
@@ -2506,18 +2514,18 @@ createRTVAction(
 createRTVAction(
 	'rtv.keepVarHere',
 	"Keep Only Var in This Box",
-	KeyMod.Alt | KeyCode.Backspace,
+	KeyMod.Alt | KeyCode.End,
 	(c) => {
-		c.changeVars(ChangeVarsOp.Only, ChangeVarsWhere.Here);
+		c.changeVars(ChangeVarsOp.Keep, ChangeVarsWhere.Here);
 	}
 );
 
 createRTVAction(
 	'rtv.keepVarEverywhere',
 	"Keep Only Var in All Boxes",
-	KeyMod.Alt | KeyMod.Shift | KeyCode.Backspace,
+	KeyMod.Alt | KeyMod.Shift | KeyCode.End,
 	(c) => {
-		c.changeVars(ChangeVarsOp.Only, ChangeVarsWhere.All);
+		c.changeVars(ChangeVarsOp.Keep, ChangeVarsWhere.All);
 	}
 );
 
