@@ -16,6 +16,7 @@ class Logger(bdb.Bdb):
         self.prev_env = None
         self.data = {}
         self.active_loops = []
+        # self.exception = False
 
     def data_at(self, l):
         if not(l in self.data):
@@ -40,6 +41,8 @@ class Logger(bdb.Bdb):
         if frame.f_code.co_name == "<module>" or frame.f_code.co_name == "<listcomp>" or frame.f_code.co_filename != "<string>":
             return
 
+        # self.exception = False
+
         adjusted_lineno = frame.f_lineno-1
         print("---------------------------------------")
         print("About to execute: " + lines[adjusted_lineno].strip())
@@ -57,7 +60,14 @@ class Logger(bdb.Bdb):
 
             loop_indent = self.active_loops[-1].indent
             curr_indent = indent(curr_stmt)
-            if (curr_indent <= loop_indent and lineno != self.active_loops[-1].lineno):
+            if is_return_str(prev_stmt):
+                while len(self.active_loops) > 0:
+                    self.active_loops[-1].iter += 1
+                    for l in self.stmts_in_loop(self.active_loops[-1].lineno):
+                        self.data_at(l).append({"end_loop":self.active_loops_iter_str()})
+                    del self.active_loops[-1]
+            elif (curr_indent <= loop_indent and lineno != self.active_loops[-1].lineno):
+                print("HHH")
                 # break statements don't go through the loop header, so we miss
                 # the last increment in iter, which is why we have to adjust here
                 if is_break_str(prev_stmt):
@@ -140,6 +150,9 @@ class Logger(bdb.Bdb):
 
         self.prev_env = env
 
+    # def user_exception(self, frame, e):
+    #     self.exception = True
+
     def user_return(self, frame, rv):
         # print("user_return ============================================")
         # print(frame.f_code.co_name)
@@ -154,12 +167,21 @@ class Logger(bdb.Bdb):
         if frame.f_code.co_name == "<module>" or frame.f_code.co_name == "<listcomp>" or frame.f_code.co_filename != "<string>":
             return
 
+        # if self.exception:
+        #     if rv == None:
+        #         rv_str = "Exception"
+        #     else:
+        #         rv_str = "Exception(" + repr(rv) + ")"
+        # else:
+        #     rv_str = repr(rv)
         adjusted_lineno = frame.f_lineno-1
         print("About to return: " + lines[adjusted_lineno].strip())
-        self.record_loop_end(frame, adjusted_lineno)
+
         self.record_env(frame, "R" + str(adjusted_lineno))
+        #self.data_at("R" + str(adjusted_lineno))[-1]["rv"] = rv_str
         self.data_at("R" + str(adjusted_lineno))[-1]["rv"] = repr(rv)
-        self.record_loop_begin(frame, adjusted_lineno)
+        self.record_loop_end(frame, adjusted_lineno)
+        #self.record_loop_begin(frame, adjusted_lineno)
 
     def pretty_print_data(self):
         for k in self.data:
@@ -266,6 +288,9 @@ def is_loop_str(str):
 def is_break_str(str):
     return re.search("break", str.strip()) != None
 
+def is_return_str(str):
+    return re.search("return", str.strip()) != None
+
 def indent(str):
     return len(str) - len(str.lstrip())
 
@@ -308,6 +333,12 @@ def main():
     code = "".join(lines)
     print(code)
     root = ast.parse(code)
+    # try:
+    #     root = ast.parse(code)
+    # except Exception:
+    #     with open(sys.argv[1] + ".out", "w") as out:
+    #         out.write(json.dumps(({}, {})))
+    #     raise
 
     # version 1
     # original_lines = [lines[i] for i in range(len(lines))]
@@ -390,11 +421,17 @@ def main():
 
     l = Logger()
     l.run(code)
+    # try:
+    #     l.run(code)
+    # except Exception as e:
+    #     with open(sys.argv[1] + ".out", "w") as out:
+    #         out.write(json.dumps((wc.data, l.data)))
+    #     raise
     #print(l.data)
     #l.pretty_print_data()
 
     with open(sys.argv[1] + ".out", "w") as out:
-        out.write(json.dumps((wc.data,l.data)))
+        out.write(json.dumps((wc.data, l.data)))
 
 #    ic = InsertCollector()
 #    ic.visit(root)

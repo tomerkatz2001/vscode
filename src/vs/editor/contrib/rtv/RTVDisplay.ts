@@ -153,12 +153,12 @@ class DeltaVarSet {
 		this._plus.forEach(v => {
 			if (all.has(v)) {
 				if (res.has(v)) {
-					this._plus.delete(v);
+					//this._plus.delete(v);
 				} else {
 					res.add(v);
 				}
 			} else {
-				this._plus.delete(v);
+				//this._plus.delete(v);
 			}
 		});
 		this._minus.forEach(v => {
@@ -166,10 +166,10 @@ class DeltaVarSet {
 				if (res.has(v)) {
 					res.delete(v);
 				} else {
-					this._minus.delete(v);
+					//this._minus.delete(v);
 				}
 			} else {
-				this._minus.delete(v);
+				//this._minus.delete(v);
 			}
 		});
 		return res;
@@ -504,7 +504,8 @@ class RTVDisplayBox {
 		if (this._controller.byRowOrCol === RowColMode.ByCol) {
 			cell.align = 'center';
 		} else {
-			cell.align = 'left';
+			cell.align = 'center';
+			//cell.align = 'left';
 		}
 
 		let s = elmt.content;
@@ -522,11 +523,19 @@ class RTVDisplayBox {
 		} else {
 			let renderedText = r.render(new MarkdownString(s));
 			cellContent = renderedText.element;
+			// cellContent.contentEditable = "true";
+			// cellContent.addEventListener("input",(ev:Event) => {
+			// 	console.log(cellContent);
+			// 	console.log("Input");
+			// 	console.log(ev);
+			// });
 		}
-		if (elmt.iter === "header") {
-			cellContent = this.wrapAsVarMenuButton(cellContent, s.substr(2, s.length-4));
-		} else if (elmt.iter !== "") {
-			cellContent = this.wrapAsLoopMenuButton(cellContent, elmt.loopID, elmt.iter, elmt.controllingLineNumber);
+		if (this._controller.mouseShortcuts) {
+			if (elmt.iter === "header") {
+				cellContent = this.wrapAsVarMenuButton(cellContent, s.substr(2, s.length-4));
+			} else if (elmt.iter !== "") {
+				cellContent = this.wrapAsLoopMenuButton(cellContent, elmt.loopID, elmt.iter, elmt.controllingLineNumber);
+			}
 		}
 		cell.appendChild(cellContent);
 	}
@@ -715,7 +724,9 @@ class RTVDisplayBox {
 		this.addStalenessIndicator();
 
 		//this.addConfigButton();
-		this.addPlusButton();
+		if (this._controller.mouseShortcuts) {
+			this.addPlusButton();
+		}
 	}
 
 	private addStalenessIndicator() {
@@ -975,6 +986,7 @@ class RTVDisplayBox {
 		if (this._controller.boxAlignsToTopOfLine) {
 			boxTop = boxTop - (pixelPosAtLine.height/2);
 		}
+		//let left = this._controller.maxPixelCol+50;
 		let left = this._controller.maxPixelCol+130;
 		let zoom_adjusted_left =  left - ((1-this._zoom) * (this._box.offsetWidth / 2));
 		let zoom_adjusted_top = boxTop - ((1-this._zoom) * (this._box.offsetHeight / 2));
@@ -986,6 +998,7 @@ class RTVDisplayBox {
 		// update the line
 		let midPointTop = pixelPosAtLine.top + (pixelPosAtLine.height / 2);
 
+		//this._line.move(this._controller.maxPixelCol-50, midPointTop, left, top);
 		this._line.move(this._controller.maxPixelCol+30, midPointTop, left, top);
 
 	}
@@ -1245,6 +1258,13 @@ export class RTVController implements IEditorContribution {
 	}
 	set viewMode(v: ViewMode) {
 		this._config.updateValue(viewModeKey, v);
+	}
+
+	get mouseShortcuts(): boolean {
+		return this._config.getValue(mouseShortcutsKey);
+	}
+	set mouseShortcuts(v: boolean) {
+		this._config.updateValue(mouseShortcutsKey, v);
 	}
 
 	// End of configurable properties
@@ -1742,7 +1762,6 @@ export class RTVController implements IEditorContribution {
 					} else if (deltaNumLines > 0) {
 						for (let j = 0; j < deltaNumLines; j++) {
 							let new_box = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, i+1, this._globalDeltaVarSet);
-							console.log(this._globalDeltaVarSet);
 							if (!this._makeNewBoxesVisible) {
 								new_box.varRemoveAll();
 							}
@@ -1923,6 +1942,7 @@ export class RTVController implements IEditorContribution {
 			}
 			else {
 				this.showErrorWithDelay(errorMsg);
+				// this.updateData(fs.readFileSync(code_fname + ".out").toString());
 				this.updateContentAndLayout();
 			}
 		});
@@ -2209,7 +2229,7 @@ export class RTVController implements IEditorContribution {
 					this.varKeepOnlyInAllBoxes(varName);
 					break;
 			}
-			console.log(this._globalDeltaVarSet);
+			//console.log(this._globalDeltaVarSet);
 		}
 	}
 
@@ -2299,6 +2319,7 @@ const showBoxAtLoopStmtKey = 'rtv.box.showBoxAtLoopStatements';
 const spaceBetweenBoxesKey = 'rtv.box.spaceBetweenBoxes';
 const zoomKey = 'rtv.box.zoom';
 const viewModeKey = 'rtv.viewMode';
+const mouseShortcutsKey = 'rtv.box.mouseShortcuts';
 
 Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfiguration({
 	'id': 'rtv',
@@ -2372,6 +2393,11 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 			'type': 'number',
 			'default': 0,
 			'description': localize('rtv.zoom', 'Controls zoom level (value between 0 and 1; 0 means shrink; 1 means no shrinking)')
+		},
+		[mouseShortcutsKey]: {
+			'type': 'boolean',
+			'default': false,
+			'description': localize('rtv.boxalignstop', 'Controls whether mouse shortcuts are added')
 		}
 	}
 });
@@ -2430,7 +2456,7 @@ function createRTVAction(id: string, name: string, key: number, callback: (c:RTV
 					order: 1
 				},
 				kbOpts: {
-					kbExpr: EditorContextKeys.editorTextFocus,
+					kbExpr: null,
 					primary: key,
 					weight: KeybindingWeight.EditorCore
 				}
@@ -2454,6 +2480,42 @@ createRTVAction(
 	KeyMod.Alt | KeyCode.Enter,
 	(c) => {
 		c.flipThroughViewModes();
+	}
+);
+
+createRTVAction(
+	'rtv.fullview',
+	"Full View",
+	KeyMod.Alt | KeyCode.KEY_1,
+	(c) => {
+		c.changeViewMode(ViewMode.Full);
+	}
+);
+
+createRTVAction(
+	'rtv.cursorview',
+	"Cursor and Return View",
+	KeyMod.Alt | KeyCode.KEY_2,
+	(c) => {
+		c.changeViewMode(ViewMode.CursorAndReturn);
+	}
+);
+
+createRTVAction(
+	'rtv.compactview',
+	"Compact View",
+	KeyMod.Alt | KeyCode.KEY_3,
+	(c) => {
+		c.changeViewMode(ViewMode.Compact);
+	}
+);
+
+createRTVAction(
+	'rtv.stealthview',
+	"Stealth View",
+	KeyMod.Alt | KeyCode.KEY_4,
+	(c) => {
+		c.changeViewMode(ViewMode.Stealth);
 	}
 );
 
