@@ -6,7 +6,7 @@ import * as path from "path";
 import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
 import { IEditorContribution, IScrollEvent } from 'vs/editor/common/editorCommon';
-import { EditorAction, EditorCommand, registerEditorCommand, ServicesAccessor, registerEditorAction, registerEditorContribution } from 'vs/editor/browser/editorExtensions';
+import { EditorAction, ServicesAccessor, registerEditorAction, registerEditorContribution } from 'vs/editor/browser/editorExtensions';
 import { EditorLayoutInfo } from 'vs/editor/common/config/editorOptions';
 import * as strings from 'vs/base/common/strings';
 import { Range } from 'vs/editor/common/core/range';
@@ -14,7 +14,7 @@ import { IOpenerService } from 'vs/platform/opener/common/opener';
 import { IModeService } from 'vs/editor/common/services/modeService';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { MarkdownRenderer } from 'vs/editor/contrib/markdown/markdownRenderer';
-import { Position } from 'vs/editor/common/core/position';
+import { IPosition, Position } from 'vs/editor/common/core/position';
 import { MarkdownString } from 'vs/base/common/htmlContent';
 import { IConfigurationService,  IConfigurationChangeEvent } from 'vs/platform/configuration/common/configuration';
 import { Registry } from 'vs/platform/registry/common/platform';
@@ -28,9 +28,9 @@ import { IMouseWheelEvent } from 'vs/base/browser/mouseEvent';
 import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
 import { KeybindingWeight } from 'vs/platform/keybinding/common/keybindingsRegistry';
-import { RenameInputField, CONTEXT_RENAME_INPUT_VISIBLE } from 'vs/editor/contrib/rename/renameInputField';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
-import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
+import { EditorOption } from 'vs/editor/common/config/editorOptions';
+import { inputBackground, inputBorder, inputForeground, widgetShadow, editorWidgetBackground } from 'vs/platform/theme/common/colorRegistry';
 
 // Helper functions
 function indent(s: string): number {
@@ -248,7 +248,7 @@ class RTVDisplayBox {
 	private _zoom: number = 1;
 	private _opacity: number = 1;
 	private _hasContent: boolean = false;
-	private _allEnvs: any[];
+	private _allEnvs: any[] = [];
 	private _allVars: Set<string> = new Set<string>();
 	private _displayedVars: Set<string> = new Set<string>();
 	private _deltaVarSet: DeltaVarSet;
@@ -257,7 +257,7 @@ class RTVDisplayBox {
 		private readonly _controller: RTVController,
 		private readonly _editor: ICodeEditor,
 		private readonly _modeService: IModeService,
-		private readonly _openerService: IOpenerService | null,
+		private readonly _openerService: IOpenerService,
 		public lineNumber: number,
 		deltaVarSet: DeltaVarSet
 	) {
@@ -521,6 +521,7 @@ class RTVDisplayBox {
 			cellContent = document.createElement('div');
 			cellContent.innerHTML = s;
 		} else {
+			//s = "```python\n[1,2,3]\n```";
 			let renderedText = r.render(new MarkdownString(s));
 			cellContent = renderedText.element;
 			// cellContent.contentEditable = "true";
@@ -690,7 +691,7 @@ class RTVDisplayBox {
 				} else if (isHtmlEscape(env[v])) {
 					v_str = env[v];
 				} else {
-					v_str = "```python\n" + env[v] + "```";
+					v_str = "```python\n" + env[v] + "\n```";
 				}
 				// if (env[v] !== undefined && i > 0 && env[v] === envs[i-1][v]) {
 				// 	v_str = "&darr;";
@@ -1112,7 +1113,7 @@ export class RTVController implements IEditorContribution {
 	private _prevModel: string[] = [];
 	public _changedLinesWhenOutOfDate: Set<number> | null = null;
 	public _configBox: HTMLDivElement | null = null;
-	public tableCellsByLoop: MapLoopsToCells;
+	public tableCellsByLoop: MapLoopsToCells = {};
 	private _config: ConfigurationServiceCache;
 	private _makeNewBoxesVisible: boolean = true;
 	private _loopIterController: LoopIterController | null = null;
@@ -1121,10 +1122,9 @@ export class RTVController implements IEditorContribution {
 	private _visibilityPolicy: VisibilityPolicy = visibilityAll;
 	private _peekCounter: number = 0;
 	private _peekTimer: NodeJS.Timer | null = null;
-	private _changeVarsInputField?: RenameInputField;
 	private _globalDeltaVarSet: DeltaVarSet = new DeltaVarSet();
 
-	private static readonly ID = 'editor.contrib.rtv';
+	public static readonly ID = 'editor.contrib.rtv';
 
 
 	constructor(
@@ -1134,7 +1134,6 @@ export class RTVController implements IEditorContribution {
 		@IConfigurationService configurationService: IConfigurationService,
 		@IContextMenuService public readonly contextMenuService: IContextMenuService,
 		@IThemeService private readonly _themeService: IThemeService,
-		@IContextKeyService private readonly _contextKeyService: IContextKeyService,
 	) {
 		this._editor.onDidChangeCursorPosition((e) => {this.onChangeCursorPosition(e);	});
 		this._editor.onDidScrollChange((e) => { this.onScrollChange(e); });
@@ -1157,7 +1156,6 @@ export class RTVController implements IEditorContribution {
 		};
 		this.changeViewMode(this.viewMode);
 
-		this._changeVarsInputField = new RenameInputField(this._editor, this._themeService, this._contextKeyService);
 		//this._modVarsInputField.getDomNode().style.width = "300px";
 	}
 
@@ -1691,7 +1689,16 @@ export class RTVController implements IEditorContribution {
 	}
 
 	public getLinePixelPos(line:number): { top: number; left: number; height: number; } {
-		let result = this._editor.getScrolledVisiblePosition(new Position(line, 1));
+		// let result = this._editor.getScrolledVisiblePosition(new Position(line, 1));
+		// if (result === null) {
+		// 	throw new Error();
+		// }
+		// return result;
+		return this.getLineColPixelPos(new Position(line, 1));
+	}
+
+	public getLineColPixelPos(position: IPosition): { top: number; left: number; height: number; } {
+		let result = this._editor.getScrolledVisiblePosition(position);
 		if (result === null) {
 			throw new Error();
 		}
@@ -2160,17 +2167,6 @@ export class RTVController implements IEditorContribution {
 	}
 
 	public changeVars(op?: ChangeVarsOp, where?: ChangeVarsWhere) {
-		if (this._changeVarsInputField == undefined) {
-			return;
-		}
-
-		let cursorPos = this._editor.getPosition();
-		if (cursorPos === null) {
-			return;
-		}
-
-		let range = new Range(cursorPos.lineNumber-1, cursorPos.column, cursorPos.lineNumber-1, cursorPos.column + 40);
-
 		let text: string;
 		let selectionEnd: number;
 		let selectionStart: number;
@@ -2191,17 +2187,82 @@ export class RTVController implements IEditorContribution {
 			selectionEnd = text.length;
 		}
 
-		this._changeVarsInputField.getInput(range, text, selectionStart, selectionEnd).then(newNameOrFocusFlag => {
-			if (typeof newNameOrFocusFlag === 'boolean') {
-				if (newNameOrFocusFlag) {
-					this._editor.focus();
-				}
-				return;
-			}
-
-			this._editor.focus();
-			this.runChangeVarsCommand(newNameOrFocusFlag);
+		this.getUserInputAndDo(text, selectionStart, selectionEnd, (n:string)=>{
+			this.runChangeVarsCommand(n);
 		});
+	}
+
+	private getUserInputAndDo(value: string, selectionStart: number, selectionEnd: number, onEnter: (n:string) => void) {
+		let cursorPos = this._editor.getPosition();
+		if (cursorPos === null) {
+			return;
+		}
+
+		let pixelPos = this.getLineColPixelPos(cursorPos);
+		//let range = new Range(cursorPos.lineNumber-1, cursorPos.column, cursorPos.lineNumber-1, cursorPos.column + 40);
+
+		let editor_div = this._editor.getDomNode();
+		if (editor_div === null) {
+			throw new Error('Cannot find Monaco Editor');
+		}
+
+		// The following code is adapted from getDomNode in the RenameInputField class
+		let domNode = document.createElement('div');
+
+		domNode.className = 'monaco-editor rename-box';
+
+		let input = document.createElement('input');
+		input.className = 'rename-input';
+		input.type = 'text';
+		input.setAttribute('aria-label', localize('renameAriaLabel', "Rename input. Type new name and press Enter to commit."));
+		domNode.appendChild(input);
+
+		const fontInfo = this._editor.getOption(EditorOption.fontInfo);
+		input.style.fontFamily = fontInfo.fontFamily;
+		input.style.fontWeight = fontInfo.fontWeight;
+		input.style.fontSize = `${fontInfo.fontSize}px`;
+		input.value = value;
+		input.selectionStart = selectionStart;
+		input.selectionEnd = selectionEnd;
+		input.size = value.length;
+
+		let theme = this._themeService.getTheme();
+		const widgetShadowColor = theme.getColor(widgetShadow);
+		domNode.style.backgroundColor = String(theme.getColor(editorWidgetBackground) ?? '');
+		domNode.style.boxShadow = widgetShadowColor ? ` 0 2px 8px ${widgetShadowColor}` : '';
+		domNode.style.color = String(theme.getColor(inputForeground) ?? '');
+
+		domNode.style.position = "absolute";
+		domNode.style.top = pixelPos.top + "px";
+		domNode.style.left = pixelPos.left + "px";
+
+		input.style.backgroundColor = String(theme.getColor(inputBackground) ?? '');
+		const border = theme.getColor(inputBorder);
+		input.style.borderWidth = border ? '1px' : '0px';
+		input.style.borderStyle = border ? 'solid' : 'none';
+		input.style.borderColor = border?.toString() ?? 'none';
+
+		editor_div.appendChild(domNode);
+
+		setTimeout(() => {
+			input.focus();
+		}, 100);
+
+		input.onkeydown = (e) => {
+			e.stopImmediatePropagation();
+			e.stopPropagation();
+			if (e.key === "Enter") {
+				onEnter(input.value);
+				domNode.remove();
+				setTimeout(() => {
+					this._editor.focus();
+				},100);
+			} else if (e.key === "Escape") {
+				domNode.remove();
+				this._editor.focus();
+			}
+		};
+
 	}
 
 	private runChangeVarsCommand(cmd: string) {
@@ -2290,23 +2351,9 @@ export class RTVController implements IEditorContribution {
 		}
 	}
 
-	public acceptChangeVarsInput(): void {
-		if (this._changeVarsInputField) {
-			this._changeVarsInputField.acceptInput();
-		}
-	}
-
-	public cancelChangeVarsInput(): void {
-		console.log("Canceled");
-		if (this._changeVarsInputField) {
-			this._changeVarsInputField.cancelInput(true);
-		}
-	}
-
-
 }
 
-registerEditorContribution(RTVController);
+registerEditorContribution(RTVController.ID, RTVController);
 
 const boxAlignsToTopOfLineKey = 'rtv.box.alignsToTopOfLine';
 const boxBorderKey = 'rtv.box.border';
@@ -2405,7 +2452,7 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 
 class ConfigurationServiceCache {
 	private _vals: { [k:string]: any; } = {};
-	public onDidUserChangeConfiguration: (e:IConfigurationChangeEvent)=>void;
+	public onDidUserChangeConfiguration: ((e:IConfigurationChangeEvent)=>void)|undefined = undefined;
 	constructor(private readonly configurationService: IConfigurationService) {
 		this.configurationService.onDidChangeConfiguration((e) => { this.onChangeConfiguration(e); });
 	}
@@ -2439,9 +2486,6 @@ class ConfigurationServiceCache {
 	}
 }
 
-import { EditorContextKeys } from 'vs/editor/common/editorContextKeys';
-
-
 function createRTVAction(id: string, name: string, key: number, callback: (c:RTVController) => void) {
 	class RTVAction extends EditorAction {
 		private _callback: (c:RTVController) => void;
@@ -2450,11 +2494,13 @@ function createRTVAction(id: string, name: string, key: number, callback: (c:RTV
 				id: id,
 				label: localize(id, name),
 				alias: name,
-				precondition: null,
-				menuOpts: {
-					group: 'navigation',
-					order: 1
-				},
+				precondition: undefined,
+				// menuOpts: {
+				// 	menuId: MenuId.GlobalActivity,
+				// 	group: 'navigation',
+				// 	order: 1,
+				// 	title: localize('rtv.blerg', "Blerg"),
+				// },
 				kbOpts: {
 					kbExpr: null,
 					primary: key,
@@ -2591,27 +2637,3 @@ createRTVAction(
 	}
 );
 
-const ModVarsCommand = EditorCommand.bindToContribution<RTVController>(RTVController.get);
-
-registerEditorCommand(new ModVarsCommand({
-	id: 'rtv.acceptModVar',
-	precondition: CONTEXT_RENAME_INPUT_VISIBLE,
-	handler: x => x.acceptChangeVarsInput(),
-	kbOpts: {
-		weight: KeybindingWeight.EditorContrib + 99,
-		kbExpr: EditorContextKeys.focus,
-		primary: KeyCode.Enter
-	}
-}));
-
-registerEditorCommand(new ModVarsCommand({
-	id: 'rtv.cancelModVar',
-	precondition: CONTEXT_RENAME_INPUT_VISIBLE,
-	handler: x => x.cancelChangeVarsInput(),
-	kbOpts: {
-		weight: KeybindingWeight.EditorContrib + 99,
-		kbExpr: EditorContextKeys.focus,
-		primary: KeyCode.Escape,
-		secondary: [KeyMod.Shift | KeyCode.Escape]
-	}
-}));
