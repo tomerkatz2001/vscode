@@ -69,59 +69,6 @@ function regExpMatchEntireString(s: string, regExp: string) {
 	return res !== null && res.index === 0 && res[0] === s;
 }
 
-abstract class VarSet {
-	public abstract getSet(): Set<string>;
-	public add(v: string): VarSet {
-		let vars = new Set<string>(this.getSet());
-		vars.add(v);
-		return new ConcreteVarSet(vars);
-	}
-	public remove(v: string): VarSet {
-		let vars = new Set<string>(this.getSet());
-		vars.delete(v);
-		return new ConcreteVarSet(vars);
-	}
-}
-
-class FullVarSet extends VarSet {
-	constructor(private readonly _b: RTVDisplayBox) {
-		super();
-	}
-	public getSet(): Set<string> {
-		return this._b.allVars();
-	}
-	public add(v: string): VarSet {
-		return this;
-	}
-}
-
-class ConcreteVarSet extends VarSet {
-	constructor(private readonly _set: Set<string>) {
-		super();
-	}
-	public getSet(): Set<string> {
-		return this._set;
-	}
-}
-
-class EmptyVarSet extends ConcreteVarSet {
-	constructor() {
-		super(new Set<string>());
-	}
-	public remove(v: string): VarSet {
-		return this;
-	}
-}
-
-class ModVarSet extends VarSet {
-	constructor(private readonly _b: RTVDisplayBox) {
-		super();
-	}
-	public getSet(): Set<string> {
-		return this._b.modVars();
-	}
-}
-
 class DeltaVarSet {
 	private _plus: Set<string>;
 	private _minus: Set<string>;
@@ -661,7 +608,6 @@ class RTVDisplayBox {
 
 		let vars = this._deltaVarSet.applyTo(startingVars, this._allVars);
 		this._displayedVars = vars;
-		//let vars = this._displayedVars.getSet();
 
 		if (vars.size === 0) {
 			this.setContentFalse();
