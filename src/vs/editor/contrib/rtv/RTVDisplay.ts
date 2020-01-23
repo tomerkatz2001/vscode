@@ -31,8 +31,21 @@ import { KeybindingWeight } from 'vs/platform/keybinding/common/keybindingsRegis
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { EditorOption } from 'vs/editor/common/config/editorOptions';
 import { inputBackground, inputBorder, inputForeground, widgetShadow, editorWidgetBackground } from 'vs/platform/theme/common/colorRegistry';
+import { ITextModel } from 'vs/editor/common/model';
 
 // Helper functions
+function getOSEnvVariable(v: string): string {
+	let result = process.env[v];
+	if (result === undefined) {
+		throw new Error("OS environment variable " + v + " is not defined.");
+	}
+	return result;
+}
+
+let PY3 = getOSEnvVariable("PYTHON3");
+let RUNPY = getOSEnvVariable("RUNPY");
+let SYNTH = getOSEnvVariable("SYNTH");
+
 function indent(s: string): number {
 	return s.length - s.trimLeft().length;
 }
@@ -182,8 +195,9 @@ class TableElement {
 		public content: string,
 		public loopID: string,
 		public iter: string,
-		public controllingLineNumber: number
-
+		public controllingLineNumber: number,
+		public vname?: string,
+		public env?: any
 	) {}
 }
 
@@ -228,13 +242,14 @@ class RTVDisplayBox {
 		this._box.style.transitionDelay = "0s";
 		this._box.style.transitionTimingFunction = "ease-in";
 		this._box.className = "monaco-editor-hover";
-		this._box.onauxclick = (e) => {
-			this.onClick(e);
-		};
-		this._box.onclick = (e) => {
-			this.onClick(e);
-		};
-		this._box.onkeyup = (e) => {console.log(e)};
+		if (!this._controller.supportSynthesis) {
+			this._box.onauxclick = (e) => {
+				this.onClick(e);
+			};
+			this._box.onclick = (e) => {
+				this.onClick(e);
+			};
+		}
 		editor_div.appendChild(this._box);
 		this._line = new RTVLine(this._editor, 800, 100, 800, 100);
 		this.setContentFalse();
@@ -468,15 +483,26 @@ class RTVDisplayBox {
 			cellContent = document.createElement('div');
 			cellContent.innerHTML = s;
 		} else {
-			//s = "```python\n[1,2,3]\n```";
 			let renderedText = r.render(new MarkdownString(s));
 			cellContent = renderedText.element;
-			// cellContent.contentEditable = "true";
-			// cellContent.addEventListener("input",(ev:Event) => {
-			// 	console.log(cellContent);
-			// 	console.log("Input");
-			// 	console.log(ev);
-			// });
+			if (this._controller.supportSynthesis) {
+				cellContent.contentEditable = "true";
+				cellContent.onkeydown = (e) => {
+					if (e.key === "Enter") {
+						elmt.env[elmt.vname!] = cellContent.innerText;
+						let beforeEnv = this._controller.getEnvAtPrevTimeStep(elmt.env);
+						this._controller.synthesizeFragment(beforeEnv, elmt.env, elmt.controllingLineNumber);
+						setTimeout(() => {
+							this._editor.focus();
+						}, 100);
+						return false;
+					} else if (e.key === "Escape") {
+						this._editor.focus();
+						return false;
+					}
+					return true;
+				}
+			}
 		}
 		if (this._controller.mouseShortcuts) {
 			if (elmt.iter === "header") {
@@ -573,13 +599,9 @@ class RTVDisplayBox {
 				envs.push(env);
 			} else if (env.next_lineno !== undefined) {
 				if (!isLoop || this.indentAtLine(env.next_lineno+1) > currIndent) {
-					let nextEnvs = this._controller.envs[env.next_lineno];
-					if (nextEnvs !== undefined) {
-						nextEnvs.forEach((nextEnv) => {
-							if (nextEnv.time === env.time + 1) {
-								envs.push(nextEnv);
-							}
-						});
+					let nextEnv = this._controller.getEnvAtNextTimeStep(env);
+					if (nextEnv !== null) {
+						envs.push(nextEnv);
 					}
 				}
 			}
@@ -639,10 +661,7 @@ class RTVDisplayBox {
 				} else {
 					v_str = "```python\n" + env[v] + "\n```";
 				}
-				// if (env[v] !== undefined && i > 0 && env[v] === envs[i-1][v]) {
-				// 	v_str = "&darr;";
-				// }
-				row.push(new TableElement(v_str, loopID, iter, this.lineNumber));
+				row.push(new TableElement(v_str, loopID, iter, this.lineNumber, v, env));
 			});
 			rows.push(row);
 		};
@@ -1051,7 +1070,7 @@ function visibilityCursorAndReturn(b: RTVDisplayBox, cursorLineNumber: number) {
 	return b.lineNumber === cursorLineNumber || b.isReturnLine();
 }
 
-export class RTVController implements IEditorContribution {
+class RTVController implements IEditorContribution {
 	public envs: { [k:string]: any []; } = {};
 	public writes: { [k:string]: string[]; } = {};
 	private _boxes: RTVDisplayBox[] = [];
@@ -1071,7 +1090,6 @@ export class RTVController implements IEditorContribution {
 	private _globalDeltaVarSet: DeltaVarSet = new DeltaVarSet();
 
 	public static readonly ID = 'editor.contrib.rtv';
-
 
 	constructor(
 		private readonly _editor: ICodeEditor,
@@ -1116,13 +1134,10 @@ export class RTVController implements IEditorContribution {
 	public dispose():void {
 	}
 
-	public saveViewState(): any {
+	public restoreViewState(state: any): void {
 		this._boxes = [];
 		this.envs = {};
 		this.writes = {};
-	}
-
-	public restoreViewState(state: any): void {
 		this.runProgram();
 	}
 
@@ -1209,6 +1224,13 @@ export class RTVController implements IEditorContribution {
 	}
 	set mouseShortcuts(v: boolean) {
 		this._config.updateValue(mouseShortcutsKey, v);
+	}
+
+	get supportSynthesis(): boolean {
+		return this._config.getValue(supportSynthesisKey);
+	}
+	set supportSynthesis(v: boolean) {
+		this._config.updateValue(supportSynthesisKey, v);
 	}
 
 	// End of configurable properties
@@ -1504,15 +1526,9 @@ export class RTVController implements IEditorContribution {
 	public updateContentAndLayout() {
 		this.tableCellsByLoop = {};
 		this.updateContent();
-		// for (let x in this.tableCellsByLoop) {
-		// 	this.tableCellsByLoop[x].forEach(y => {
-		// 		console.log(x + " " + y.offsetWidth + " " + y.clientWidth);
-		// 	});
-		// }
-		// The following seems odd, but it's really a thing in browsers.
+		// The 0 timeout seems odd, but it's really a thing in browsers.
 		// We need to let layout threads catch up after we updated content to
 		// get the correct sizes for boxes.
-		//setTimeout(() => { this.updateLayout();	}, 0);
 		setTimeout(() => {
 			for (let x in this.tableCellsByLoop) {
 				this.tableCellsByLoop[x].forEach(y => {
@@ -1855,29 +1871,75 @@ export class RTVController implements IEditorContribution {
 	// 	this.runProgram(e);
 	// }
 
+	private getModelForce(): ITextModel {
+		let model = this._editor.getModel();
+		if (model === null) {
+			throw Error("Expecting a model");
+		}
+		return model;
+	}
+
+	private writeModelToDisk(fname: string) {
+		let lines = this.getModelForce().getLinesContent();
+		fs.writeFileSync(fname, lines.join("\n"));
+	}
+
+	private insertSynthesizedFragment(fragment: string, lineno: number) {
+		let model = this.getModelForce();
+		let cursorPos = this._editor.getPosition();
+		var startCol:number;
+		var endCol:number;
+		if (model.getLineContent(lineno).trim() === "" && cursorPos !== null && cursorPos.lineNumber == lineno) {
+			startCol = cursorPos.column;
+			endCol = cursorPos.column;
+		} else {
+			startCol = model.getLineFirstNonWhitespaceColumn(lineno);
+			endCol = model.getLineMaxColumn(lineno);
+		}
+		let range = new Range(lineno, startCol, lineno, endCol);
+		//this.getModelForce().applyEdits([{range: range, text: fragment}])
+		this._editor.pushUndoStop();
+		this._editor.executeEdits(this.getId(), [{range: range, text: fragment}]);
+	}
+
+	public synthesizeFragment(beforeEnv: any, afterEnv: any, lineno: number) {
+		let code_fname = os.tmpdir() + path.sep + "tmp.py";
+		this.writeModelToDisk(code_fname);
+
+		let example_fname = os.tmpdir() + path.sep + "synth_example.json";
+		let jsonBeforeEnv = JSON.stringify(beforeEnv);
+		let jsonAfterEnv = JSON.stringify(afterEnv);
+		fs.writeFileSync(example_fname, "[" + jsonBeforeEnv + "," + jsonAfterEnv + "]");
+
+		let c = cp.spawn(PY3, [SYNTH, example_fname, code_fname]);
+
+		c.stdout.on("data", (data) => {
+			//console.log("stdout " + data.toString())
+		});
+
+		c.on('exit', (exitCode, signalCode) => {
+			if (exitCode === 0) {
+				let fragment = fs.readFileSync(example_fname + ".out").toString();
+				if (fragment !== "None") {
+					this.insertSynthesizedFragment(fragment, lineno);
+				}
+			}
+		});
+
+	}
+
 	private runProgram(e?: IModelContentChangedEvent) {
-		let py3 = process.env["PYTHON3"];
-		if (py3 === undefined) {
-			return;
-		}
-		let runpy = process.env["RUNPY"];
-		if (runpy === undefined) {
-			return;
-		}
 		//console.log(e);
 		this.padBoxArray();
 
 		this.addRemoveBoxes(e);
 
 		this.updateMaxPixelCol();
+
 		let code_fname = os.tmpdir() + path.sep + "tmp.py";
-		let model = this._editor.getModel();
-		if (model === null) {
-			return;
-		}
-		let lines = model.getLinesContent();
-		fs.writeFileSync(code_fname, lines.join("\n"));
-		let c = cp.spawn(py3, [runpy, code_fname]);
+		this.writeModelToDisk(code_fname);
+
+		let c = cp.spawn(PY3, [RUNPY, code_fname]);
 
 		c.stdout.on("data", (data) => {
 			//console.log("stdout " + data.toString())
@@ -1913,6 +1975,39 @@ export class RTVController implements IEditorContribution {
 			console.log(e);
 		}
 	}
+
+	public getEnvAtNextTimeStep(env: any): any|null {
+		let result:any|null = null;
+		let nextEnvs = this.envs[env.next_lineno];
+		if (nextEnvs !== undefined) {
+			nextEnvs.forEach((nextEnv) => {
+				if (nextEnv.time === env.time + 1) {
+					if (result !== null) {
+						throw new Error('Should not have more than one next time step');
+					}
+					result = nextEnv;
+				}
+			});
+		}
+		return result;
+	}
+
+	public getEnvAtPrevTimeStep(env: any): any|null {
+		let result:any|null = null;
+		let prevEnvs = this.envs[env.prev_lineno];
+		if (prevEnvs !== undefined) {
+			prevEnvs.forEach((prevEnv) => {
+				if (prevEnv.time === env.time - 1) {
+					if (result !== null) {
+						throw new Error('Should not have more than one prev time step');
+					}
+					result = prevEnv;
+				}
+			});
+		}
+		return result;
+	}
+
 
 	public varRemoveInThisBox(varname: string, box: RTVDisplayBox) {
 		box.varRemove(varname);
@@ -2195,14 +2290,12 @@ export class RTVController implements IEditorContribution {
 		}, 100);
 
 		input.onkeydown = (e) => {
-			e.stopImmediatePropagation();
-			e.stopPropagation();
 			if (e.key === "Enter") {
 				onEnter(input.value);
 				domNode.remove();
 				setTimeout(() => {
 					this._editor.focus();
-				},100);
+				}, 100);
 			} else if (e.key === "Escape") {
 				domNode.remove();
 				this._editor.focus();
@@ -2313,6 +2406,7 @@ const spaceBetweenBoxesKey = 'rtv.box.spaceBetweenBoxes';
 const zoomKey = 'rtv.box.zoom';
 const viewModeKey = 'rtv.viewMode';
 const mouseShortcutsKey = 'rtv.box.mouseShortcuts';
+const supportSynthesisKey = 'rtv.box.supportSynthesis';
 
 Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfiguration({
 	'id': 'rtv',
@@ -2390,7 +2484,12 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 		[mouseShortcutsKey]: {
 			'type': 'boolean',
 			'default': false,
-			'description': localize('rtv.boxalignstop', 'Controls whether mouse shortcuts are added')
+			'description': localize('rtv.mouseshortcuts', 'Controls whether mouse shortcuts are added')
+		},
+		[supportSynthesisKey]: {
+			'type': 'boolean',
+			'default': false,
+			'description': localize('rtv.supportsynth', 'Controls whether sythesis is supported')
 		}
 	}
 });
