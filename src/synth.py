@@ -1,8 +1,9 @@
 import sys
 import ast
 import json
+import core
 
-reserved_names = ["time", "#", "$", "lineno", "prev_lineno", "next_lineno"]
+reserved_names = ["time", "#", "$", "lineno", "prev_lineno", "next_lineno", "__run_py__"]
 
 patterns = ["# = #.split(#)", "# = #.strip()"]
 
@@ -19,8 +20,9 @@ class VarCollector(ast.NodeVisitor):
         self.vars = set()
 
     def visit_Name(self, node):
-        print("Name " + node.id + " @ line " + str(node.lineno) + " col " + str(node.col_offset))
-        self.vars.add(node.id)
+        if (node.id != core.magic_var_name):
+            print("Name " + node.id + " @ line " + str(node.lineno) + " col " + str(node.col_offset))
+            self.vars.add(node.id)
 
     def visit_arg(self, node):
         print("arg " + node.arg + " @ line " + str(node.lineno) + " col " + str(node.col_offset))
@@ -79,14 +81,14 @@ def try_all_stmts(stmts, before, after):
             return stmt
     return None
 
-def load_code():
-    with open(sys.argv[2]) as f:
-        code = f.read()
+def load_code(filename):
+    lines = core.load_code_lines(filename)
+    code = "".join(lines)
     print(code)
     return code
 
-def load_example():
-    with open(sys.argv[1]) as f:
+def load_example(filename):
+    with open(filename) as f:
         json_examples = f.read()
     examples = json.loads(json_examples)
     before = examples[0]
@@ -112,8 +114,8 @@ def main():
         print("Usage: run <example-file-name> <code-file-name>")
         exit(-1)
 
-    code = load_code()
-    (before, after) = load_example()
+    code = load_code(sys.argv[2])
+    (before, after) = load_example(sys.argv[1])
     vars = compute_list_of_vars(code)
     stmts = expand_all_patterns(vars)
     synthesized = try_all_stmts(stmts, before, after)
