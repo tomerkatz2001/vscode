@@ -410,34 +410,38 @@ class RTVDisplayBox {
 		return strings.startsWith(lineContent, "return");
 	}
 
-	private bringToLoopCount(envs:any[], active_loops:number[], iterCount:number) {
-		while (active_loops[active_loops.length-1] < iterCount ) {
-			envs.push({ "#" : active_loops.join(",") });
-			active_loops[active_loops.length-1]++;
+	private bringToLoopCount(envs:any[], active_loop_iters:number[], loopId: string, iterCount:number) {
+		while (active_loop_iters[active_loop_iters.length-1] < iterCount ) {
+			envs.push({ "#" : active_loop_iters.join(","), "$": loopId });
+			active_loop_iters[active_loop_iters.length-1]++;
 		}
 	}
 
 	private addMissingLines(envs: any[]): any[] {
-		let active_loops: number[] = [];
+		let last = function<T>(a: T[]): T { return a[a.length-1] };
+		let active_loop_iters: number[] = [];
+		let active_loop_ids: string[] = [];
 		let envs2: any[] = [];
 		for (let i = 0; i < envs.length; i++) {
 			let env = envs[i];
 			if (env.begin_loop !== undefined) {
-				if (active_loops.length > 0) {
-					let loop = env.begin_loop.split(",");
-					this.bringToLoopCount(envs2, active_loops, +loop[loop.length-2]);
+				if (active_loop_iters.length > 0) {
+					let loop_iters:string[] = env.begin_loop.split(",");
+					this.bringToLoopCount(envs2, active_loop_iters, last(active_loop_ids), +loop_iters[loop_iters.length-2]);
 				}
-				active_loops.push(0);
+				active_loop_ids.push(env["$"]);
+				active_loop_iters.push(0);
 			} else if (env.end_loop !== undefined) {
-				let loop = env.end_loop.split(",");
-				this.bringToLoopCount(envs2, active_loops, +loop[loop.length-1]);
-				active_loops.pop();
-				active_loops[active_loops.length-1]++;
+				let loop_iters:string[] = env.end_loop.split(",");
+				this.bringToLoopCount(envs2, active_loop_iters, last(active_loop_ids), +last(loop_iters));
+				active_loop_ids.pop();
+				active_loop_iters.pop();
+				active_loop_iters[active_loop_iters.length-1]++;
 			} else {
-				let loop = env["#"].split(",");
-				this.bringToLoopCount(envs2, active_loops, +loop[loop.length-1]);
+				let loop_iters: string[] = env["#"].split(",");
+				this.bringToLoopCount(envs2, active_loop_iters, last(active_loop_ids), +last(loop_iters));
 				envs2.push(env);
-				active_loops[active_loops.length-1]++;
+				active_loop_iters[active_loop_iters.length-1]++;
 			}
 		}
 		return envs2;

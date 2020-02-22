@@ -68,7 +68,7 @@ class Logger(bdb.Bdb):
                 while len(self.active_loops) > 0:
                     self.active_loops[-1].iter += 1
                     for l in self.stmts_in_loop(self.active_loops[-1].lineno):
-                        self.data_at(l).append({"end_loop":self.active_loops_iter_str()})
+                        self.data_at(l).append(self.create_end_loop_dummy_env())
                     del self.active_loops[-1]
             elif (curr_indent <= loop_indent and lineno != self.active_loops[-1].lineno):
                 # break statements don't go through the loop header, so we miss
@@ -76,7 +76,7 @@ class Logger(bdb.Bdb):
                 if is_break_str(prev_stmt):
                     self.active_loops[-1].iter += 1
                 for l in self.stmts_in_loop(self.active_loops[-1].lineno):
-                    self.data_at(l).append({"end_loop":self.active_loops_iter_str()})
+                    self.data_at(l).append(self.create_end_loop_dummy_env())
                 del self.active_loops[-1]
 
     def record_loop_begin(self, frame, lineno):
@@ -89,7 +89,7 @@ class Logger(bdb.Bdb):
             else:
                 self.active_loops.append(LoopInfo(frame, lineno, indent(curr_stmt)))
                 for l in self.stmts_in_loop(lineno):
-                    self.data_at(l).append({"begin_loop":self.active_loops_iter_str()})
+                    self.data_at(l).append(self.create_begin_loop_dummy_env())
 
     def stmts_in_loop(self, lineno):
         result = []
@@ -110,14 +110,27 @@ class Logger(bdb.Bdb):
     def active_loops_id_str(self):
         return ",".join([str(l.lineno) for l in self.active_loops])
 
+    def add_loop_info(self, env):
+        env["#"] = self.active_loops_iter_str()
+        env["$"] = self.active_loops_id_str()
+
+    def create_begin_loop_dummy_env(self):
+        env = {"begin_loop":self.active_loops_iter_str()}
+        self.add_loop_info(env)
+        return env
+
+    def create_end_loop_dummy_env(self):
+        env = {"end_loop":self.active_loops_iter_str()}
+        self.add_loop_info(env)
+        return env
+
     def record_env(self, frame, lineno):
         if self.time >= 100:
             self.set_quit()
             return
         env = {}
         env["time"] = self.time
-        env["#"] = self.active_loops_iter_str()
-        env["$"] = self.active_loops_id_str()
+        self.add_loop_info(env)
         self.time = self.time + 1
         for k in frame.f_locals:
             if k != core.magic_var_name:

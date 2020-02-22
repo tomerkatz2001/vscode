@@ -5,7 +5,15 @@ import core
 
 reserved_names = ["time", "#", "$", "lineno", "prev_lineno", "next_lineno", "__run_py__"]
 
-patterns = ["# = #.split(#)", "# = #.strip()"]
+patterns = ["# = #.split(',')",
+            "# = #.split(';')",
+            "# = #.strip()",
+            "# = [tmp.strip() for tmp in #.split(',')]",
+            "# = [tmp.strip() for tmp in #.split(';')]",
+            "# = re.split('(?:\s*;\s*)|(?:\s*,\s*)',#)[:-1]",
+            "# = re.split('(?:\s*;\s*)|(?:\s*,\s*)',#)"]
+
+#patterns = ["# = #.split(',')", "# = #.split(';')"]
 
 def reserved_name(n):
     for reserved in reserved_names:
@@ -62,7 +70,7 @@ def compute_setup(before):
     for v in before.keys():
         if (not reserved_name(v)):
             setup = setup + v + "=" + before[v] + "\n"
-    return setup
+    return "import re\n" + setup
 
 def results_eq(goal, actual):
     for v in goal.keys():
