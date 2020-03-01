@@ -45,6 +45,7 @@ function getOSEnvVariable(v: string): string {
 let PY3 = getOSEnvVariable("PYTHON3");
 let RUNPY = getOSEnvVariable("RUNPY");
 let SYNTH = getOSEnvVariable("SYNTH");
+let SCALA = getOSEnvVariable("SCALA");
 
 function indent(s: string): number {
 	return s.length - s.trimLeft().length;
@@ -457,7 +458,7 @@ class RTVDisplayBox {
 		return envs.filter((e,i,a) => iterCtrl.matches(e["$"], e["#"]));
 	}
 
-	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r:MarkdownRenderer) {
+	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r:MarkdownRenderer, row: TableElement[]) {
 		if (this._controller.colBorder) {
 			cell.style.borderLeft = "1px solid #454545";
 		}
@@ -491,11 +492,20 @@ class RTVDisplayBox {
 			cellContent = renderedText.element;
 			if (this._controller.supportSynthesis) {
 				cellContent.contentEditable = "true";
+				cellContent.onblur = (e) => {
+
+					elmt.env[elmt.vname!] = cellContent.innerText;
+					let beforeEnv = this._controller.getEnvAtPrevTimeStep(elmt.env);
+					this._controller.updateFragment(beforeEnv, elmt.env);
+					return false;
+				}
 				cellContent.onkeydown = (e) => {
 					if (e.key === "Enter") {
-						elmt.env[elmt.vname!] = cellContent.innerText;
-						let beforeEnv = this._controller.getEnvAtPrevTimeStep(elmt.env);
-						this._controller.synthesizeFragment(beforeEnv, elmt.env, elmt.controllingLineNumber);
+
+						setTimeout(() => {
+
+							this._controller.synthesizeFragment(elmt.controllingLineNumber);
+						}, 200);
 						setTimeout(() => {
 							this._editor.focus();
 						}, 100);
@@ -506,6 +516,7 @@ class RTVDisplayBox {
 					}
 					return true;
 				}
+
 			}
 		}
 		if (this._controller.mouseShortcuts) {
@@ -523,7 +534,7 @@ class RTVDisplayBox {
 			let newRow = table.insertRow(-1);
 			row.forEach((elmt: TableElement) => {
 				let newCell = newRow.insertCell(-1);
-				this.addCellContentAndStyle(newCell, elmt, renderer);
+				this.addCellContentAndStyle(newCell, elmt, renderer, row);
 			});
 		});
 	}
@@ -1906,7 +1917,7 @@ class RTVController implements IEditorContribution {
 		this._editor.executeEdits(this.getId(), [{range: range, text: fragment}]);
 	}
 
-	public synthesizeFragment(beforeEnv: any, afterEnv: any, lineno: number) {
+	public updateFragment(beforeEnv: any, afterEnv: any) {
 		let code_fname = os.tmpdir() + path.sep + "tmp.py";
 		this.writeModelToDisk(code_fname);
 
@@ -1915,13 +1926,26 @@ class RTVController implements IEditorContribution {
 		let jsonAfterEnv = JSON.stringify(afterEnv);
 		fs.writeFileSync(example_fname, "[" + jsonBeforeEnv + "," + jsonAfterEnv + "]");
 
-		let c = cp.spawn(PY3, [SYNTH, example_fname, code_fname]);
+	}
+
+	public synthesizeFragment(lineno: number){
+
+		console.log("calling synthesizer");
+		let example_fname = os.tmpdir() + path.sep + "synth_example.json";
+
+		let c = cp.spawn(SCALA, [SYNTH, example_fname]);
 
 		c.stdout.on("data", (data) => {
-			//console.log("stdout " + data.toString())
+			console.log("stdout " + data.toString())
 		});
 
-		c.on('exit', (exitCode, signalCode) => {
+		// TODO:
+		// c.on('close', closeCode) => {
+
+
+		// }
+		c.on('close', (exitCode) => {
+			console.log(`child process exited with code ${exitCode}`);
 			if (exitCode === 0) {
 				let fragment = fs.readFileSync(example_fname + ".out").toString();
 				if (fragment !== "None") {
@@ -1929,7 +1953,6 @@ class RTVController implements IEditorContribution {
 				}
 			}
 		});
-
 	}
 
 	private runProgram(e?: IModelContentChangedEvent) {

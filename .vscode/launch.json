@@ -156,7 +156,11 @@
 			"port": 9222,
 			"timeout": 20000,
 			"env": {
-				"VSCODE_EXTHOST_WILL_SEND_SOCKET": null
+				"VSCODE_EXTHOST_WILL_SEND_SOCKET": null,
+				"RUNPY": "/Users/allenord/Documents/CSE291WI/vscode/src/run.py",
+				"SYNTH": "/Users/allenord/Documents/CSE291WI/vscode/src/synth.py",
+				"PYTHON3": "/usr/local/bin/python3",
+				// add the scala interpreter path to "SCALA" env var
 			},
 			"breakOnLoad": false,
 			"urlFilter": "*workbench.html*",
