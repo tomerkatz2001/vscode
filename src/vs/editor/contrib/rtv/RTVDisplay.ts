@@ -1920,7 +1920,7 @@ class RTVController implements IEditorContribution {
 	public updateFragment(beforeEnv: any, afterEnv: any) {
 		let code_fname = os.tmpdir() + path.sep + "tmp.py";
 
-		// we may not need this anymore
+		// we may not need this anymore if not remove
 		this.writeModelToDisk(code_fname);
 
 		let example_fname = os.tmpdir() + path.sep + "synth_example.json";
