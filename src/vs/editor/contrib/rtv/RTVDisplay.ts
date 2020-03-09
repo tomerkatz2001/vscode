@@ -1956,7 +1956,6 @@ class RTVController implements IEditorContribution {
 
 	public synthesizeFragment(lineno: number, beforeEnv: any, afterEnv: any, change: boolean){
 
-		console.log("calling synthesizer");
 		let example_fname = os.tmpdir() + path.sep + "synth_example.json";
 		if (change){
 			let jsonAfterEnv = JSON.stringify(afterEnv);
