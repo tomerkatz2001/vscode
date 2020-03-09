@@ -495,23 +495,36 @@ class RTVDisplayBox {
 				cellContent.contentEditable = "true";
 				cellContent.onkeydown = (e) => {
 					if (e.key === "Enter"){
+						let change = false;
+						if (cellContent.innerText === elmt.env[elmt.vname!]){
 
+						}
+						else {
+							change = true
+						}
 						setTimeout(() => {
-
-							this._controller.synthesizeFragment(elmt.controllingLineNumber);
+							elmt.env[elmt.vname!] = cellContent.innerText;
+							this._controller.synthesizeFragment(elmt.controllingLineNumber, elmt.env, change);
 						}, 200);
 						this._editor.focus();
 					}
 
 					else if (e.key === "Tab") {
 
-						setTimeout(() => {
+;
+						if (cellContent.innerText === elmt.env[elmt.vname!]){
 
-							// this._controller.synthesizeFragment(elmt.controllingLineNumber);
-							elmt.env[elmt.vname!] = cellContent.innerText;
-							let beforeEnv = this._controller.getEnvAtPrevTimeStep(elmt.env);
-							this._controller.updateFragment(beforeEnv, elmt.env);
-						}, 200);
+
+						}
+						else {
+							setTimeout(() => {
+
+								// this._controller.synthesizeFragment(elmt.controllingLineNumber);
+								elmt.env[elmt.vname!] = cellContent.innerText;
+								let beforeEnv = this._controller.getEnvAtPrevTimeStep(elmt.env);
+								this._controller.updateFragment(beforeEnv, elmt.env);
+							}, 200);
+						}
 						return true;
 					} else if (e.key === "Escape") {
 						this._editor.focus();
@@ -1929,6 +1942,7 @@ class RTVController implements IEditorContribution {
 		let example_fname = os.tmpdir() + path.sep + "synth_example.json";
 		// let jsonBeforeEnv = JSON.stringify(beforeEnv);
 		let jsonAfterEnv = JSON.stringify(afterEnv);
+
 		if (fileCreated){
 
 			fs.appendFileSync(example_fname, ", " + jsonAfterEnv);
@@ -1940,10 +1954,20 @@ class RTVController implements IEditorContribution {
 
 	}
 
-	public synthesizeFragment(lineno: number){
+	public synthesizeFragment(lineno: number, afterEnv: any, change: boolean){
 
 		console.log("calling synthesizer");
 		let example_fname = os.tmpdir() + path.sep + "synth_example.json";
+		if (change){
+			let jsonAfterEnv = JSON.stringify(afterEnv);
+			if (fileCreated){
+
+				fs.appendFileSync(example_fname, ", " + jsonAfterEnv);
+			}
+			else {
+				fs.writeFileSync(example_fname, "[" + jsonAfterEnv);
+			}
+		}
 		fs.appendFileSync(example_fname, "]");
 
 		let c = cp.spawn(SCALA, [SYNTH, example_fname]);
