@@ -504,7 +504,8 @@ class RTVDisplayBox {
 						}
 						setTimeout(() => {
 							elmt.env[elmt.vname!] = cellContent.innerText;
-							this._controller.synthesizeFragment(elmt.controllingLineNumber, elmt.env, change);
+							let beforeEnv = this._controller.getEnvAtPrevTimeStep(elmt.env);
+							this._controller.synthesizeFragment(elmt.controllingLineNumber, beforeEnv, elmt.env, change);
 						}, 200);
 						this._editor.focus();
 					}
@@ -519,7 +520,6 @@ class RTVDisplayBox {
 						else {
 							setTimeout(() => {
 
-								// this._controller.synthesizeFragment(elmt.controllingLineNumber);
 								elmt.env[elmt.vname!] = cellContent.innerText;
 								let beforeEnv = this._controller.getEnvAtPrevTimeStep(elmt.env);
 								this._controller.updateFragment(beforeEnv, elmt.env);
@@ -1940,32 +1940,33 @@ class RTVController implements IEditorContribution {
 		this.writeModelToDisk(code_fname);
 
 		let example_fname = os.tmpdir() + path.sep + "synth_example.json";
-		// let jsonBeforeEnv = JSON.stringify(beforeEnv);
+		let jsonBeforeEnv = JSON.stringify(beforeEnv);
 		let jsonAfterEnv = JSON.stringify(afterEnv);
 
 		if (fileCreated){
 
-			fs.appendFileSync(example_fname, ", " + jsonAfterEnv);
+			fs.appendFileSync(example_fname, ", [" + jsonBeforeEnv + ", " + jsonAfterEnv + "]");
 		}
 		else {
-			fs.writeFileSync(example_fname, "[" + jsonAfterEnv);
+			fs.writeFileSync(example_fname, "[[" + jsonBeforeEnv + ", " + jsonAfterEnv +"]");
 			fileCreated = true;
 		}
 
 	}
 
-	public synthesizeFragment(lineno: number, afterEnv: any, change: boolean){
+	public synthesizeFragment(lineno: number, beforeEnv: any, afterEnv: any, change: boolean){
 
 		console.log("calling synthesizer");
 		let example_fname = os.tmpdir() + path.sep + "synth_example.json";
 		if (change){
 			let jsonAfterEnv = JSON.stringify(afterEnv);
+			let jsonBeforeEnv = JSON.stringify(beforeEnv);
 			if (fileCreated){
 
-				fs.appendFileSync(example_fname, ", " + jsonAfterEnv);
+				fs.appendFileSync(example_fname, ", [" + jsonBeforeEnv + ", " + jsonAfterEnv + "]");
 			}
 			else {
-				fs.writeFileSync(example_fname, "[" + jsonAfterEnv);
+				fs.writeFileSync(example_fname, "[[" + jsonBeforeEnv + ", " + jsonAfterEnv +"]");
 			}
 		}
 		fs.appendFileSync(example_fname, "]");
