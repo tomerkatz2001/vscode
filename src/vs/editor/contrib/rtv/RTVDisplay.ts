@@ -1929,7 +1929,6 @@ class RTVController implements IEditorContribution {
 		let example_fname = os.tmpdir() + path.sep + "synth_example.json";
 		// let jsonBeforeEnv = JSON.stringify(beforeEnv);
 		let jsonAfterEnv = JSON.stringify(afterEnv);
-		console.log("yay");
 		if (fileCreated){
 
 			fs.appendFileSync(example_fname, ", " + jsonAfterEnv);
