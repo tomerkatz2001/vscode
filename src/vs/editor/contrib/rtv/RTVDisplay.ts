@@ -491,48 +491,40 @@ class RTVDisplayBox {
 		} else {
 			let renderedText = r.render(new MarkdownString(s));
 			cellContent = renderedText.element;
+
 			if (this._controller.supportSynthesis) {
-				cellContent.contentEditable = "true";
-				cellContent.onkeydown = (e) => {
-					if (e.key === "Enter"){
-						let change = false;
-						if (cellContent.innerText === elmt.env[elmt.vname!]){
+				cellContent.contentEditable = 'true';
+				cellContent.onkeydown = (e: KeyboardEvent) => {
+					let rs: boolean = true;
 
-						}
-						else {
-							change = true
-						}
-						setTimeout(() => {
-							elmt.env[elmt.vname!] = cellContent.innerText;
-							let beforeEnv = this._controller.getEnvAtPrevTimeStep(elmt.env);
-							this._controller.synthesizeFragment(elmt.controllingLineNumber, beforeEnv, elmt.env, change);
-						}, 200);
-						this._editor.focus();
-					}
-
-					else if (e.key === "Tab") {
-
-;
-						if (cellContent.innerText === elmt.env[elmt.vname!]){
-
-
-						}
-						else {
+					switch(e.key) {
+						case 'Enter':
+							let change = !(cellContent.innerText === elmt.env[elmt.vname!]);
 							setTimeout(() => {
-
 								elmt.env[elmt.vname!] = cellContent.innerText;
 								let beforeEnv = this._controller.getEnvAtPrevTimeStep(elmt.env);
-								this._controller.updateFragment(beforeEnv, elmt.env);
+								this._controller.synthesizeFragment(elmt.controllingLineNumber, beforeEnv, elmt.env, change);
 							}, 200);
-						}
-						return true;
-					} else if (e.key === "Escape") {
-						this._editor.focus();
-						return false;
+							this._editor.focus();
+							e.preventDefault();
+							break;
+						case 'Tab':
+							if (cellContent.innerText !== elmt.env[elmt.vname!]) {
+								setTimeout(() => {
+									elmt.env[elmt.vname!] = cellContent.innerText;
+									let beforeEnv = this._controller.getEnvAtPrevTimeStep(elmt.env);
+									this._controller.updateFragment(beforeEnv, elmt.env);
+								}, 200);
+							}
+							break;
+						case 'Escape':
+							this._editor.focus();
+							rs = false;
+							break;
 					}
-					return true;
-				}
 
+					return rs;
+				};
 			}
 		}
 		if (this._controller.mouseShortcuts) {
