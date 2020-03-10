@@ -1910,9 +1910,10 @@ class RTVController implements IEditorContribution {
 	private insertSynthesizedFragment(fragment: string, lineno: number) {
 		let model = this.getModelForce();
 		let cursorPos = this._editor.getPosition();
-		var startCol:number;
-		var endCol:number;
-		if (model.getLineContent(lineno).trim() === "" && cursorPos !== null && cursorPos.lineNumber == lineno) {
+		let startCol: number;
+		let endCol: number;
+
+		if (model.getLineContent(lineno).trim() === '' && cursorPos !== null && cursorPos.lineNumber == lineno) {
 			startCol = cursorPos.column;
 			endCol = cursorPos.column;
 		} else {
@@ -1920,7 +1921,7 @@ class RTVController implements IEditorContribution {
 			endCol = model.getLineMaxColumn(lineno);
 		}
 		let range = new Range(lineno, startCol, lineno, endCol);
-		//this.getModelForce().applyEdits([{range: range, text: fragment}])
+
 		this._editor.pushUndoStop();
 		this._editor.executeEdits(this.getId(), [{range: range, text: fragment}]);
 	}
@@ -1964,24 +1965,32 @@ class RTVController implements IEditorContribution {
 
 		let c = cp.spawn(SCALA, [SYNTH, example_fname]);
 
-		c.stdout.on("data", (data) => {
-			console.log("stdout " + data.toString())
+		this.insertSynthesizedFragment('# Synthesizing. Please wait...', lineno);
+
+		c.stdout.on('data', (data) => {
+			console.log('[SYNTH OUT]' + data.toString());
 		});
 
-		// TODO:
-		// c.on('close', closeCode) => {
+		c.stderr.on('data', (data) => {
+			console.error('[SYNTH ERR]' + data.toString());
+		});
 
-
-		// }
 		fileCreated = false;
 		c.on('close', (exitCode) => {
 			console.log(`child process exited with code ${exitCode}`);
-			if (exitCode === 0) {
-				let fragment = fs.readFileSync(example_fname + ".out").toString();
+			let error: boolean = exitCode !== 0;
+
+			if (!error) {
+				let fragment = fs.readFileSync(example_fname + '.out').toString();
 				console.log(fragment);
-				if (fragment !== "None") {
+				error = fragment === 'None';
+				if (!error) {
 					this.insertSynthesizedFragment(fragment, lineno);
 				}
+			}
+
+			if (error) {
+				this.insertSynthesizedFragment('# Synthesis failed', lineno);
 			}
 		});
 	}
