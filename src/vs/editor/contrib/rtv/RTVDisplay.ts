@@ -516,7 +516,54 @@ class RTVDisplayBox {
 							e.preventDefault();
 							break;
 						case 'Tab':
-							if (cellContent.innerText !== elmt.env[elmt.vname!]) {
+							// ----------------------------------------------------------
+							// Use Tabs to go over values of the same variable
+							// ----------------------------------------------------------
+							e.preventDefault();
+
+							let selection = window.getSelection()!;
+							let cell: HTMLTableCellElement;
+							let row: HTMLTableRowElement;
+
+							for (let cellIter = selection.focusNode!; cellIter.parentNode; cellIter = cellIter.parentNode) {
+								if (cellIter.nodeName === 'TD') {
+									cell = cellIter as HTMLTableCellElement;
+									break;
+								}
+							}
+
+							for (let rowIter = cell!.parentNode!; rowIter.parentNode; rowIter = rowIter.parentNode) {
+								if (rowIter.nodeName === 'TR') {
+									row = rowIter as HTMLTableRowElement;
+									break;
+								}
+							}
+
+							if (this._controller.byRowOrCol === RowColMode.ByCol) {
+								let table: HTMLTableElement = row!.parentNode as HTMLTableElement;
+								let nextRowIdx = (row!.rowIndex - 1 + (e.shiftKey ? -1 : 1)) % (table.rows.length - 1) + 1;
+								if (nextRowIdx <= 0) { nextRowIdx += table.rows.length - 1; }
+								let nextRow = table.rows[nextRowIdx];
+								let col = nextRow.childNodes[cell!.cellIndex!];
+								let newFocusNode = col.childNodes[0];
+								let range = selection?.getRangeAt(0);
+								range.selectNodeContents(newFocusNode);
+								selection?.removeAllRanges();
+								selection?.addRange(range);
+							} else {
+								let nextCellIdx = (cell!.cellIndex - 1 + (e.shiftKey ? -1 : 1)) % (row!.childNodes.length - 1) + 1;
+								if (nextCellIdx <= 0) { nextCellIdx += row!.childNodes.length - 1; }
+								let col = row!.childNodes[nextCellIdx];
+								let newFocusNode = col.childNodes[0];
+								let range = selection?.getRangeAt(0);
+								range.selectNodeContents(newFocusNode);
+								selection?.removeAllRanges();
+								selection?.addRange(range);
+							}
+
+							// ----------------------------------------------------------
+
+							if (elmt.env !== undefined && cellContent.innerText !== elmt.env[elmt.vname!]) {
 								setTimeout(() => {
 									elmt.env[elmt.vname!] = cellContent.innerText;
 									let beforeEnv = this._controller.getEnvAtPrevTimeStep(elmt.env);
