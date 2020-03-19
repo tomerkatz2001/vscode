@@ -215,6 +215,7 @@ class RTVDisplayBox {
 	private _allVars: Set<string> = new Set<string>();
 	private _displayedVars: Set<string> = new Set<string>();
 	private _deltaVarSet: DeltaVarSet;
+	private _cellDictionary: {[k: string]: HTMLElement} = {};
 
 	constructor(
 		private readonly _controller: RTVController,
@@ -260,6 +261,11 @@ class RTVDisplayBox {
 
 	get visible() {
 		return this._hasContent;
+	}
+
+	public getCellContent(){
+
+		return this._cellDictionary;
 	}
 
 	public hasContent() {
@@ -493,7 +499,7 @@ class RTVDisplayBox {
 			cellContent = renderedText.element;
 
 			if (this._controller.supportSynthesis) {
-				cellContent.contentEditable = 'true';
+				// cellContent.contentEditable = 'true';
 				cellContent.onkeydown = (e: KeyboardEvent) => {
 					let rs: boolean = true;
 
@@ -505,6 +511,7 @@ class RTVDisplayBox {
 								let beforeEnv = this._controller.getEnvAtPrevTimeStep(elmt.env);
 								this._controller.synthesizeFragment(elmt.controllingLineNumber, beforeEnv, elmt.env, change);
 							}, 200);
+							cellContent.contentEditable = 'false';
 							this._editor.focus();
 							e.preventDefault();
 							break;
@@ -534,6 +541,8 @@ class RTVDisplayBox {
 				cellContent = this.wrapAsLoopMenuButton(cellContent, elmt.loopID, elmt.iter, elmt.controllingLineNumber);
 			}
 		}
+		this._cellDictionary[elmt.vname!] = cellContent;
+
 		cell.appendChild(cellContent);
 	}
 
@@ -1111,6 +1120,7 @@ class RTVController implements IEditorContribution {
 	private _peekCounter: number = 0;
 	private _peekTimer: NodeJS.Timer | null = null;
 	private _globalDeltaVarSet: DeltaVarSet = new DeltaVarSet();
+
 
 	public static readonly ID = 'editor.contrib.rtv';
 
@@ -2400,6 +2410,64 @@ class RTVController implements IEditorContribution {
 		}
 	}
 
+	public editingVar(){
+		let d = this._editor.getPosition();
+		let controller = RTVController.get(this._editor);
+		let s = "";
+		let line = -1;
+		if (d != null){
+			line = d.lineNumber;
+		}
+		if (controller != null){
+
+			s = controller.getLineContent(line).trim();
+		}
+
+		if (line > -1){
+
+			this.getDicitonaryMakeEdit(s, line, controller);
+		}
+	}
+	private getDicitonaryMakeEdit(s: string, line: number, controller: RTVController){
+
+		let listOfElems = s.split("=");
+
+		if (listOfElems.length != 2){
+
+			console.log("wrong input");
+		}
+		else{
+			let l_operand = listOfElems[0].trim();
+			let r_operand = listOfElems[1].trim();
+			if (r_operand === "??" ){
+
+				let model = this.getModelForce();
+				let cursorPos = this._editor.getPosition();
+				let startCol: number;
+				let endCol: number;
+
+				if (model.getLineContent(line).trim() === '' && cursorPos !== null && cursorPos.lineNumber == line) {
+					startCol = cursorPos.column;
+					endCol = cursorPos.column;
+				} else {
+					startCol = model.getLineFirstNonWhitespaceColumn(line);
+					endCol = model.getLineMaxColumn(line);
+				}
+				let range = new Range(line, startCol, line, endCol);
+				let txt = l_operand + ' = ' + 0;
+				this._editor.executeEdits(this.getId(), [{range: range, text: txt}]);
+
+				setTimeout(() => {
+					let k: string = l_operand;
+					let cellContent = controller._boxes[line-1].getCellContent()[k];
+					cellContent.contentEditable = 'true';
+					cellContent.focus();
+				}, 800);
+
+			}
+		}
+
+	}
 	private onMouseWheel(e: IMouseWheelEvent) {
 		if (this.loopIterController !== null) {
 			e.stopImmediatePropagation();
@@ -2749,3 +2817,11 @@ createRTVAction(
 	}
 );
 
+createRTVAction(
+	'rtv.editVar',
+	"Start Editing the Var",
+	KeyMod.Shift | KeyCode.Space,
+	(c) => {
+		c.editingVar();
+	}
+);
