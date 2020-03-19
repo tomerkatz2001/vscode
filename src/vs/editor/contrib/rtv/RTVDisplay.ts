@@ -3,13 +3,14 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
+import 'vs/css!./rtv';
 import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
 import { IEditorContribution, IScrollEvent } from 'vs/editor/common/editorCommon';
 import { EditorAction, ServicesAccessor, registerEditorAction, registerEditorContribution } from 'vs/editor/browser/editorExtensions';
 import { EditorLayoutInfo } from 'vs/editor/common/config/editorOptions';
 import * as strings from 'vs/base/common/strings';
-import { Range } from 'vs/editor/common/core/range';
+import { IRange, Range } from 'vs/editor/common/core/range';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
 import { IModeService } from 'vs/editor/common/services/modeService';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
@@ -31,7 +32,10 @@ import { KeybindingWeight } from 'vs/platform/keybinding/common/keybindingsRegis
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { EditorOption } from 'vs/editor/common/config/editorOptions';
 import { inputBackground, inputBorder, inputForeground, widgetShadow, editorWidgetBackground } from 'vs/platform/theme/common/colorRegistry';
-import { ITextModel } from 'vs/editor/common/model';
+import { ITextModel, IModelDecorationOptions } from 'vs/editor/common/model';
+import { KeybindingsRegistry } from 'vs/platform/keybinding/common/keybindingsRegistry';
+import { ICodeEditorService } from 'vs/editor/browser/services/codeEditorService';
+
 
 // Helper functions
 function getOSEnvVariable(v: string): string {
@@ -72,8 +76,27 @@ function arrayStartsWith<T>(haystack: T[], needle: T[]): boolean {
 	return true;
 }
 
+function isEmpty(str: string) {
+	return str.trim() === "";
+}
+
+function isSeedLine(str: string) {
+	return str.match("#@") != null;
+}
+
+function isLoopStr(str: string) {
+	let trimmed = str.trim();
+	return strings.endsWith(trimmed, ":") &&
+		   (strings.startsWith(trimmed, "for") ||
+			strings.startsWith(trimmed, "while"));
+}
+
 function strNumsToArray(s: string): number[] {
-	return s.split(",").map(e => +e)
+	if (s === "") {
+		return []
+	} else {
+		return s.split(",").map(e => +e);
+	}
 }
 
 // returns true if s matches regExp
@@ -272,6 +295,7 @@ class RTVDisplayBox {
 	public setContentFalse() {
 		// Set content to false. Boxes with no content don't get processed during layout pass,
 		// so we take care of layout here, which is to make  invisible (opacity 0).
+		this._allEnvs = [];
 		this._hasContent = false;
 		this._box.textContent = "";
 		this._box.style.opacity = "0";
@@ -311,6 +335,24 @@ class RTVDisplayBox {
 		return result;
 	}
 
+	public getLineContent(): string {
+		return this._controller.getLineContent(this.lineNumber);
+	}
+
+	public getLoopID(): string {
+		if (this._allEnvs.length == 0) {
+			return "";
+		}
+		return this._allEnvs[0]["$"];
+	}
+
+	public getFirstLoopIter(): string {
+		if (this._allEnvs.length == 0) {
+			return "";
+		}
+		return this._allEnvs[0]["#"];
+	}
+
 	public getNextLoopIter(loopID: string, iter: string, delta: number): string {
 		if (delta === 0) {
 			return iter;
@@ -325,6 +367,9 @@ class RTVDisplayBox {
 		for (let i = 0; i < envs.length; i++) {
 			let env = envs[i];
 
+			if (env["$"] !== loopID) {
+				throw Error("Error");
+			}
 			if (first === "") {
 				if (env["$"] === loopID) {
 					first = env["#"]
@@ -337,6 +382,9 @@ class RTVDisplayBox {
 					return first;
 				}
 				let nextEnv = envs[nexti];
+				if (nextEnv["$"] !== loopID) {
+					throw Error("Error");
+				}
 				if (nextEnv["$"] === loopID) {
 					return nextEnv["#"];
 				} else {
@@ -383,7 +431,7 @@ class RTVDisplayBox {
 				new ContextSubMenu("Appearance of All Boxes", viewModeActions),
 				new Separator(),
 				this.newAction("See All Loop Iterations", () => {
-					c.loopIterController = null;
+					c.loopFocusController = null;
 				}),
 			],
 			onHide: () => {},
@@ -403,6 +451,11 @@ class RTVDisplayBox {
 		return strings.endsWith(lineContent, ":") &&
 			   (strings.startsWith(lineContent, "for") ||
 				strings.startsWith(lineContent, "while"));
+	}
+
+	public isBreakLine(): boolean {
+		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
+		return strings.startsWith(lineContent, "break");
 	}
 
 	public isReturnLine(): boolean {
@@ -447,14 +500,38 @@ class RTVDisplayBox {
 		return envs2;
 	}
 
+	private adjustToNextTimeStep(envs: any[]): any[] {
+		if (this.isBreakLine()) {
+			return envs;
+		}
+		let envs2: any[] = [];
+		let isLoop = this.isLoopLine();
+		let currIndent = this.indentAtLine(this.lineNumber);
+		envs.forEach((env) => {
+			if (env.begin_loop !== undefined) {
+				envs2.push(env);
+			} else if (env.end_loop !== undefined) {
+				envs2.push(env);
+			} else if (env.next_lineno !== undefined) {
+				if (!isLoop || this.indentAtLine(env.next_lineno+1) > currIndent) {
+					let nextEnv = this._controller.getEnvAtNextTimeStep(env);
+					if (nextEnv !== null) {
+						envs2.push(nextEnv);
+					}
+				}
+			}
+		});
+		return envs2;
+	}
+
 	private filterLoops(envs: any[]): any[] {
-		if (this._controller.loopIterController === null) {
+		if (this._controller.loopFocusController === null) {
 			return envs;
 		}
 
-		let iterCtrl = this._controller.loopIterController;
+		let focusCtrl = this._controller.loopFocusController;
 
-		return envs.filter((e,i,a) => iterCtrl.matches(e["$"], e["#"]));
+		return envs.filter((e,i,a) => focusCtrl.matches(e["$"], e["#"]));
 	}
 
 	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r:MarkdownRenderer) {
@@ -512,7 +589,7 @@ class RTVDisplayBox {
 			if (elmt.iter === "header") {
 				cellContent = this.wrapAsVarMenuButton(cellContent, s.substr(2, s.length-4));
 			} else if (elmt.iter !== "") {
-				cellContent = this.wrapAsLoopMenuButton(cellContent, elmt.loopID, elmt.iter, elmt.controllingLineNumber);
+				cellContent = this.wrapAsLoopMenuButton(cellContent, elmt.iter);
 			}
 		}
 		cell.appendChild(cellContent);
@@ -571,6 +648,34 @@ class RTVDisplayBox {
 		return indent(this._controller.getLineContent(lineno));
 	}
 
+	public computeEnvs() {
+
+		if (!this._controller.showBoxAtLoopStmt && this.isLoopLine()) {
+			this.setContentFalse();
+			return;
+		}
+
+		if (this.isConditionalLine()) {
+			this.setContentFalse();
+			return;
+		}
+
+		// Get all envs at this line number
+		let envs = this._controller.envs[this.lineNumber-1];
+		if (envs === undefined) {
+			this.setContentFalse();
+			return;
+		}
+
+		this.setContentTrue();
+
+		envs = this.adjustToNextTimeStep(envs);
+		envs = this.addMissingLines(envs);
+
+		this._allEnvs = envs;
+
+	}
+
 	public updateContent() {
 
 		if (!this._controller.showBoxAtLoopStmt && this.isLoopLine()) {
@@ -584,33 +689,15 @@ class RTVDisplayBox {
 		}
 
 		// Get all envs at this line number
-		let envsAtLine = this._controller.envs[this.lineNumber-1];
-		if (envsAtLine === undefined) {
+		let envs = this._controller.envs[this.lineNumber-1];
+		if (envs === undefined) {
 			this.setContentFalse();
 			return;
 		}
 
 		this.setContentTrue();
 
-		// collect all next step envs
-		let envs: any[] = [];
-		let isLoop = this.isLoopLine();
-		let currIndent = this.indentAtLine(this.lineNumber);
-		envsAtLine.forEach((env) => {
-			if (env.begin_loop !== undefined) {
-				envs.push(env);
-			} else if (env.end_loop !== undefined) {
-				envs.push(env);
-			} else if (env.next_lineno !== undefined) {
-				if (!isLoop || this.indentAtLine(env.next_lineno+1) > currIndent) {
-					let nextEnv = this._controller.getEnvAtNextTimeStep(env);
-					if (nextEnv !== null) {
-						envs.push(nextEnv);
-					}
-				}
-			}
-		});
-
+		envs = this.adjustToNextTimeStep(envs);
 		envs = this.addMissingLines(envs);
 
 		this._allEnvs = envs;
@@ -641,6 +728,11 @@ class RTVDisplayBox {
 		}
 
 		envs = this.filterLoops(envs);
+
+		if (envs.length === 0) {
+			this.setContentFalse();
+			return;
+		}
 
 		// Generate header
 		let rows: TableElement[][] = [];
@@ -819,7 +911,7 @@ class RTVDisplayBox {
 		return menubar;
 	}
 
-	private wrapAsLoopMenuButton(elmt: HTMLElement, loopID: string, iter: string, controllingLineNumber: number): HTMLDivElement {
+	private wrapAsLoopMenuButton(elmt: HTMLElement, iter: string): HTMLDivElement {
 		let menubar = document.createElement('div');
 		menubar.className = "menubar";
 		menubar.style.height = "19.5px";
@@ -838,7 +930,7 @@ class RTVDisplayBox {
 				getAnchor: () => elmt,
 				getActions: () => [
 					this.newAction("Focus on This Loop Iteration", () => {
-						c.loopIterController = new LoopIterController(loopID, iter, controllingLineNumber);
+						c.loopFocusController = new LoopFocusController(this._controller, this, iter);
 					})
 				],
 				onHide: () => {},
@@ -1025,31 +1117,81 @@ enum ChangeVarsOp {
 	Keep = 'keep'
 }
 
-class LoopIterController {
+class LoopFocusController {
 
-	private loopIDArr: number[];
-	private iterArr: number[];
-
+	private _loopIDArr: number[];
+	private _iterArr: number[];
+	private _decoration1?: string;
+	private _decoration2?: string;
+	private _decoration3?: string;
 	constructor(
-		public readonly loopID: string,
+		private readonly _controller: RTVController,
+		public readonly controllingBox: RTVDisplayBox,
 		public readonly iter: string,
-		public readonly controllingLineNumber: number
 	) {
-		this.loopIDArr = strNumsToArray(loopID);
-		this.iterArr = strNumsToArray(iter);
+		this._iterArr = strNumsToArray(iter);
+		this._loopIDArr = strNumsToArray(controllingBox.getLoopID());
+		this.resetDecorations();
+	}
+
+	public resetDecorations() {
+		this.destroyDecorations();
+		if (this.hasSeed()) {
+			let lineNumber = this.controllingBox.lineNumber;
+			let model = this._controller.getModelForce();
+			let lines = model.getLinesContent();
+			let currIndent = indent(lines[lineNumber-1]);
+			let start = lineNumber;
+			function isStillInLoop(s: string) {
+				return isEmpty(s) || indent(s) >= currIndent;
+			}
+			while (start >= 1 && isStillInLoop(lines[start-1])) {
+				start = start - 1;
+			}
+			let end = lineNumber;
+			while (end < lines.length+1 && isStillInLoop(lines[end-1])) {
+				end = end + 1;
+			}
+
+			let range1 = new Range(1, 1, start, model.getLineMaxColumn(start));
+			let maxline = lines.length;
+			let range2 = new Range(end, 1, maxline, model.getLineMaxColumn(maxline));
+			let lineContent = lines[lineNumber-1];
+			let range3 = new Range(lineNumber, indent(lineContent)+1, lineNumber, lineContent.length+1);
+			this._decoration1 = this._controller.addDecoration(range1, { inlineClassName: "rtv-code-fade" });
+			this._decoration2 = this._controller.addDecoration(range2, { inlineClassName: "rtv-code-fade" });
+			this._decoration3 = this._controller.addDecoration(range3, { className: "squiggly-info"});
+		}
+	}
+
+	public destroyDecorations() {
+		if (this._decoration1) {
+			this._controller.removeDecoration(this._decoration1);
+		}
+		if (this._decoration2) {
+			this._controller.removeDecoration(this._decoration2);
+		}
+		if (this._decoration3) {
+			this._controller.removeDecoration(this._decoration3);
+		}
+	}
+
+	public hasSeed(): boolean {
+		return isSeedLine(this.controllingBox.getLineContent());
 	}
 
 	public matchesIter(otherIter: string): boolean {
 		let otherIterArr = strNumsToArray(otherIter);
-		return arrayStartsWith(this.iterArr, otherIterArr) || arrayStartsWith(otherIterArr, this.iterArr);
+		return arrayStartsWith(otherIterArr, this._iterArr);
 	}
 
 	public matchesID(otherLoopID: string): boolean {
 		let otherLoopsLinenoArr = strNumsToArray(otherLoopID);
-		return arrayStartsWith(this.loopIDArr, otherLoopsLinenoArr) || arrayStartsWith(otherLoopsLinenoArr, this.loopIDArr);
+		return arrayStartsWith(otherLoopsLinenoArr, this._loopIDArr);
 	}
 
 	public matches(otherLoopID: string, otherIter: string): boolean {
+		this._loopIDArr = strNumsToArray(this.controllingBox.getLoopID());
 		return this.matchesID(otherLoopID) && this.matchesIter(otherIter);
 	}
 
@@ -1074,6 +1216,12 @@ function visibilityCursorAndReturn(b: RTVDisplayBox, cursorLineNumber: number) {
 	return b.lineNumber === cursorLineNumber || b.isReturnLine();
 }
 
+enum LangId {
+	NotSupported = 0,
+	Python = 1,
+	Haskell = 2
+}
+
 class RTVController implements IEditorContribution {
 	public envs: { [k:string]: any []; } = {};
 	public writes: { [k:string]: string[]; } = {};
@@ -1085,7 +1233,7 @@ class RTVController implements IEditorContribution {
 	public tableCellsByLoop: MapLoopsToCells = {};
 	private _config: ConfigurationServiceCache;
 	private _makeNewBoxesVisible: boolean = true;
-	private _loopIterController: LoopIterController | null = null;
+	private _loopFocusController: LoopFocusController | null = null;
 	private _errorDecorationID: string | null = null;
 	private _errorDisplayTimer: NodeJS.Timer | null = null;
 	private _visibilityPolicy: VisibilityPolicy = visibilityAll;
@@ -1102,15 +1250,17 @@ class RTVController implements IEditorContribution {
 		@IConfigurationService configurationService: IConfigurationService,
 		@IContextMenuService public readonly contextMenuService: IContextMenuService,
 		@IThemeService private readonly _themeService: IThemeService,
+		//@IModelService private readonly _modelService: IModelService,
 	) {
-		this._editor.onDidChangeCursorPosition((e) => {this.onChangeCursorPosition(e);	});
-		this._editor.onDidScrollChange((e) => { this.onScrollChange(e); });
-		this._editor.onDidLayoutChange((e) => { this.onLayoutChange(e); });
-		this._editor.onDidChangeModelContent((e) => { this.runProgram(e); });
-		//this._editor.onDidChangeModelLanguage((e) => { this.runProgram(); });
+		this._editor.onDidChangeCursorPosition((e) => { this.onDidChangeCursorPosition(e); });
+		this._editor.onDidScrollChange((e) => { this.onDidScrollChange(e); });
+		this._editor.onDidLayoutChange((e) => { this.onDidLayoutChange(e); });
+		this._editor.onDidChangeModelContent((e) => { this.onDidChangeModelContent(e); });
+		this._editor.onDidChangeModelLanguage((e) => { this.runProgram(); });
 		this._editor.onMouseWheel((e) => { this.onMouseWheel(e); });
 		this._editor.onKeyUp((e) => { this.onKeyUp(e); });
 		this._editor.onKeyDown((e) => { this.onKeyDown(e); });
+		//this._modelService.onModelModeChanged((e) => { console.log("BBBB");  });
 
 		for (let i = 0; i < this.getLineCount(); i++) {
 			this._boxes.push(new RTVDisplayBox(this, _editor, _modeService, _openerService, i+1, this._globalDeltaVarSet));
@@ -1243,13 +1393,14 @@ class RTVController implements IEditorContribution {
 		return this._maxPixelCol;
 	}
 
-	get loopIterController(): LoopIterController | null {
-		return this._loopIterController;
+	get loopFocusController(): LoopFocusController | null {
+		return this._loopFocusController;
 	}
 
-	set loopIterController(lc: LoopIterController | null) {
-		this._loopIterController = lc;
-		this.updateContentAndLayout();
+	set loopFocusController(lc: LoopFocusController | null) {
+		this._loopFocusController?.destroyDecorations();
+		this._loopFocusController = lc;
+		this.runProgram();
 	}
 
 	public changeToCompactView() {
@@ -1293,6 +1444,14 @@ class RTVController implements IEditorContribution {
 		}
 	}
 
+	public getModelForce(): ITextModel {
+		let model = this._editor.getModel();
+		if (model === null) {
+			throw Error("Expecting a model");
+		}
+		return model;
+	}
+
 	private getLineCount(): number {
 		let model = this._editor.getModel();
 		if (model === null) {
@@ -1307,6 +1466,24 @@ class RTVController implements IEditorContribution {
 			return "";
 		}
 		return model.getLineContent(lineNumber);
+	}
+
+	private getLangId(): LangId {
+		let model = this._editor.getModel();
+		if (model === null) {
+			return LangId.NotSupported;
+		}
+		let uri = model.uri;
+		if (uri.scheme !== "file") {
+			return LangId.NotSupported;
+		}
+		if (strings.endsWith(uri.path, ".py")) {
+			return LangId.Python;
+		}
+		if (strings.endsWith(uri.path, ".hs")) {
+			return LangId.Haskell
+		}
+		return LangId.NotSupported;
 	}
 
 	private updateMaxPixelCol() {
@@ -1463,11 +1640,11 @@ class RTVController implements IEditorContribution {
 		}
 	}
 
-	private onChangeCursorPosition(e: ICursorPositionChangedEvent) {
+	private onDidChangeCursorPosition(e: ICursorPositionChangedEvent) {
 		this.updateLayout();
 	}
 
-	private onScrollChange(e:IScrollEvent) {
+	private onDidScrollChange(e:IScrollEvent) {
 		if (e.scrollHeightChanged || e.scrollWidthChanged) {
 			// this means the content also changed, so we will let the onChangeModelContent event handle it
 			return;
@@ -1476,9 +1653,25 @@ class RTVController implements IEditorContribution {
 		this.updateLayout();
 	}
 
-	private onLayoutChange(e: EditorLayoutInfo) {
+	private onDidLayoutChange(e: EditorLayoutInfo) {
 		this.updateMaxPixelCol();
 		this.updateLayout();
+	}
+
+	private onDidChangeModelContent(e: IModelContentChangedEvent) {
+		//this.getModelForce().getActiveIndentGuide()
+		this.runProgram(e);
+		if (e.changes.length > 0) {
+			let range = e.changes[0].range;
+			for (let i = range.startLineNumber; i <= range.endLineNumber; i++) {
+				if (isSeedLine(this.getLineContent(i))) {
+					this.focusOnLoopWithSeed();
+				}
+			}
+		}
+		if (this.loopFocusController !== null) {
+			this.loopFocusController.resetDecorations();
+		}
 	}
 
 	private updateCellSizesForNewContent() {
@@ -1546,6 +1739,11 @@ class RTVController implements IEditorContribution {
 
 	private updateContent() {
 		this.padBoxArray();
+		if (this.loopFocusController !== null) {
+			// if we are focused on a loop, compute envs at the controlling box first
+			// so that it's loop iterations are set properly, so that getLoopID works
+			this.loopFocusController.controllingBox.computeEnvs();
+		}
 		this._boxes.forEach((b) => {
 			b.updateContent();
 		});
@@ -1757,6 +1955,20 @@ class RTVController implements IEditorContribution {
 		this.updatePrevModel();
 	}
 
+	public addDecoration(range: IRange, options: IModelDecorationOptions) {
+		let result = "";
+		this._editor.changeDecorations((c) => {
+			result = c.addDecoration(range, options);
+		});
+		return result;
+	}
+
+	public removeDecoration(id: string) {
+		this._editor.changeDecorations((c) => {
+			c.removeDecoration(id);
+		});
+	}
+
 	private showErrorWithDelay(errorMsg: string) {
 		if (this._errorDisplayTimer != null) {
 			clearTimeout(this._errorDisplayTimer);
@@ -1767,7 +1979,6 @@ class RTVController implements IEditorContribution {
 			this.showError(errorMsg);
 		}, 600);
 	}
-
 
 	private showError(errorMsg: string) {
 		// There are two kinds of errors:
@@ -1850,11 +2061,9 @@ class RTVController implements IEditorContribution {
 				colEnd = colStart + 1;
 			}
 		}
-
-		this._editor.changeDecorations((c) => {
-			let x = new Range(lineNumber, colStart, lineNumber, colEnd);
-			this._errorDecorationID = c.addDecoration(x, { className: "squiggly-error", hoverMessage: new MarkdownString(description) });
-		});
+		let range = new Range(lineNumber, colStart, lineNumber, colEnd);
+		let options = { className: "squiggly-error", hoverMessage: new MarkdownString(description) };
+		this._errorDecorationID = this.addDecoration(range, options);
 	}
 
 	private clearError() {
@@ -1863,10 +2072,7 @@ class RTVController implements IEditorContribution {
 			this._errorDisplayTimer = null;
 		}
 		if (this._errorDecorationID !== null) {
-			let id = this._errorDecorationID;
-			this._editor.changeDecorations((c) => {
-				c.removeDecoration(id);
-			});
+			this.removeDecoration(this._errorDecorationID);
 			this._errorDecorationID = null;
 		}
 	}
@@ -1875,16 +2081,9 @@ class RTVController implements IEditorContribution {
 	// 	this.runProgram(e);
 	// }
 
-	private getModelForce(): ITextModel {
-		let model = this._editor.getModel();
-		if (model === null) {
-			throw Error("Expecting a model");
-		}
-		return model;
-	}
-
 	private writeModelToDisk(fname: string) {
 		let lines = this.getModelForce().getLinesContent();
+		this.removeSeeds(lines);
 		fs.writeFileSync(fname, lines.join("\n"));
 	}
 
@@ -2338,22 +2537,18 @@ class RTVController implements IEditorContribution {
 	}
 
 	private onMouseWheel(e: IMouseWheelEvent) {
-		if (this.loopIterController !== null) {
+		if (this.loopFocusController !== null) {
 			e.stopImmediatePropagation();
-			let loopID = this.loopIterController.loopID;
-			let iter = this.loopIterController.iter;
-			let lineNumber = this.loopIterController.controllingLineNumber;
-			let nextIter = this.getBox(lineNumber).getNextLoopIter(loopID, iter, e.deltaY);
-			this.loopIterController = new LoopIterController(loopID, nextIter, lineNumber);
+			this.scrollLoopFocusIter(e.deltaY);
 		}
 	}
 
 	private onKeyUp(e: IKeyboardEvent) {
 		// console.log("In controller Up:" + e.code);
 		if (e.keyCode === KeyCode.Escape) {
-			if (this.loopIterController !== null) {
+			if (this.loopFocusController !== null) {
 				e.stopPropagation();
-				this.loopIterController = null;
+				this.loopFocusController = null;
 			}
 		}
 		if (e.keyCode === KeyCode.Ctrl) {
@@ -2392,6 +2587,71 @@ class RTVController implements IEditorContribution {
 				}
 			}
 		}
+	}
+
+	// Support for localized live programming
+
+	private removeSeeds(lines: string[]) {
+		if (this.loopFocusController !== null) {
+			for (let i = 0; i < lines.length; i++) {
+				if (lines[i].match("#@") != null) {
+					lines[i] = lines[i].replace(/#@\s*/, "");
+				}
+			}
+		}
+	}
+
+	public scrollLoopFocusIter(deltaY: number) {
+		if (this.loopFocusController !== null) {
+			let iter = this.loopFocusController.iter;
+			let box = this.loopFocusController.controllingBox;
+			let nextIter = box.getNextLoopIter(box.getLoopID(), iter, deltaY);
+			this.loopFocusController = new LoopFocusController(this, box, nextIter);
+		}
+	}
+
+	private findSeed(lines: string[], currLineNumber: number) {
+		let minIndent = Infinity;
+		let i = currLineNumber;
+		while (i >= 1) {
+			let currLine = lines[i-1]
+			if (isSeedLine(currLine)) {
+				if (indent(currLine) <= minIndent) {
+					return i;
+				}
+			}
+			if (isLoopStr(currLine)) {
+				let currIndent = indent(currLine);
+				if (currIndent < minIndent) {
+					minIndent = currIndent;
+				}
+			}
+			i = i-1;
+		}
+		return 0;
+	}
+
+	public focusOnLoopWithSeed() {
+		let cursorPos = this._editor.getPosition();
+		if (cursorPos === null) {
+			return;
+		}
+		let lines = this.getModelForce().getLinesContent();
+		let seed = this.findSeed(lines, cursorPos.lineNumber);
+		if (seed === 0) {
+			this.focusOnLoopAtCurrLine();
+		} else {
+			let seedBox = this.getBox(seed);
+			this.focusOnLoopAtBox(seedBox);
+		}
+	}
+
+	public focusOnLoopAtCurrLine() {
+		this.focusOnLoopAtBox(this.getBoxAtCurrLine());
+	}
+
+	public focusOnLoopAtBox(box: RTVDisplayBox) {
+		this.loopFocusController = new LoopFocusController(this, box, box.getFirstLoopIter());
 	}
 
 }
@@ -2569,6 +2829,29 @@ function createRTVAction(id: string, name: string, key: number, callback: (c:RTV
 	registerEditorAction(RTVAction);
 }
 
+// Another way to register keyboard shortcuts. Not sure which is best.
+function registerKeyShotrcut(id: string, key: number, callback: (c:RTVController) => void) {
+	KeybindingsRegistry.registerCommandAndKeybindingRule({
+		id: id,
+		weight: KeybindingWeight.EditorCore,
+		when: undefined,
+		primary: key,
+		handler: (accessor, args: any) => {
+			const codeEditorService = accessor.get(ICodeEditorService);
+
+			// Find the editor with text focus or active
+			const editor = codeEditorService.getFocusedCodeEditor() || codeEditorService.getActiveCodeEditor();
+			if (!editor) {
+				return;
+			}
+			let controller = RTVController.get(editor);
+			if (controller) {
+				callback(controller);
+			}
+		}
+	});
+}
+
 createRTVAction(
 	'rtv.flipview',
 	"Flip View Mode",
@@ -2685,4 +2968,31 @@ createRTVAction(
 		c.changeVars(ChangeVarsOp.Keep, ChangeVarsWhere.All);
 	}
 );
+
+createRTVAction(
+	'rtv.focusOnLoop',
+	"Focus on Loop using Localized Live Programming",
+	KeyMod.Alt | KeyCode.US_DOT,
+	(c) => {
+		c.focusOnLoopWithSeed();
+	}
+);
+
+// Not ready yet -- can't figure out how to make these shortcuts
+// higher priority than standard VSCode shortcuts
+// registerKeyShotrcut(
+// 	'zzzz',
+// 	KeyMod.CtrlCmd | KeyCode.UpArrow,
+// 	(c) => {
+// 		c.scrollLoopFocusIter(-1);
+// 	}
+// );
+
+// registerKeyShotrcut(
+// 	'rtv.ScrollLoopIterDown',
+// 	KeyMod.CtrlCmd | KeyCode.DownArrow,
+// 	(c) => {
+// 		c.scrollLoopFocusIter(1);
+// 	}
+// );
 

@@ -243,7 +243,29 @@ def compute_writes(code):
 def compute_runtime_data(code, lines):
     l = Logger(lines)
     l.run(code)
+    #data = adjust_to_next_time_step(l.data)
     return l.data
+
+def adjust_to_next_time_step(data):
+    envs_by_time = {}
+    for lineno in data:
+        for env in data[lineno]:
+            if "time" in env:
+                envs_by_time[env["time"]] = env
+    new_data = {}
+    for lineno in data:
+        next_envs = []
+        for env in data[lineno]:
+            if "begin_loop" in env:
+                next_envs.append(env)
+            elif "end_loop" in env:
+                next_envs.append(env)
+            elif "time" in env:
+                next_time = env["time"]+1
+                if next_time in envs_by_time:
+                    next_envs.append(envs_by_time[next_time])
+        new_data[lineno] = next_envs
+    return new_data
 
 def main():
 
