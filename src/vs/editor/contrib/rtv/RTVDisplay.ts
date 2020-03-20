@@ -1182,7 +1182,7 @@ class RTVController implements IEditorContribution {
 		this._editor.onDidChangeCursorPosition((e) => {this.onChangeCursorPosition(e);	});
 		this._editor.onDidScrollChange((e) => { this.onScrollChange(e); });
 		this._editor.onDidLayoutChange((e) => { this.onLayoutChange(e); });
-		this._editor.onDidChangeModelContent((e) => { this.runProgram(e); });
+		this._editor.onDidChangeModelContent((e) => { this.onDidChangeModelContent(e); });
 		//this._editor.onDidChangeModelLanguage((e) => { this.runProgram(); });
 		this._editor.onMouseWheel((e) => { this.onMouseWheel(e); });
 		this._editor.onKeyUp((e) => { this.onKeyUp(e); });
@@ -1555,6 +1555,27 @@ class RTVController implements IEditorContribution {
 	private onLayoutChange(e: EditorLayoutInfo) {
 		this.updateMaxPixelCol();
 		this.updateLayout();
+	}
+
+	private onDidChangeModelContent(e: IModelContentChangedEvent) {
+		this.runProgram(e);
+		let cursorPos = this._editor.getPosition();
+		if (cursorPos === null) {
+			return;
+		}
+		let lineno = cursorPos.lineNumber
+		if (e.changes.length > 0) {
+			let range = e.changes[0].range;
+			for (let i = range.startLineNumber; i <= range.endLineNumber; i++) {
+				if (lineno === i) {
+					let listOfElems = this.getLineContent(i).split("=");
+					if (listOfElems.length === 2 && listOfElems[1].trim() === "??" ) {
+						this.editingVar();
+						return;
+					}
+				}
+			}
+		}
 	}
 
 	private updateCellSizesForNewContent() {
