@@ -215,7 +215,7 @@ class RTVDisplayBox {
 	private _allVars: Set<string> = new Set<string>();
 	private _displayedVars: Set<string> = new Set<string>();
 	private _deltaVarSet: DeltaVarSet;
-	private _cellDictionary: {[k: string]: HTMLElement} = {};
+	private _cellDictionary: {[k: string]: [HTMLElement]} = {};
 
 	constructor(
 		private readonly _controller: RTVController,
@@ -475,12 +475,13 @@ class RTVDisplayBox {
 		cell.style.paddingTop = "0";
 		cell.style.paddingBottom = "0";
 
-		if (this._controller.byRowOrCol === RowColMode.ByCol) {
+		cell.align = 'center';
+
+		/* if (this._controller.byRowOrCol === RowColMode.ByCol) {
 			cell.align = 'center';
 		} else {
 			cell.align = 'center';
-			//cell.align = 'left';
-		}
+		} */
 
 		let s = elmt.content;
 		let cellContent: HTMLElement;
@@ -588,7 +589,17 @@ class RTVDisplayBox {
 				cellContent = this.wrapAsLoopMenuButton(cellContent, elmt.loopID, elmt.iter, elmt.controllingLineNumber);
 			}
 		}
-		this._cellDictionary[elmt.vname!] = cellContent;
+
+		if (this.lineNumber === elmt.controllingLineNumber) {
+			let name = elmt.vname!;
+			if (name) {
+				if (name in this._cellDictionary) {
+					this._cellDictionary[name].push(cellContent);
+				} else {
+					this._cellDictionary[name] = [cellContent];
+				}
+			}
+		}
 
 		cell.appendChild(cellContent);
 	}
@@ -759,6 +770,8 @@ class RTVDisplayBox {
 		table.style.borderSpacing = "0px";
 		table.style.paddingLeft = "13px";
 		table.style.paddingRight = "13px";
+
+		this._cellDictionary = {};
 		if (this._controller.byRowOrCol === RowColMode.ByRow) {
 			this.populateTableByRows(table, renderer, rows);
 		} else {
@@ -2498,23 +2511,22 @@ class RTVController implements IEditorContribution {
 	}
 	private getDicitonaryMakeEdit(s: string, line: number, controller: RTVController){
 
-		let listOfElems = s.split("=");
+		let listOfElems = s.split('=');
 
-		if (listOfElems.length != 2){
-
-			console.log("wrong input");
+		if (listOfElems.length !== 2) {
+			// TODO Can we inform the user of this?
+			console.error('Invalid input format. Must be of the form <varname> = ??');
 		}
 		else{
 			let l_operand = listOfElems[0].trim();
 			let r_operand = listOfElems[1].trim();
-			if (r_operand === "??" ){
-
+			if (r_operand === '??' ){
 				let model = this.getModelForce();
 				let cursorPos = this._editor.getPosition();
 				let startCol: number;
 				let endCol: number;
 
-				if (model.getLineContent(line).trim() === '' && cursorPos !== null && cursorPos.lineNumber == line) {
+				if (model.getLineContent(line).trim() === '' && cursorPos !== null && cursorPos.lineNumber === line) {
 					startCol = cursorPos.column;
 					endCol = cursorPos.column;
 				} else {
@@ -2527,11 +2539,18 @@ class RTVController implements IEditorContribution {
 
 				setTimeout(() => {
 					let k: string = l_operand;
-					let cellContent = controller._boxes[line-1].getCellContent()[k];
-					cellContent.contentEditable = 'true';
-					cellContent.focus();
-				}, 800);
+					let cellContents = controller._boxes[line-1].getCellContent()[k];
+					cellContents.forEach(function (cellContent) {
+						cellContent.contentEditable = 'true';
+					});
+					cellContents[0].focus();
 
+					// TODO Is there a faster/cleaner way to select the content?
+					let selection = window.getSelection()!;
+					let range = selection.getRangeAt(0)!;
+					range.selectNodeContents(selection.focusNode!);
+					selection.addRange(range);
+				}, 500);
 			}
 		}
 
