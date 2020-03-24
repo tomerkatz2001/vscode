@@ -32,6 +32,7 @@ import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { EditorOption } from 'vs/editor/common/config/editorOptions';
 import { inputBackground, inputBorder, inputForeground, widgetShadow, editorWidgetBackground } from 'vs/platform/theme/common/colorRegistry';
 import { ITextModel } from 'vs/editor/common/model';
+import { Selection } from 'vs/editor/common/core/selection';
 
 // Helper functions
 function getOSEnvVariable(v: string): string {
@@ -2014,7 +2015,8 @@ class RTVController implements IEditorContribution {
 		let range = new Range(lineno, startCol, lineno, endCol);
 
 		this._editor.pushUndoStop();
-		this._editor.executeEdits(this.getId(), [{range: range, text: fragment}]);
+		let selection = new Selection(lineno, startCol, lineno, startCol+fragment.length);
+		this._editor.executeEdits(this.getId(), [{range: range, text: fragment}], [selection]);
 	}
 
 	public updateFragment(beforeEnv: any, afterEnv: any) {
