@@ -47,7 +47,6 @@ let PY3 = getOSEnvVariable("PYTHON3");
 let RUNPY = getOSEnvVariable("RUNPY");
 let SYNTH = getOSEnvVariable("SYNTH");
 let SCALA = getOSEnvVariable("SCALA");
-let fileCreated = false;
 
 function indent(s: string): number {
 	return s.length - s.trimLeft().length;
@@ -217,6 +216,7 @@ class RTVDisplayBox {
 	private _displayedVars: Set<string> = new Set<string>();
 	private _deltaVarSet: DeltaVarSet;
 	private _cellDictionary: {[k: string]: [HTMLElement]} = {};
+	private _timesToInclude: Set<number> = new Set<number>();
 
 	constructor(
 		private readonly _controller: RTVController,
@@ -466,6 +466,13 @@ class RTVDisplayBox {
 		return envs.filter((e,i,a) => iterCtrl.matches(e["$"], e["#"]));
 	}
 
+	private synthRecordChanges(elmt: TableElement, cellContent: HTMLElement) : void {
+		if (elmt.env[elmt.vname!] !== cellContent.innerText) {
+			elmt.env[elmt.vname!] = cellContent.innerText;
+			this._timesToInclude.add(elmt.env['time']);
+		}
+	}
+
 	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r:MarkdownRenderer) {
 		if (this._controller.colBorder) {
 			cell.style.borderLeft = "1px solid #454545";
@@ -501,17 +508,17 @@ class RTVDisplayBox {
 			cellContent = renderedText.element;
 
 			if (this._controller.supportSynthesis) {
-				// cellContent.contentEditable = 'true';
+				cellContent.onblur = (e: FocusEvent) => this.synthRecordChanges(elmt, cellContent);
+
 				cellContent.onkeydown = (e: KeyboardEvent) => {
 					let rs: boolean = true;
 
 					switch(e.key) {
 						case 'Enter':
-							let change = !(cellContent.innerText === elmt.env[elmt.vname!]);
 							setTimeout(() => {
-								elmt.env[elmt.vname!] = cellContent.innerText;
-								let beforeEnv = this._controller.getEnvAtPrevTimeStep(elmt.env);
-								this._controller.synthesizeFragment(elmt.controllingLineNumber, beforeEnv, elmt.env, change);
+								// Pressing enter also triggers the blur event, so we don't need to record any changes here.
+								this._controller.synthesizeFragment(elmt.controllingLineNumber, this._timesToInclude);
+								this._timesToInclude.clear();
 							}, 200);
 							cellContent.contentEditable = 'false';
 							this._editor.focus();
@@ -564,14 +571,6 @@ class RTVDisplayBox {
 							}
 
 							// ----------------------------------------------------------
-
-							if (elmt.env !== undefined && cellContent.innerText !== elmt.env[elmt.vname!]) {
-								setTimeout(() => {
-									elmt.env[elmt.vname!] = cellContent.innerText;
-									let beforeEnv = this._controller.getEnvAtPrevTimeStep(elmt.env);
-									this._controller.updateFragment(beforeEnv, elmt.env);
-								}, 200);
-							}
 							break;
 						case 'Escape':
 							this._editor.focus();
@@ -2019,56 +2018,45 @@ class RTVController implements IEditorContribution {
 		this._editor.executeEdits(this.getId(), [{range: range, text: fragment}], [selection]);
 	}
 
-	public updateFragment(beforeEnv: any, afterEnv: any) {
-		let code_fname = os.tmpdir() + path.sep + "tmp.py";
-
-		// we may not need this anymore if not remove
-		this.writeModelToDisk(code_fname);
-
-		let example_fname = os.tmpdir() + path.sep + "synth_example.json";
-		let jsonBeforeEnv = JSON.stringify(beforeEnv);
-		let jsonAfterEnv = JSON.stringify(afterEnv);
-
-		if (fileCreated){
-
-			fs.appendFileSync(example_fname, ", [" + jsonBeforeEnv + ", " + jsonAfterEnv + "]");
-		}
-		else {
-			fs.writeFileSync(example_fname, "[[" + jsonBeforeEnv + ", " + jsonAfterEnv +"]");
-			fileCreated = true;
-		}
-
+	private getVarAssignmentAtLine(lineNo: number) : null|string
+	{
+		let line = this.getLineContent(lineNo).trim();
+		if (!line) { return null; }
+		let content = line.split('=');
+		if (content.length !== 2) { return null; }
+		return content[0].trim();
 	}
 
-	public synthesizeFragment(lineno: number, beforeEnv: any, afterEnv: any, change: boolean){
-
-		let example_fname = os.tmpdir() + path.sep + "synth_example.json";
-		if (change){
-			let jsonAfterEnv = JSON.stringify(afterEnv);
-			let jsonBeforeEnv = JSON.stringify(beforeEnv);
-			if (fileCreated){
-
-				fs.appendFileSync(example_fname, ", [" + jsonBeforeEnv + ", " + jsonAfterEnv + "]");
-			}
-			else {
-				fs.writeFileSync(example_fname, "[[" + jsonBeforeEnv + ", " + jsonAfterEnv +"]");
-			}
-		}
-		fs.appendFileSync(example_fname, "]");
-
-		let c = cp.spawn(SCALA, [SYNTH, example_fname]);
-
+	public synthesizeFragment(lineno: number, timesToInclude: Set<number>)
+	{
+		let varName = this.getVarAssignmentAtLine(lineno);
 		this.insertSynthesizedFragment('# Synthesizing. Please wait...', lineno);
 
-		c.stdout.on('data', (data) => {
-			console.log('[SYNTH OUT]' + data.toString());
-		});
+		// Build and write the synth_example.json file content
+		let example_fname = os.tmpdir() + path.sep + 'synth_example.json';
+		let envs: any[] = [];
 
-		c.stderr.on('data', (data) => {
-			console.error('[SYNTH ERR]' + data.toString());
-		});
+		search_loop:
+		for (let env_list of Object.values(this.envs)) {
+			for (let env of env_list) {
+				if (envs.length === timesToInclude.size) { break search_loop; }
 
-		fileCreated = false;
+				if (timesToInclude.has(env['time'])) {
+					envs.push(env);
+				}
+			}
+		}
+
+		let jsonEnv = JSON.stringify(envs);
+		fs.writeFileSync(example_fname, '{"varName":"' + varName + '","env":' + jsonEnv + '}');
+
+		// Spawn the synthesizer
+		let c = cp.spawn(SCALA, [SYNTH, example_fname]);
+
+		// TODO This is for debug. We should disable it.
+		c.stdout.on('data', (data) => {	console.log('[SYNTH OUT]' + data.toString()); });
+		c.stderr.on('data', (data) => { console.error('[SYNTH ERR]' + data.toString()); });
+
 		c.on('close', (exitCode) => {
 			console.log(`child process exited with code ${exitCode}`);
 			let error: boolean = exitCode !== 0;
