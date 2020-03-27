@@ -2536,17 +2536,20 @@ class RTVController implements IEditorContribution {
 				setTimeout(() => {
 					let k: string = l_operand;
 					let cellContents = controller._boxes[line-1].getCellContent()[k];
-					cellContents.forEach(function (cellContent) {
-						cellContent.contentEditable = 'true';
-					});
-					cellContents[0].focus();
 
-					// TODO Is there a faster/cleaner way to select the content?
-					let selection = window.getSelection()!;
-					let range = selection.getRangeAt(0)!;
-					range.selectNodeContents(selection.focusNode!);
-					selection.addRange(range);
-				}, 500);
+					if (cellContents) {
+						cellContents.forEach(function (cellContent) {
+							cellContent.contentEditable = 'true';
+						});
+						cellContents[0].focus();
+
+						// TODO Is there a faster/cleaner way to select the content?
+						let selection = window.getSelection()!;
+						let range = selection.getRangeAt(0)!;
+						range.selectNodeContents(selection.focusNode!);
+						selection.addRange(range);
+					}
+				}, 33);
 			}
 		}
 
