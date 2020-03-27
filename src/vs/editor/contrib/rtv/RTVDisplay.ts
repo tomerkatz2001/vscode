@@ -1576,13 +1576,13 @@ class RTVController implements IEditorContribution {
 		if (cursorPos === null) {
 			return;
 		}
-		let lineno = cursorPos.lineNumber
+		let lineno = cursorPos.lineNumber;
 		if (e.changes.length > 0) {
 			let range = e.changes[0].range;
 			for (let i = range.startLineNumber; i <= range.endLineNumber; i++) {
 				if (lineno === i) {
-					let listOfElems = this.getLineContent(i).split("=");
-					if (listOfElems.length === 2 && listOfElems[1].trim() === "??" ) {
+					let listOfElems = this.getLineContent(i).split('=');
+					if (listOfElems.length === 2 && listOfElems[1].trim().endsWith('??')) {
 						this.editingVar();
 						return;
 					}
@@ -2481,26 +2481,28 @@ class RTVController implements IEditorContribution {
 		}
 	}
 
-	public editingVar(){
+	public editingVar()
+	{
 		let d = this._editor.getPosition();
 		let controller = RTVController.get(this._editor);
-		let s = "";
+		let s = '';
 		let line = -1;
-		if (d != null){
+
+		if (d) {
 			line = d.lineNumber;
 		}
-		if (controller != null){
 
+		if (controller) {
 			s = controller.getLineContent(line).trim();
 		}
 
 		if (line > -1){
-
 			this.getDicitonaryMakeEdit(s, line, controller);
 		}
 	}
-	private getDicitonaryMakeEdit(s: string, line: number, controller: RTVController){
 
+	private getDicitonaryMakeEdit(s: string, line: number, controller: RTVController)
+	{
 		let listOfElems = s.split('=');
 
 		if (listOfElems.length !== 2) {
@@ -2510,7 +2512,10 @@ class RTVController implements IEditorContribution {
 		else{
 			let l_operand = listOfElems[0].trim();
 			let r_operand = listOfElems[1].trim();
-			if (r_operand === '??' ){
+
+			if (r_operand.endsWith('??')) {
+				r_operand = r_operand.substr(0, r_operand.length - 2).trim();
+
 				let model = this.getModelForce();
 				let cursorPos = this._editor.getPosition();
 				let startCol: number;
@@ -2523,8 +2528,9 @@ class RTVController implements IEditorContribution {
 					startCol = model.getLineFirstNonWhitespaceColumn(line);
 					endCol = model.getLineMaxColumn(line);
 				}
+
 				let range = new Range(line, startCol, line, endCol);
-				let txt = l_operand + ' = ' + 0;
+				let txt = l_operand + ' = ' + (r_operand ? r_operand : '0');
 				this._editor.executeEdits(this.getId(), [{range: range, text: txt}]);
 
 				setTimeout(() => {
