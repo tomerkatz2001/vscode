@@ -466,10 +466,17 @@ class RTVDisplayBox {
 		return envs.filter((e,i,a) => iterCtrl.matches(e["$"], e["#"]));
 	}
 
-	private synthRecordChanges(elmt: TableElement, cellContent: HTMLElement) : void {
-		if (elmt.env[elmt.vname!] !== cellContent.innerText) {
+	private synthRecordChanges(elmt: TableElement, cellContent: HTMLElement, force: boolean = false) : void
+	{
+		if (force || elmt.env[elmt.vname!] !== cellContent.innerText) {
+			// Record the change
 			elmt.env[elmt.vname!] = cellContent.innerText;
 			this._timesToInclude.add(elmt.env['time']);
+
+			// Highligh the cell
+			let row = cellContent;
+			while (row.nodeName !== 'TR') { row = row.parentElement!; }
+			row.style.fontWeight = '900';
 		}
 	}
 
@@ -2549,7 +2556,7 @@ class RTVController implements IEditorContribution {
 						range.selectNodeContents(selection.focusNode!);
 						selection.addRange(range);
 					}
-				}, 33);
+				}, 100);
 			}
 		}
 
