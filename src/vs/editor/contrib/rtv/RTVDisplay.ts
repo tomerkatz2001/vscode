@@ -480,6 +480,48 @@ class RTVDisplayBox {
 		}
 	}
 
+	private synthFocusNextRow(backwards: boolean = false) : void {
+		let selection = window.getSelection()!;
+		let cell: HTMLTableCellElement;
+		let row: HTMLTableRowElement;
+
+		for (let cellIter = selection.focusNode!; cellIter.parentNode; cellIter = cellIter.parentNode) {
+			if (cellIter.nodeName === 'TD') {
+				cell = cellIter as HTMLTableCellElement;
+				break;
+			}
+		}
+
+		for (let rowIter = cell!.parentNode!; rowIter.parentNode; rowIter = rowIter.parentNode) {
+			if (rowIter.nodeName === 'TR') {
+				row = rowIter as HTMLTableRowElement;
+				break;
+			}
+		}
+
+		if (this._controller.byRowOrCol === RowColMode.ByCol) {
+			let table: HTMLTableElement = row!.parentNode as HTMLTableElement;
+			let nextRowIdx = (row!.rowIndex - 1 + (backwards ? -1 : 1)) % (table.rows.length - 1) + 1;
+			if (nextRowIdx <= 0) { nextRowIdx += table.rows.length - 1; }
+			let nextRow = table.rows[nextRowIdx];
+			let col = nextRow.childNodes[cell!.cellIndex!];
+			let newFocusNode = col.childNodes[0];
+			let range = selection?.getRangeAt(0);
+			range.selectNodeContents(newFocusNode);
+			selection?.removeAllRanges();
+			selection?.addRange(range);
+		} else {
+			let nextCellIdx = (cell!.cellIndex - 1 + (backwards ? -1 : 1)) % (row!.childNodes.length - 1) + 1;
+			if (nextCellIdx <= 0) { nextCellIdx += row!.childNodes.length - 1; }
+			let col = row!.childNodes[nextCellIdx];
+			let newFocusNode = col.childNodes[0];
+			let range = selection?.getRangeAt(0);
+			range.selectNodeContents(newFocusNode);
+			selection?.removeAllRanges();
+			selection?.addRange(range);
+		}
+	}
+
 	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r:MarkdownRenderer) {
 		if (this._controller.colBorder) {
 			cell.style.borderLeft = "1px solid #454545";
@@ -522,62 +564,27 @@ class RTVDisplayBox {
 
 					switch(e.key) {
 						case 'Enter':
-							setTimeout(() => {
-								// Pressing enter also triggers the blur event, so we don't need to record any changes here.
-								this._controller.synthesizeFragment(elmt.controllingLineNumber, this._timesToInclude);
-								this._timesToInclude.clear();
-							}, 200);
-							cellContent.contentEditable = 'false';
-							this._editor.focus();
 							e.preventDefault();
+
+							if (e.shiftKey) {
+								this.synthRecordChanges(elmt, cellContent, true);
+								this.synthFocusNextRow();
+							} else {
+								setTimeout(() => {
+									// Pressing enter also triggers the blur event, so we don't need to record any changes here.
+									this._controller.synthesizeFragment(elmt.controllingLineNumber, this._timesToInclude);
+									this._timesToInclude.clear();
+								}, 200);
+								cellContent.contentEditable = 'false';
+								this._editor.focus();
+							}
 							break;
 						case 'Tab':
 							// ----------------------------------------------------------
 							// Use Tabs to go over values of the same variable
 							// ----------------------------------------------------------
 							e.preventDefault();
-
-							let selection = window.getSelection()!;
-							let cell: HTMLTableCellElement;
-							let row: HTMLTableRowElement;
-
-							for (let cellIter = selection.focusNode!; cellIter.parentNode; cellIter = cellIter.parentNode) {
-								if (cellIter.nodeName === 'TD') {
-									cell = cellIter as HTMLTableCellElement;
-									break;
-								}
-							}
-
-							for (let rowIter = cell!.parentNode!; rowIter.parentNode; rowIter = rowIter.parentNode) {
-								if (rowIter.nodeName === 'TR') {
-									row = rowIter as HTMLTableRowElement;
-									break;
-								}
-							}
-
-							if (this._controller.byRowOrCol === RowColMode.ByCol) {
-								let table: HTMLTableElement = row!.parentNode as HTMLTableElement;
-								let nextRowIdx = (row!.rowIndex - 1 + (e.shiftKey ? -1 : 1)) % (table.rows.length - 1) + 1;
-								if (nextRowIdx <= 0) { nextRowIdx += table.rows.length - 1; }
-								let nextRow = table.rows[nextRowIdx];
-								let col = nextRow.childNodes[cell!.cellIndex!];
-								let newFocusNode = col.childNodes[0];
-								let range = selection?.getRangeAt(0);
-								range.selectNodeContents(newFocusNode);
-								selection?.removeAllRanges();
-								selection?.addRange(range);
-							} else {
-								let nextCellIdx = (cell!.cellIndex - 1 + (e.shiftKey ? -1 : 1)) % (row!.childNodes.length - 1) + 1;
-								if (nextCellIdx <= 0) { nextCellIdx += row!.childNodes.length - 1; }
-								let col = row!.childNodes[nextCellIdx];
-								let newFocusNode = col.childNodes[0];
-								let range = selection?.getRangeAt(0);
-								range.selectNodeContents(newFocusNode);
-								selection?.removeAllRanges();
-								selection?.addRange(range);
-							}
-
-							// ----------------------------------------------------------
+							this.synthFocusNextRow(e.shiftKey);
 							break;
 						case 'Escape':
 							this._editor.focus();
