@@ -475,18 +475,33 @@ class RTVDisplayBox {
 		return rs;
 	}
 
-	private synthRecordChanges(elmt: TableElement, cellContent: HTMLElement, force: boolean = false) : void
+	private synthToggleElement(elmt: TableElement, cell: HTMLElement, force: boolean|null = null)
 	{
-		if (force || elmt.env[elmt.vname!] !== cellContent.innerText) {
-			// Record the change
-			elmt.env[elmt.vname!] = cellContent.innerText;
-			this._timesToInclude.add(elmt.env['time']);
+		let time = elmt.env['time'];
+		let row = this.findParentRow(cell);
+		let on: boolean;
 
-			// Highligh the cell
-			let row = this.findParentRow(cellContent);
+		if (force !== null) {
+			on = force;
+		} else {
+			on = !this._timesToInclude.has(time);
+		}
+
+		if (on) {
+			// Toggle on
+			elmt.env[elmt.vname!] = cell.innerText;
+			this._timesToInclude.add(time);
+
+			// Highligh the row
 			let theme = this._controller._themeService.getTheme();
 			row.style.fontWeight = '900';
 			row.style.backgroundColor = String(theme.getColor(badgeBackground) ?? '');
+		} else {
+			// Toggle off
+			this._timesToInclude.delete(time);
+
+			// Remove row highlight
+			row.style.fontWeight = row.style.backgroundColor = '';
 		}
 	}
 
@@ -567,7 +582,11 @@ class RTVDisplayBox {
 			cellContent = renderedText.element;
 
 			if (this._controller.supportSynthesis) {
-				cellContent.onblur = (e: FocusEvent) => this.synthRecordChanges(elmt, cellContent);
+				cellContent.onblur = (e: FocusEvent) => {
+					if (elmt.env[elmt.vname!] !== cellContent.innerText) {
+						this.synthToggleElement(elmt, cellContent, true);
+					}
+				};
 
 				cellContent.onkeydown = (e: KeyboardEvent) => {
 					let rs: boolean = true;
@@ -577,7 +596,7 @@ class RTVDisplayBox {
 							e.preventDefault();
 
 							if (e.shiftKey) {
-								this.synthRecordChanges(elmt, cellContent, true);
+								this.synthToggleElement(elmt, cellContent);
 								this.synthFocusNextRow();
 							} else {
 								setTimeout(() => {
