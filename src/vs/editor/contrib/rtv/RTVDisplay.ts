@@ -30,7 +30,7 @@ import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
 import { KeybindingWeight } from 'vs/platform/keybinding/common/keybindingsRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { EditorOption } from 'vs/editor/common/config/editorOptions';
-import { inputBackground, inputBorder, inputForeground, widgetShadow, editorWidgetBackground } from 'vs/platform/theme/common/colorRegistry';
+import { inputBackground, inputBorder, inputForeground, widgetShadow, editorWidgetBackground, badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { ITextModel } from 'vs/editor/common/model';
 import { Selection } from 'vs/editor/common/core/selection';
 
@@ -466,6 +466,15 @@ class RTVDisplayBox {
 		return envs.filter((e,i,a) => iterCtrl.matches(e["$"], e["#"]));
 	}
 
+	private findParentRow(cell: HTMLElement)
+	{
+		let rs = cell;
+		while (rs.nodeName !== 'TR') {
+			rs = rs.parentElement!;
+		}
+		return rs;
+	}
+
 	private synthRecordChanges(elmt: TableElement, cellContent: HTMLElement, force: boolean = false) : void
 	{
 		if (force || elmt.env[elmt.vname!] !== cellContent.innerText) {
@@ -474,9 +483,10 @@ class RTVDisplayBox {
 			this._timesToInclude.add(elmt.env['time']);
 
 			// Highligh the cell
-			let row = cellContent;
-			while (row.nodeName !== 'TR') { row = row.parentElement!; }
+			let row = this.findParentRow(cellContent);
+			let theme = this._controller._themeService.getTheme();
 			row.style.fontWeight = '900';
+			row.style.backgroundColor = String(theme.getColor(badgeBackground) ?? '');
 		}
 	}
 
@@ -1205,7 +1215,7 @@ class RTVController implements IEditorContribution {
 		@IModeService private readonly _modeService: IModeService,
 		@IConfigurationService configurationService: IConfigurationService,
 		@IContextMenuService public readonly contextMenuService: IContextMenuService,
-		@IThemeService private readonly _themeService: IThemeService,
+		@IThemeService readonly _themeService: IThemeService,
 	) {
 		this._editor.onDidChangeCursorPosition((e) => {this.onChangeCursorPosition(e);	});
 		this._editor.onDidScrollChange((e) => { this.onScrollChange(e); });
