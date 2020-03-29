@@ -588,6 +588,7 @@ class RTVDisplayBox {
 							break;
 						case 'Escape':
 							this._editor.focus();
+							this._controller.runProgram()
 							rs = false;
 							break;
 					}
@@ -2090,7 +2091,7 @@ class RTVController implements IEditorContribution {
 		});
 	}
 
-	private runProgram(e?: IModelContentChangedEvent) {
+	public runProgram(e?: IModelContentChangedEvent) {
 		//console.log(e);
 		this.padBoxArray();
 
@@ -2563,7 +2564,7 @@ class RTVController implements IEditorContribution {
 						range.selectNodeContents(selection.focusNode!);
 						selection.addRange(range);
 					}
-				}, 100);
+				}, 300);
 			}
 		}
 
