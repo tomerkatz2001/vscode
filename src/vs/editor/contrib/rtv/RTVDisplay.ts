@@ -7,7 +7,7 @@ import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorE
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
 import { IEditorContribution, IScrollEvent } from 'vs/editor/common/editorCommon';
 import { EditorAction, ServicesAccessor, registerEditorAction, registerEditorContribution } from 'vs/editor/browser/editorExtensions';
-import { EditorLayoutInfo } from 'vs/editor/common/config/editorOptions';
+import { EditorLayoutInfo, EditorOption } from 'vs/editor/common/config/editorOptions';
 import * as strings from 'vs/base/common/strings';
 import { Range } from 'vs/editor/common/core/range';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
@@ -29,10 +29,10 @@ import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
 import { KeybindingWeight } from 'vs/platform/keybinding/common/keybindingsRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
-import { EditorOption } from 'vs/editor/common/config/editorOptions';
 import { inputBackground, inputBorder, inputForeground, widgetShadow, editorWidgetBackground, badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { ITextModel } from 'vs/editor/common/model';
 import { Selection } from 'vs/editor/common/core/selection';
+import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 
 // Helper functions
 function getOSEnvVariable(v: string): string {
@@ -588,6 +588,9 @@ class RTVDisplayBox {
 					}
 				};
 
+				cellContent.onfocus = (e: FocusEvent) =>
+					this._controller.logger.projectionBoxFocus();
+
 				cellContent.onkeydown = (e: KeyboardEvent) => {
 					let rs: boolean = true;
 
@@ -604,6 +607,7 @@ class RTVDisplayBox {
 									this._controller.synthesizeFragment(elmt.controllingLineNumber, this._timesToInclude);
 									this._timesToInclude.clear();
 								}, 200);
+								this.synthToggleElement(elmt, cellContent, true);
 								cellContent.contentEditable = 'false';
 								this._editor.focus();
 							}
@@ -1215,6 +1219,7 @@ class RTVController implements IEditorContribution {
 	public _changedLinesWhenOutOfDate: Set<number> | null = null;
 	public _configBox: HTMLDivElement | null = null;
 	public tableCellsByLoop: MapLoopsToCells = {};
+	public logger: RTVLogger;
 	private _config: ConfigurationServiceCache;
 	private _makeNewBoxesVisible: boolean = true;
 	private _loopIterController: LoopIterController | null = null;
@@ -1245,6 +1250,8 @@ class RTVController implements IEditorContribution {
 		this._editor.onKeyUp((e) => { this.onKeyUp(e); });
 		this._editor.onKeyDown((e) => { this.onKeyDown(e); });
 
+		this.logger = new RTVLogger(this._editor);
+
 		for (let i = 0; i < this.getLineCount(); i++) {
 			this._boxes.push(new RTVDisplayBox(this, _editor, _modeService, _openerService, i+1, this._globalDeltaVarSet));
 		}
@@ -1269,6 +1276,7 @@ class RTVController implements IEditorContribution {
 	}
 
 	public dispose():void {
+		this.logger.dispose();
 	}
 
 	public restoreViewState(state: any): void {
@@ -2074,7 +2082,6 @@ class RTVController implements IEditorContribution {
 	public synthesizeFragment(lineno: number, timesToInclude: Set<number>)
 	{
 		let varName = this.getVarAssignmentAtLine(lineno);
-		this.insertSynthesizedFragment('# Synthesizing. Please wait...', lineno);
 
 		// Build and write the synth_example.json file content
 		let example_fname = os.tmpdir() + path.sep + 'synth_example.json';
@@ -2091,27 +2098,31 @@ class RTVController implements IEditorContribution {
 			}
 		}
 
-		let jsonEnv = JSON.stringify(envs);
-		fs.writeFileSync(example_fname, '{"varName":"' + varName + '","env":' + jsonEnv + '}');
+		let problem = {'varName' : varName, 'env': envs};
+		fs.writeFileSync(example_fname, JSON.stringify(problem));
+		this.logger.synthStart(problem, timesToInclude.size, lineno);
+
+		this.insertSynthesizedFragment('# Synthesizing. Please wait...', lineno);
 
 		// Spawn the synthesizer
 		let c = cp.spawn(SCALA, [SYNTH, example_fname]);
 
-		// TODO This is for debug. We should disable it.
-		c.stdout.on('data', (data) => {	console.log('[SYNTH OUT]' + data.toString()); });
-		c.stderr.on('data', (data) => { console.error('[SYNTH ERR]' + data.toString()); });
+		c.stdout.on('data', (data) => this.logger.synthOut(String(data)));
+		c.stderr.on('data', (data) => this.logger.synthErr(String(data)));
 
 		c.on('close', (exitCode) => {
-			console.log(`child process exited with code ${exitCode}`);
 			let error: boolean = exitCode !== 0;
 
 			if (!error) {
 				let fragment = fs.readFileSync(example_fname + '.out').toString();
+				this.logger.synthEnd(exitCode, fragment);
 				console.log(fragment);
 				error = fragment === 'None';
 				if (!error) {
 					this.insertSynthesizedFragment(fragment, lineno);
 				}
+			} else {
+				this.logger.synthEnd(exitCode);
 			}
 
 			if (error) {
