@@ -23,19 +23,8 @@ export class RTVLogger {
 	private editorInFocus: boolean = false;
 	private projectionBoxInFocus: boolean = false;
 
-	private now() : string {
-		let now = new Date();
-
-		let month = now.getMonth();
-		let day = now.getDate();
-		let year = now.getFullYear();
-
-		let hour = String('00' + now.getHours()).slice(-2);
-		let minute = String('00' + now.getMinutes()).slice(-2);
-		let seconds = String('00' + now.getSeconds()).slice(-2);
-		let millis = String('000' + now.getMilliseconds()).slice(-3);
-
-		return `${month}/${day}/${year} ${hour}:${minute}:${seconds}.${millis}`;
+	private now() : number {
+		return new Date().getTime();
 	}
 
 	private getCurrentFileName() {
@@ -54,8 +43,15 @@ export class RTVLogger {
 		return this.currentFileName;
 	}
 
-    private log(msg: string): void {
-		let str = `(${this.now()}) [${this.getCurrentFileName()}] ${msg}`;
+    private log(code: string, msg?: string): void {
+		let str: string;
+
+		if (msg) {
+			str = `${this.now()},${this.getCurrentFileName()},${code},${msg}`;
+		} else {
+			str = `${this.now()},${this.getCurrentFileName()},${code}`;
+		}
+
 		console.log(str);
         fs.appendFileSync(this.logDir + this.logFile, str + '\n');
     }
@@ -103,11 +99,11 @@ export class RTVLogger {
 	}
 
 	public dispose() {
-		this.log('Disposing logger...');
+		this.log('log.end');
 	}
 
     public synthStart(problem: any, examples: number, lineno: number) {
-		this.log(`Starting synthesis task #${this.synthRequestCounter} with ${examples} example(s) for line ${lineno}`);
+		this.log(`synth.start.${this.synthRequestCounter}.${lineno}.${examples}`);
 
 		this.write(
 			`${this.synthRequestCounter}_synth_example.json`,
@@ -124,7 +120,7 @@ export class RTVLogger {
 			msg = msg.substr(0, msg.length - 1);
 		}
 
-		this.log(`Synthesizer stdout: ${msg}`);
+		this.log('synth.stdout', msg);
 	}
 
 	public synthErr(msg: string) {
@@ -132,20 +128,20 @@ export class RTVLogger {
 			msg = msg.substr(0, msg.length - 1);
 		}
 
-		this.log(`Synthesizer sdterr: ${msg}`);
+		this.log('synth.sterr', msg);
 	}
 
 	public synthEnd(exitCode: number, result?: string) {
 		if (exitCode === 0) {
-			this.log(`Synthesis task #${this.synthRequestCounter - 1} ended with code ${exitCode}: ${result}`);
+			this.log(`synth.end.${this.synthRequestCounter - 1}.${exitCode}`, result);
 		} else {
-			this.log(`Synthesis task failed with exit code ${exitCode})`);
+			this.log(`synth.end.${this.synthRequestCounter - 1}.${exitCode}`);
 		}
 	}
 
 	public editorFocus() {
 		if (!this.editorInFocus || this.currentFileName !== this.getCurrentFileName()) {
-			this.log('Code editor in focus');
+			this.log('focus.editor');
 			this.editorInFocus = true;
 			this.projectionBoxInFocus = false;
 		}
@@ -153,7 +149,7 @@ export class RTVLogger {
 
 	public projectionBoxFocus() {
 		if (!this.projectionBoxInFocus || this.currentFileName !== this.getCurrentFileName()) {
-			this.log('Projection box in focus');
+			this.log('focus.projectionBox');
 			this.editorInFocus = false;
 			this.projectionBoxInFocus = true;
 		}
