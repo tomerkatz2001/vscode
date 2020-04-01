@@ -71,8 +71,14 @@ export class RTVLogger {
 
 		if (!dir) {
 			dir = os.tmpdir() + path.sep;
-		} else if (!dir.endsWith(path.sep)) {
-			dir += path.sep;
+		} else {
+			if (!dir.endsWith(path.sep)) {
+				dir += path.sep;
+			}
+
+			if (!fs.existsSync(dir)) {
+				fs.mkdirSync(dir);
+			}
 		}
 
 		dir += 'snippy_log_' + new Date().getTime();
@@ -138,7 +144,7 @@ export class RTVLogger {
 	}
 
 	public editorFocus() {
-		if (!this.editorInFocus) {
+		if (!this.editorInFocus || this.currentFileName !== this.getCurrentFileName()) {
 			this.log('Code editor in focus');
 			this.editorInFocus = true;
 			this.projectionBoxInFocus = false;
@@ -146,7 +152,7 @@ export class RTVLogger {
 	}
 
 	public projectionBoxFocus() {
-		if (!this.projectionBoxInFocus) {
+		if (!this.projectionBoxInFocus || this.currentFileName !== this.getCurrentFileName()) {
 			this.log('Projection box in focus');
 			this.editorInFocus = false;
 			this.projectionBoxInFocus = true;
