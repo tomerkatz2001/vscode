@@ -20,9 +20,6 @@ export class RTVLogger {
 	private currentFileName: string = 'unknown';
 	private readonly logFile: string;
 
-	private editorInFocus: boolean = false;
-	private projectionBoxInFocus: boolean = false;
-
 	private now() : number {
 		return new Date().getTime();
 	}
@@ -32,7 +29,7 @@ export class RTVLogger {
 
 		if (rs) {
 			if (!rs.includes(this.currentFileName)) {
-				let start = rs.lastIndexOf(path.sep) + 1;
+				let start = rs.lastIndexOf('/') + 1;
 				let end = rs.length - start - 3;
 				this.currentFileName = rs.substr(start, end);
 			}
@@ -77,7 +74,13 @@ export class RTVLogger {
 			}
 		}
 
-		dir += 'snippy_log_' + new Date().getTime();
+		// Build an fs-safe date/time:
+		let now = new Date();
+		dir += 'snippy_log' + '_' +
+			now.getMonth() + '-' +
+			now.getDate() + '_' +
+			now.getHours() + '-' +
+			now.getMinutes();
 
 		// Don't overwrite existing logs!
 		if (fs.existsSync(dir)) {
@@ -92,10 +95,6 @@ export class RTVLogger {
 		this.logDir = dir! + path.sep;
 		fs.mkdirSync(this.logDir);
 		this.logFile = 'snippy.log';
-
-		// Add event for when editor is in focus
-		this._editor.onDidFocusEditorText(() => this.editorFocus());
-		this._editor.onDidFocusEditorWidget(() => this.editorFocus());
 	}
 
 	public dispose() {
@@ -139,19 +138,39 @@ export class RTVLogger {
 		}
 	}
 
-	public editorFocus() {
-		if (!this.editorInFocus || this.currentFileName !== this.getCurrentFileName()) {
-			this.log('focus.editor');
-			this.editorInFocus = true;
-			this.projectionBoxInFocus = false;
+	public projectionBoxFocus(line: string, custom?: boolean) {
+		if (custom) {
+			this.log('focus.projectionBox.focus.custom', line);
+		} else {
+			this.log('focus.projectionBox.focus.default', line);
 		}
 	}
 
-	public projectionBoxFocus() {
-		if (!this.projectionBoxInFocus || this.currentFileName !== this.getCurrentFileName()) {
-			this.log('focus.projectionBox');
-			this.editorInFocus = false;
-			this.projectionBoxInFocus = true;
-		}
+	public projectionBoxExit() {
+		this.log('focus.projectionBox.exit');
+	}
+
+	public exampleBlur(idx: number, content: string) {
+		this.log(`focus.example.${idx}.blur`, content);
+	}
+
+	public exampleFocus(idx: number, content: string) {
+		this.log(`focus.example.${idx}.focus`, content);
+	}
+
+	public exampleChanged(idx: number, was: string, is: string) {
+		this.log(`example.${idx}.change`, `${was},${is}`);
+	}
+
+	public exampleInclude(idx: number, content: string) {
+		this.log(`example.${idx}.include`, content);
+	}
+
+	public exampleExclude(idx: number, content: string) {
+		this.log(`example.${idx}.exclude`, content);
+	}
+
+	public exampleReset() {
+		this.log('example.all.reset');
 	}
 }
