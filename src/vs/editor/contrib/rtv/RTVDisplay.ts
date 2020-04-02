@@ -466,13 +466,13 @@ class RTVDisplayBox {
 		return envs.filter((e,i,a) => iterCtrl.matches(e["$"], e["#"]));
 	}
 
-	private findParentRow(cell: HTMLElement)
+	private findParentRow(cell: HTMLElement) : HTMLTableRowElement
 	{
 		let rs = cell;
 		while (rs.nodeName !== 'TR') {
 			rs = rs.parentElement!;
 		}
-		return rs;
+		return rs as HTMLTableRowElement;
 	}
 
 	private synthToggleElement(elmt: TableElement, cell: HTMLElement, force: boolean|null = null)
@@ -496,12 +496,16 @@ class RTVDisplayBox {
 			let theme = this._controller._themeService.getTheme();
 			row.style.fontWeight = '900';
 			row.style.backgroundColor = String(theme.getColor(badgeBackground) ?? '');
+
+			this._controller.logger.exampleInclude(this.findParentRow(cell).rowIndex, cell.innerText);
 		} else {
 			// Toggle off
 			this._timesToInclude.delete(time);
 
 			// Remove row highlight
 			row.style.fontWeight = row.style.backgroundColor = '';
+
+			this._controller.logger.exampleExclude(this.findParentRow(cell).rowIndex, cell.innerText);
 		}
 	}
 
@@ -524,6 +528,8 @@ class RTVDisplayBox {
 			}
 		}
 
+		this._controller.logger.exampleBlur(row!.rowIndex, cell!.textContent!);
+
 		if (this._controller.byRowOrCol === RowColMode.ByCol) {
 			let table: HTMLTableElement = row!.parentNode as HTMLTableElement;
 			let nextRowIdx = (row!.rowIndex - 1 + (backwards ? -1 : 1)) % (table.rows.length - 1) + 1;
@@ -535,6 +541,7 @@ class RTVDisplayBox {
 			range.selectNodeContents(newFocusNode);
 			selection?.removeAllRanges();
 			selection?.addRange(range);
+			this._controller.logger.exampleFocus(nextRowIdx, newFocusNode!.textContent!);
 		} else {
 			let nextCellIdx = (cell!.cellIndex - 1 + (backwards ? -1 : 1)) % (row!.childNodes.length - 1) + 1;
 			if (nextCellIdx <= 0) { nextCellIdx += row!.childNodes.length - 1; }
@@ -544,6 +551,7 @@ class RTVDisplayBox {
 			range.selectNodeContents(newFocusNode);
 			selection?.removeAllRanges();
 			selection?.addRange(range);
+			this._controller.logger.exampleFocus(nextCellIdx, newFocusNode!.textContent!);
 		}
 	}
 
@@ -584,12 +592,14 @@ class RTVDisplayBox {
 			if (this._controller.supportSynthesis) {
 				cellContent.onblur = (e: FocusEvent) => {
 					if (elmt.env[elmt.vname!] !== cellContent.innerText) {
+						// TODO This might be expensive
+						this._controller.logger.exampleChanged(
+							this.findParentRow(cell).rowIndex,
+							elmt.env[elmt.vname!],
+							cellContent.innerText);
 						this.synthToggleElement(elmt, cellContent, true);
 					}
 				};
-
-				cellContent.onfocus = (e: FocusEvent) =>
-					this._controller.logger.projectionBoxFocus();
 
 				cellContent.onkeydown = (e: KeyboardEvent) => {
 					let rs: boolean = true;
@@ -606,10 +616,12 @@ class RTVDisplayBox {
 									// Pressing enter also triggers the blur event, so we don't need to record any changes here.
 									this._controller.synthesizeFragment(elmt.controllingLineNumber, this._timesToInclude);
 									this._timesToInclude.clear();
+									this._controller.logger.exampleReset();
 								}, 200);
 								this.synthToggleElement(elmt, cellContent, true);
 								cellContent.contentEditable = 'false';
 								this._editor.focus();
+								this._controller.logger.projectionBoxExit();
 							}
 							break;
 						case 'Tab':
@@ -620,8 +632,11 @@ class RTVDisplayBox {
 							this.synthFocusNextRow(e.shiftKey);
 							break;
 						case 'Escape':
+							this._controller.logger.projectionBoxExit();
 							this._editor.focus();
-							this._controller.runProgram()
+							this._controller.runProgram();
+							this._timesToInclude.clear();
+							this._controller.logger.exampleReset();
 							rs = false;
 							break;
 					}
@@ -2116,7 +2131,6 @@ class RTVController implements IEditorContribution {
 			if (!error) {
 				let fragment = fs.readFileSync(example_fname + '.out').toString();
 				this.logger.synthEnd(exitCode, fragment);
-				console.log(fragment);
 				error = fragment === 'None';
 				if (!error) {
 					this.insertSynthesizedFragment(fragment, lineno);
@@ -2603,6 +2617,9 @@ class RTVController implements IEditorContribution {
 						let range = selection.getRangeAt(0)!;
 						range.selectNodeContents(selection.focusNode!);
 						selection.addRange(range);
+
+						this.logger.projectionBoxFocus(s, r_operand !== undefined);
+						this.logger.exampleFocus(0, cellContents[0]!.textContent!);
 					}
 				}, 300);
 			}
