@@ -20,7 +20,7 @@ export class RTVLogger {
 	private currentFileName: string = 'unknown';
 	private readonly logFile: string;
 
-	private now() : number {
+	private now(): number {
 		return new Date().getTime();
 	}
 
@@ -40,25 +40,25 @@ export class RTVLogger {
 		return this.currentFileName;
 	}
 
-    private log(code: string, msg?: string): void {
+	private log(code: string, msg?: string): void {
 		let str: string;
 
 		if (msg) {
+			msg = msg.replace(/\n/g, '\\n');
 			str = `${this.now()},${this.getCurrentFileName()},${code},${msg}`;
 		} else {
 			str = `${this.now()},${this.getCurrentFileName()},${code}`;
 		}
 
 		console.log(str);
-        fs.appendFileSync(this.logDir + this.logFile, str + '\n');
-    }
+		fs.appendFileSync(this.logDir + this.logFile, str + '\n');
+	}
 
-    private write(file: string, content: any): void {
+	private write(file: string, content: any): void {
 		fs.writeFileSync(this.logDir + file, String(content));
-    }
+	}
 
-	constructor(private readonly _editor: ICodeEditor)
-	{
+	constructor(private readonly _editor: ICodeEditor) {
 		// Build output dir name
 		let dir = process.env['LOG_DIR'];
 
@@ -77,7 +77,7 @@ export class RTVLogger {
 		// Build an fs-safe date/time:
 		let now = new Date();
 		dir += 'snippy_log' + '_' +
-			now.getMonth() + '-' +
+			(now.getMonth() + 1) + '-' +
 			now.getDate() + '_' +
 			now.getHours() + '-' +
 			now.getMinutes();
@@ -101,7 +101,7 @@ export class RTVLogger {
 		this.log('log.end');
 	}
 
-    public synthStart(problem: any, examples: number, lineno: number) {
+	public synthStart(problem: any, examples: number, lineno: number) {
 		this.log(`synth.start.${this.synthRequestCounter}.${lineno}.${examples}`);
 
 		this.write(
