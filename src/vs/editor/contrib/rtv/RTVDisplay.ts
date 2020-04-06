@@ -2618,7 +2618,7 @@ class RTVController implements IEditorContribution {
 						range.selectNodeContents(selection.focusNode!);
 						selection.addRange(range);
 
-						this.logger.projectionBoxFocus(s, r_operand !== undefined);
+						this.logger.projectionBoxFocus(s, r_operand !== '');
 						this.logger.exampleFocus(0, cellContents[0]!.textContent!);
 					}
 				}, 300);
