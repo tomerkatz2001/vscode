@@ -612,16 +612,22 @@ class RTVDisplayBox {
 								this.synthToggleElement(elmt, cellContent);
 								this.synthFocusNextRow();
 							} else {
+								if (elmt.env[elmt.vname!] !== cellContent.innerText) {
+									this._controller.logger.exampleChanged(
+										this.findParentRow(cell).rowIndex,
+										elmt.env[elmt.vname!],
+										cellContent.innerText);
+									this.synthToggleElement(elmt, cellContent, true);
+								}
+								cellContent.contentEditable = 'false';
+								this._editor.focus();
+								this._controller.logger.projectionBoxExit();
 								setTimeout(() => {
 									// Pressing enter also triggers the blur event, so we don't need to record any changes here.
 									this._controller.synthesizeFragment(elmt.controllingLineNumber, this._timesToInclude);
 									this._timesToInclude.clear();
 									this._controller.logger.exampleReset();
 								}, 200);
-								this.synthToggleElement(elmt, cellContent, true);
-								cellContent.contentEditable = 'false';
-								this._editor.focus();
-								this._controller.logger.projectionBoxExit();
 							}
 							break;
 						case 'Tab':
