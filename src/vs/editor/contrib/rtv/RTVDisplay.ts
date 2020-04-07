@@ -1266,6 +1266,14 @@ class RTVController implements IEditorContribution {
 		this._editor.onDidScrollChange((e) => { this.onScrollChange(e); });
 		this._editor.onDidLayoutChange((e) => { this.onLayoutChange(e); });
 		this._editor.onDidChangeModelContent((e) => { this.onDidChangeModelContent(e); });
+		this._editor.onDidChangeModel((e) => {
+			if (this._editor.getModel() !== null) {
+				this._boxes = [];
+				this.envs = {};
+				this.writes = {};
+				this.runProgram();
+			}
+		})
 		//this._editor.onDidChangeModelLanguage((e) => { this.runProgram(); });
 		this._editor.onMouseWheel((e) => { this.onMouseWheel(e); });
 		this._editor.onKeyUp((e) => { this.onKeyUp(e); });
@@ -1301,10 +1309,6 @@ class RTVController implements IEditorContribution {
 	}
 
 	public restoreViewState(state: any): void {
-		this._boxes = [];
-		this.envs = {};
-		this.writes = {};
-		this.runProgram();
 	}
 
 	// Configurable properties
