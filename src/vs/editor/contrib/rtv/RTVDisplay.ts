@@ -32,7 +32,7 @@ import { KeybindingWeight } from 'vs/platform/keybinding/common/keybindingsRegis
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { EditorOption } from 'vs/editor/common/config/editorOptions';
 import { inputBackground, inputBorder, inputForeground, widgetShadow, editorWidgetBackground } from 'vs/platform/theme/common/colorRegistry';
-import { ITextModel, IModelDecorationOptions } from 'vs/editor/common/model';
+import { IIdentifiedSingleEditOperation, ITextModel, IModelDecorationOptions } from 'vs/editor/common/model';
 import { KeybindingsRegistry } from 'vs/platform/keybinding/common/keybindingsRegistry';
 import { ICodeEditorService } from 'vs/editor/browser/services/codeEditorService';
 
@@ -1103,6 +1103,7 @@ enum ViewMode {
 	CursorAndReturn = 'Cursor and Return',
 	Compact = 'Compact',
 	Stealth = 'Stealth',
+	Focused = 'Focused',
 	Custom = 'Custom'
 }
 
@@ -1131,24 +1132,24 @@ class LoopFocusController {
 	) {
 		this._iterArr = strNumsToArray(iter);
 		this._loopIDArr = strNumsToArray(controllingBox.getLoopID());
-		this.resetDecorations();
+		this.resetDecorations(true);
 	}
 
-	public resetDecorations() {
+	public resetDecorations(addEndToken = false) {
 		this.destroyDecorations();
 		if (this.hasSeed()) {
-			let lineNumber = this.controllingBox.lineNumber;
+			let seedLineno = this.controllingBox.lineNumber;
 			let model = this._controller.getModelForce();
 			let lines = model.getLinesContent();
-			let currIndent = indent(lines[lineNumber-1]);
-			let start = lineNumber;
+			let currIndent = indent(lines[seedLineno-1]);
+			let start = seedLineno;
 			function isStillInLoop(s: string) {
 				return isEmpty(s) || indent(s) >= currIndent;
 			}
 			while (start >= 1 && isStillInLoop(lines[start-1])) {
 				start = start - 1;
 			}
-			let end = lineNumber;
+			let end = seedLineno;
 			while (end < lines.length+1 && isStillInLoop(lines[end-1])) {
 				end = end + 1;
 			}
@@ -1156,11 +1157,18 @@ class LoopFocusController {
 			let range1 = new Range(1, 1, start, model.getLineMaxColumn(start));
 			let maxline = lines.length;
 			let range2 = new Range(end, 1, maxline, model.getLineMaxColumn(maxline));
-			let lineContent = lines[lineNumber-1];
-			let range3 = new Range(lineNumber, indent(lineContent)+1, lineNumber, lineContent.length+1);
+			let seedLineContent = lines[seedLineno-1];
+			let range3 = new Range(seedLineno, indent(seedLineContent)+1, seedLineno, seedLineContent.length+1);
 			this._decoration1 = this._controller.addDecoration(range1, { inlineClassName: "rtv-code-fade" });
 			this._decoration2 = this._controller.addDecoration(range2, { inlineClassName: "rtv-code-fade" });
 			this._decoration3 = this._controller.addDecoration(range3, { className: "squiggly-info"});
+
+			let endToken = "## END LOOP";
+			if (addEndToken && !lines[end-2].endsWith(endToken)) {
+				let endCol = model.getLineMaxColumn(end-1)
+				let range4 = new Range(end-1, endCol, end-1, endCol);
+				this._controller.executeEdits([{range: range4, text: "\n" + seedLineContent.substr(0,currIndent) + endToken}]);
+			}
 		}
 	}
 
@@ -1256,6 +1264,14 @@ class RTVController implements IEditorContribution {
 		this._editor.onDidScrollChange((e) => { this.onDidScrollChange(e); });
 		this._editor.onDidLayoutChange((e) => { this.onDidLayoutChange(e); });
 		this._editor.onDidChangeModelContent((e) => { this.onDidChangeModelContent(e); });
+		this._editor.onDidChangeModel((e) => {
+			if (this._editor.getModel() !== null) {
+				this._boxes = [];
+				this.envs = {};
+				this.writes = {};
+				this.runProgram();
+			}
+		})
 		this._editor.onDidChangeModelLanguage((e) => { this.runProgram(); });
 		this._editor.onMouseWheel((e) => { this.onMouseWheel(e); });
 		this._editor.onKeyUp((e) => { this.onKeyUp(e); });
@@ -1289,10 +1305,6 @@ class RTVController implements IEditorContribution {
 	}
 
 	public restoreViewState(state: any): void {
-		this._boxes = [];
-		this.envs = {};
-		this.writes = {};
-		this.runProgram();
 	}
 
 	// Configurable properties
@@ -1494,6 +1506,10 @@ class RTVController implements IEditorContribution {
 		let max = 0;
 		let lineCount = model.getLineCount();
 		for (let line = 1; line <= lineCount; line++) {
+			let s = model.getLineContent(line)
+			if (s.length > 0 && s[0] == "#") {
+				continue
+			}
 			let col = model.getLineMaxColumn(line);
 			let pixelPos = this._editor.getScrolledVisiblePosition(new Position(line,col));
 			if (pixelPos !== null && pixelPos.left > max) {
@@ -1661,11 +1677,19 @@ class RTVController implements IEditorContribution {
 	private onDidChangeModelContent(e: IModelContentChangedEvent) {
 		//this.getModelForce().getActiveIndentGuide()
 		this.runProgram(e);
+		let cursorPos = this._editor.getPosition();
+		if (cursorPos === null) {
+			return;
+		}
+		let lineno = cursorPos.lineNumber;
 		if (e.changes.length > 0) {
 			let range = e.changes[0].range;
+			let lineCount = this.getLineCount();
 			for (let i = range.startLineNumber; i <= range.endLineNumber; i++) {
-				if (isSeedLine(this.getLineContent(i))) {
-					this.focusOnLoopWithSeed();
+				if (i <= lineCount && i === lineno) {
+					if (isSeedLine(this.getLineContent(i))) {
+						this.focusOnLoopWithSeed();
+					}
 				}
 			}
 		}
@@ -2363,6 +2387,10 @@ class RTVController implements IEditorContribution {
 				this.updateLayout();
 				setTimeout(() => { this.changeToFullView(); }, 300);
 				break;
+			case ViewMode.Focused:
+				this.setVisibilityAll();
+				this.changeToFullView(1);
+				break;
 		}
 	}
 
@@ -2549,6 +2577,7 @@ class RTVController implements IEditorContribution {
 			if (this.loopFocusController !== null) {
 				e.stopPropagation();
 				this.loopFocusController = null;
+				this.changeViewMode(ViewMode.Full);
 			}
 		}
 		if (e.keyCode === KeyCode.Ctrl) {
@@ -2652,8 +2681,13 @@ class RTVController implements IEditorContribution {
 
 	public focusOnLoopAtBox(box: RTVDisplayBox) {
 		this.loopFocusController = new LoopFocusController(this, box, box.getFirstLoopIter());
+		this.changeViewMode(ViewMode.Focused);
 	}
 
+	public executeEdits(edits: IIdentifiedSingleEditOperation[]) {
+		//this.getModelForce().applyEdits(edits);
+		this._editor.executeEdits(this.getId(), edits);
+	}
 }
 
 registerEditorContribution(RTVController.ID, RTVController);
