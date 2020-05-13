@@ -42,7 +42,7 @@ class Logger(bdb.Bdb):
         # print("locals")
         # print(frame.f_locals)
 
-        if frame.f_code.co_name == "<module>" or frame.f_code.co_name == "<listcomp>" or frame.f_code.co_filename != "<string>":
+        if frame.f_code.co_name == "<module>" or frame.f_code.co_name == "<listcomp>" or frame.f_code.co_name == "<dictcomp>" or frame.f_code.co_filename != "<string>":
             return
 
         # self.exception = False
@@ -159,7 +159,7 @@ class Logger(bdb.Bdb):
         # print("locals")
         # print(frame.f_locals)
 
-        if frame.f_code.co_name == "<module>" or frame.f_code.co_name == "<listcomp>" or frame.f_code.co_filename != "<string>":
+        if frame.f_code.co_name == "<module>" or frame.f_code.co_name == "<listcomp>" or frame.f_code.co_name == "<dictcomp>" or frame.f_code.co_filename != "<string>":
             return
 
         # if self.exception:
