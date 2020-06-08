@@ -33,6 +33,7 @@ const all = [
 	'scripts/**/*',
 	'src/**/*',
 	'test/**/*',
+	'!test/**/out/**',
 	'!**/node_modules/**'
 ];
 
@@ -53,11 +54,12 @@ const indentationFilter = [
 	'!src/vs/base/common/marked/marked.js',
 	'!src/vs/base/node/terminateProcess.sh',
 	'!src/vs/base/node/cpuUsage.sh',
-	'!test/assert.js',
+	'!test/unit/assert.js',
 
 	// except specific folders
 	'!test/automation/out/**',
 	'!test/smoke/out/**',
+	'!extensions/typescript-language-features/test-workspace/**',
 	'!extensions/vscode-api-tests/testWorkspace/**',
 	'!extensions/vscode-api-tests/testWorkspace2/**',
 	'!build/monaco/**',
@@ -82,8 +84,8 @@ const indentationFilter = [
 	'!src/vs/*/**/*.d.ts',
 	'!src/typings/**/*.d.ts',
 	'!extensions/**/*.d.ts',
-	'!**/*.{svg,exe,png,bmp,scpt,bat,cmd,cur,ttf,woff,eot,md,ps1,template,yaml,yml,d.ts.recipe,ico,icns}',
-	'!build/{lib,download}/**/*.js',
+	'!**/*.{svg,exe,png,bmp,scpt,bat,cmd,cur,ttf,woff,eot,md,ps1,template,yaml,yml,d.ts.recipe,ico,icns,plist}',
+	'!build/{lib,download,darwin}/**/*.js',
 	'!build/**/*.sh',
 	'!build/azure-pipelines/**/*.js',
 	'!build/azure-pipelines/**/*.config',
@@ -113,7 +115,6 @@ const copyrightFilter = [
 	'!**/*.disabled',
 	'!**/*.code-workspace',
 	'!**/*.js.map',
-	'!**/promise-polyfill/polyfill.js',
 	'!build/**/*.init',
 	'!resources/linux/snap/snapcraft.yaml',
 	'!resources/linux/snap/electron-launch',

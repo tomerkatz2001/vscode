@@ -15,7 +15,7 @@ export interface RemoteTunnel {
 	readonly tunnelRemoteHost: string;
 	readonly tunnelLocalPort?: number;
 	readonly localAddress: string;
-	dispose(): void;
+	dispose(silent?: boolean): void;
 }
 
 export interface TunnelOptions {
@@ -29,7 +29,7 @@ export interface ITunnelProvider {
 }
 
 export interface ITunnelService {
-	_serviceBrand: undefined;
+	readonly _serviceBrand: undefined;
 
 	readonly tunnels: Promise<readonly RemoteTunnel[]>;
 	readonly onTunnelOpened: Event<RemoteTunnel>;

@@ -38,7 +38,7 @@ export interface IGrammar {
 }
 
 export interface IJSONValidation {
-	fileMatch: string;
+	fileMatch: string | string[];
 	url: string;
 }
 
@@ -123,7 +123,7 @@ export interface IExtensionContributions {
 	views?: { [location: string]: IView[] };
 	colors?: IColor[];
 	localizations?: ILocalization[];
-	readonly webviewEditors?: readonly IWebviewEditor[];
+	readonly customEditors?: readonly IWebviewEditor[];
 	readonly codeActions?: readonly ICodeActionContribution[];
 }
 
@@ -149,6 +149,7 @@ export interface IExtensionManifest {
 	readonly engines: { vscode: string };
 	readonly description?: string;
 	readonly main?: string;
+	readonly browser?: string;
 	readonly icon?: string;
 	readonly categories?: string[];
 	readonly keywords?: string[];

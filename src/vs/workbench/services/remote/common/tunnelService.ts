@@ -10,7 +10,7 @@ import { IWorkbenchEnvironmentService } from 'vs/workbench/services/environment/
 import { ILogService } from 'vs/platform/log/common/log';
 
 export abstract class AbstractTunnelService implements ITunnelService {
-	_serviceBrand: undefined;
+	declare readonly _serviceBrand: undefined;
 
 	private _onTunnelOpened: Emitter<RemoteTunnel> = new Emitter();
 	public onTunnelOpened: Event<RemoteTunnel> = this._onTunnelOpened.event;
@@ -101,7 +101,7 @@ export abstract class AbstractTunnelService implements ITunnelService {
 	private async tryDisposeTunnel(remoteHost: string, remotePort: number, tunnel: { refcount: number, readonly value: Promise<RemoteTunnel> }): Promise<void> {
 		if (tunnel.refcount <= 0) {
 			const disposePromise: Promise<void> = tunnel.value.then(tunnel => {
-				tunnel.dispose();
+				tunnel.dispose(true);
 				this._onTunnelClosed.fire({ host: tunnel.tunnelRemoteHost, port: tunnel.tunnelRemotePort });
 			});
 			if (this._tunnels.has(remoteHost)) {

@@ -15,7 +15,7 @@ import { ILabelService } from 'vs/platform/label/common/label';
 
 export class ExtensionManagementServerService implements IExtensionManagementServerService {
 
-	_serviceBrand: undefined;
+	declare readonly _serviceBrand: undefined;
 
 	readonly localExtensionManagementServer: IExtensionManagementServer | null = null;
 	readonly remoteExtensionManagementServer: IExtensionManagementServer | null = null;
@@ -28,7 +28,8 @@ export class ExtensionManagementServerService implements IExtensionManagementSer
 		if (remoteAgentConnection) {
 			const extensionManagementService = new ExtensionManagementChannelClient(remoteAgentConnection!.getChannel<IChannel>('extensions'));
 			this.remoteExtensionManagementServer = {
-				authority: remoteAgentConnection.remoteAuthority, extensionManagementService,
+				authority: remoteAgentConnection.remoteAuthority,
+				extensionManagementService,
 				get label() { return labelService.getHostLabel(REMOTE_HOST_SCHEME, remoteAgentConnection!.remoteAuthority) || localize('remote', "Remote"); }
 			};
 		}

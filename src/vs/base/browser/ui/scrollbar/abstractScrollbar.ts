@@ -61,6 +61,7 @@ export abstract class AbstractScrollbar extends Widget {
 		this._scrollable = opts.scrollable;
 		this._scrollbarState = opts.scrollbarState;
 		this._visibilityController = this._register(new ScrollbarVisibilityController(opts.visibility, 'visible scrollbar ' + opts.extraScrollbarClassName, 'invisible scrollbar ' + opts.extraScrollbarClassName));
+		this._visibilityController.setIsNeeded(this._scrollbarState.isNeeded());
 		this._mouseMoveMonitor = this._register(new GlobalMouseMoveMonitor<IStandardMouseMoveEventData>());
 		this._shouldRender = true;
 		this.domNode = createFastDomNode(document.createElement('div'));
@@ -216,13 +217,14 @@ export abstract class AbstractScrollbar extends Widget {
 		}
 	}
 
-	private _sliderMouseDown(e: ISimplifiedMouseEvent, onDragFinished: () => void): void {
+	private _sliderMouseDown(e: IMouseEvent, onDragFinished: () => void): void {
 		const initialMousePosition = this._sliderMousePosition(e);
 		const initialMouseOrthogonalPosition = this._sliderOrthogonalMousePosition(e);
 		const initialScrollbarState = this._scrollbarState.clone();
 		this.slider.toggleClassName('active', true);
 
 		this._mouseMoveMonitor.startMonitoring(
+			e.target,
 			e.buttons,
 			standardMouseMoveMerger,
 			(mouseMoveData: IStandardMouseMoveEventData) => {
@@ -257,6 +259,15 @@ export abstract class AbstractScrollbar extends Widget {
 		this._scrollable.setScrollPositionNow(desiredScrollPosition);
 	}
 
+	public updateScrollbarSize(scrollbarSize: number): void {
+		this._updateScrollbarSize(scrollbarSize);
+		this._scrollbarState.setScrollbarSize(scrollbarSize);
+		this._shouldRender = true;
+		if (!this._lazyRender) {
+			this.render();
+		}
+	}
+
 	// ----------------- Overwrite these
 
 	protected abstract _renderDomNode(largeSize: number, smallSize: number): void;
@@ -265,6 +276,7 @@ export abstract class AbstractScrollbar extends Widget {
 	protected abstract _mouseDownRelativePosition(offsetX: number, offsetY: number): number;
 	protected abstract _sliderMousePosition(e: ISimplifiedMouseEvent): number;
 	protected abstract _sliderOrthogonalMousePosition(e: ISimplifiedMouseEvent): number;
+	protected abstract _updateScrollbarSize(size: number): void;
 
 	public abstract writeScrollPosition(target: INewScrollPosition, scrollPosition: number): void;
 }

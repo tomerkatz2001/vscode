@@ -12,7 +12,7 @@ import { Color } from 'vs/base/common/color';
 import { Emitter, Event } from 'vs/base/common/event';
 import { dispose, IDisposable, IReference, DisposableStore } from 'vs/base/common/lifecycle';
 import { Schemas } from 'vs/base/common/network';
-import { basenameOrAuthority, dirname, isEqual } from 'vs/base/common/resources';
+import { basenameOrAuthority, dirname } from 'vs/base/common/resources';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { EmbeddedCodeEditorWidget } from 'vs/editor/browser/widget/embeddedCodeEditorWidget';
 import { IEditorOptions } from 'vs/editor/common/config/editorOptions';
@@ -22,17 +22,18 @@ import { IModelDeltaDecoration, TrackedRangeStickiness } from 'vs/editor/common/
 import { ModelDecorationOptions, TextModel } from 'vs/editor/common/model/textModel';
 import { Location } from 'vs/editor/common/modes';
 import { ITextEditorModel, ITextModelService } from 'vs/editor/common/services/resolverService';
-import { AriaProvider, DataSource, Delegate, FileReferencesRenderer, OneReferenceRenderer, TreeElement, StringRepresentationProvider, IdentityProvider } from 'vs/editor/contrib/gotoSymbol/peek/referencesTree';
+import { AccessibilityProvider, DataSource, Delegate, FileReferencesRenderer, OneReferenceRenderer, TreeElement, StringRepresentationProvider, IdentityProvider } from 'vs/editor/contrib/gotoSymbol/peek/referencesTree';
 import * as nls from 'vs/nls';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { ILabelService } from 'vs/platform/label/common/label';
 import { WorkbenchAsyncDataTree, IWorkbenchAsyncDataTreeOptions } from 'vs/platform/list/browser/listService';
 import { activeContrastBorder } from 'vs/platform/theme/common/colorRegistry';
-import { ITheme, IThemeService, registerThemingParticipant } from 'vs/platform/theme/common/themeService';
+import { IColorTheme, IThemeService, registerThemingParticipant } from 'vs/platform/theme/common/themeService';
 import * as peekView from 'vs/editor/contrib/peekView/peekView';
 import { FileReferences, OneReference, ReferencesModel } from '../referencesModel';
 import { FuzzyScore } from 'vs/base/common/filters';
 import { SplitView, Sizing } from 'vs/base/browser/ui/splitview/splitview';
+import { IUndoRedoService } from 'vs/platform/undoRedo/common/undoRedo';
 
 
 class DecorationsManager implements IDisposable {
@@ -61,12 +62,13 @@ class DecorationsManager implements IDisposable {
 	private _onModelChanged(): void {
 		this._callOnModelChange.clear();
 		const model = this._editor.getModel();
-		if (model) {
-			for (const ref of this._model.groups) {
-				if (isEqual(ref.uri, model.uri)) {
-					this._addDecorations(ref);
-					return;
-				}
+		if (!model) {
+			return;
+		}
+		for (let ref of this._model.references) {
+			if (ref.uri.toString() === model.uri.toString()) {
+				this._addDecorations(ref.parent);
+				return;
 			}
 		}
 	}
@@ -75,7 +77,7 @@ class DecorationsManager implements IDisposable {
 		if (!this._editor.hasModel()) {
 			return;
 		}
-		this._callOnModelChange.add(this._editor.getModel().onDidChangeDecorations((event) => this._onDecorationChanged()));
+		this._callOnModelChange.add(this._editor.getModel().onDidChangeDecorations(() => this._onDecorationChanged()));
 
 		const newDecorations: IModelDeltaDecoration[] = [];
 		const newDecorationsActualIndex: number[] = [];
@@ -83,6 +85,9 @@ class DecorationsManager implements IDisposable {
 		for (let i = 0, len = reference.children.length; i < len; i++) {
 			let oneReference = reference.children[i];
 			if (this._decorationIgnoreSet.has(oneReference.id)) {
+				continue;
+			}
+			if (oneReference.uri.toString() !== this._editor.getModel().uri.toString()) {
 				continue;
 			}
 			newDecorations.push({
@@ -181,6 +186,8 @@ export interface SelectionEvent {
 	readonly element?: Location;
 }
 
+class ReferencesTree extends WorkbenchAsyncDataTree<ReferencesModel | FileReferences, TreeElement, FuzzyScore> { }
+
 /**
  * ZoneWidget that is shown inside the editor
  */
@@ -195,7 +202,7 @@ export class ReferenceWidget extends peekView.PeekViewWidget {
 	private readonly _onDidSelectReference = new Emitter<SelectionEvent>();
 	readonly onDidSelectReference = this._onDidSelectReference.event;
 
-	private _tree!: WorkbenchAsyncDataTree<ReferencesModel | FileReferences, TreeElement, FuzzyScore>;
+	private _tree!: ReferencesTree;
 	private _treeContainer!: HTMLElement;
 	private _splitView!: SplitView;
 	private _preview!: ICodeEditor;
@@ -213,12 +220,13 @@ export class ReferenceWidget extends peekView.PeekViewWidget {
 		@ITextModelService private readonly _textModelResolverService: ITextModelService,
 		@IInstantiationService private readonly _instantiationService: IInstantiationService,
 		@peekView.IPeekViewService private readonly _peekViewService: peekView.IPeekViewService,
-		@ILabelService private readonly _uriLabel: ILabelService
+		@ILabelService private readonly _uriLabel: ILabelService,
+		@IUndoRedoService private readonly _undoRedoService: IUndoRedoService,
 	) {
 		super(editor, { showFrame: false, showArrow: true, isResizeable: true, isAccessible: true });
 
-		this._applyTheme(themeService.getTheme());
-		this._callOnDispose.add(themeService.onThemeChange(this._applyTheme.bind(this)));
+		this._applyTheme(themeService.getColorTheme());
+		this._callOnDispose.add(themeService.onDidColorThemeChange(this._applyTheme.bind(this)));
 		this._peekViewService.addExclusiveWidget(editor, this);
 		this.create();
 	}
@@ -235,7 +243,7 @@ export class ReferenceWidget extends peekView.PeekViewWidget {
 		super.dispose();
 	}
 
-	private _applyTheme(theme: ITheme) {
+	private _applyTheme(theme: IColorTheme) {
 		const borderColor = theme.getColor(peekView.peekViewBorder) || Color.transparent;
 		this.style({
 			arrowColor: borderColor,
@@ -302,22 +310,21 @@ export class ReferenceWidget extends peekView.PeekViewWidget {
 		};
 		this._preview = this._instantiationService.createInstance(EmbeddedCodeEditorWidget, this._previewContainer, options, this.editor);
 		dom.hide(this._previewContainer);
-		this._previewNotAvailableMessage = TextModel.createFromString(nls.localize('missingPreviewMessage', "no preview available"));
+		this._previewNotAvailableMessage = new TextModel(nls.localize('missingPreviewMessage', "no preview available"), TextModel.DEFAULT_CREATION_OPTIONS, null, null, this._undoRedoService);
 
 		// tree
 		this._treeContainer = dom.append(containerElement, dom.$('div.ref-tree.inline'));
 		const treeOptions: IWorkbenchAsyncDataTreeOptions<TreeElement, FuzzyScore> = {
-			ariaLabel: nls.localize('treeAriaLabel', "References"),
 			keyboardSupport: this._defaultTreeKeyboardSupport,
-			accessibilityProvider: new AriaProvider(),
+			accessibilityProvider: new AccessibilityProvider(),
 			keyboardNavigationLabelProvider: this._instantiationService.createInstance(StringRepresentationProvider),
 			identityProvider: new IdentityProvider(),
 			overrideStyles: {
 				listBackground: peekView.peekViewResultsBackground
 			}
 		};
-		this._tree = this._instantiationService.createInstance<typeof WorkbenchAsyncDataTree, WorkbenchAsyncDataTree<ReferencesModel | FileReferences, TreeElement, FuzzyScore>>(
-			WorkbenchAsyncDataTree,
+		this._tree = this._instantiationService.createInstance(
+			ReferencesTree,
 			'ReferencesWidget',
 			this._treeContainer,
 			new Delegate(),
@@ -462,7 +469,7 @@ export class ReferenceWidget extends peekView.PeekViewWidget {
 		}));
 
 		// make sure things are rendered
-		dom.addClass(this.container!, 'results-loaded');
+		this.container!.classList.add('results-loaded');
 		dom.show(this._treeContainer);
 		dom.show(this._previewContainer);
 		this._splitView.layout(this._dim.width);

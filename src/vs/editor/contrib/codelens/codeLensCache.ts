@@ -7,7 +7,7 @@ import { ITextModel } from 'vs/editor/common/model';
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { registerSingleton } from 'vs/platform/instantiation/common/extensions';
 import { CodeLensModel } from 'vs/editor/contrib/codelens/codelens';
-import { LRUCache, values } from 'vs/base/common/map';
+import { LRUCache } from 'vs/base/common/map';
 import { CodeLensProvider, CodeLensList, CodeLens } from 'vs/editor/common/modes';
 import { IStorageService, StorageScope, WillSaveStateReason } from 'vs/platform/storage/common/storage';
 import { Range } from 'vs/editor/common/core/range';
@@ -17,7 +17,7 @@ import { once } from 'vs/base/common/functional';
 export const ICodeLensCache = createDecorator<ICodeLensCache>('ICodeLensCache');
 
 export interface ICodeLensCache {
-	_serviceBrand: undefined;
+	readonly _serviceBrand: undefined;
 	put(model: ITextModel, data: CodeLensModel): void;
 	get(model: ITextModel): CodeLensModel | undefined;
 	delete(model: ITextModel): void;
@@ -38,7 +38,7 @@ class CacheItem {
 
 export class CodeLensCache implements ICodeLensCache {
 
-	_serviceBrand: undefined;
+	declare readonly _serviceBrand: undefined;
 
 	private readonly _fakeProvider = new class implements CodeLensProvider {
 		provideCodeLenses(): CodeLensList {
@@ -103,7 +103,7 @@ export class CodeLensCache implements ICodeLensCache {
 			}
 			data[key] = {
 				lineCount: value.lineCount,
-				lines: values(lines)
+				lines: [...lines.values()]
 			};
 		});
 		return JSON.stringify(data);

@@ -56,7 +56,7 @@ class IntegrityStorage {
 
 export class IntegrityServiceImpl implements IIntegrityService {
 
-	_serviceBrand: undefined;
+	declare readonly _serviceBrand: undefined;
 
 	private _storage: IntegrityStorage;
 	private _isPurePromise: Promise<IntegrityTestResult>;
@@ -144,7 +144,7 @@ export class IntegrityServiceImpl implements IIntegrityService {
 		return new Promise<ChecksumPair>((resolve, reject) => {
 			fs.readFile(fileUri.fsPath, (err, buff) => {
 				if (err) {
-					return reject(err);
+					return resolve(IntegrityServiceImpl._createChecksumPair(fileUri, '', expected));
 				}
 				resolve(IntegrityServiceImpl._createChecksumPair(fileUri, this._computeChecksum(buff), expected));
 			});

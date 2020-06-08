@@ -39,6 +39,7 @@ const CORE_TYPES = [
 	'group',
 	'groupEnd',
 	'table',
+	'assert',
 	'Error',
 	'String',
 	'throws',
@@ -112,6 +113,15 @@ const RULES = [
 		]
 	},
 
+	// Browser (editor contrib)
+	{
+		target: '**/src/vs/editor/contrib/**',
+		allowedTypes: CORE_TYPES,
+		disallowedDefinitions: [
+			'@types/node'	// no node.js
+		]
+	},
+
 	// node.js
 	{
 		target: '**/vs/**/node/**',
@@ -130,6 +140,15 @@ const RULES = [
 		],
 		disallowedDefinitions: [
 			'lib.dom.d.ts'	// no DOM
+		]
+	},
+
+	// Electron (sandbox)
+	{
+		target: '**/vs/**/electron-sandbox/**',
+		allowedTypes: CORE_TYPES,
+		disallowedDefinitions: [
+			'@types/node'	// no node.js
 		]
 	},
 

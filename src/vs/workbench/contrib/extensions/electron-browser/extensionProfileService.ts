@@ -12,7 +12,7 @@ import { onUnexpectedError } from 'vs/base/common/errors';
 import { StatusbarAlignment, IStatusbarService, IStatusbarEntryAccessor, IStatusbarEntry } from 'vs/workbench/services/statusbar/common/statusbar';
 import { IExtensionHostProfileService, ProfileSessionState } from 'vs/workbench/contrib/extensions/electron-browser/runtimeExtensionsEditor';
 import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
-import { IElectronService } from 'vs/platform/electron/node/electron';
+import { IElectronService } from 'vs/platform/electron/electron-sandbox/electron';
 import { IDialogService } from 'vs/platform/dialogs/common/dialogs';
 import { randomPort } from 'vs/base/node/ports';
 import product from 'vs/platform/product/common/product';
@@ -23,7 +23,7 @@ import { CommandsRegistry } from 'vs/platform/commands/common/commands';
 
 export class ExtensionHostProfileService extends Disposable implements IExtensionHostProfileService {
 
-	_serviceBrand: undefined;
+	declare readonly _serviceBrand: undefined;
 
 	private readonly _onDidChangeState: Emitter<void> = this._register(new Emitter<void>());
 	public readonly onDidChangeState: Event<void> = this._onDidChangeState.event;
@@ -82,6 +82,7 @@ export class ExtensionHostProfileService extends Disposable implements IExtensio
 		if (visible) {
 			const indicator: IStatusbarEntry = {
 				text: '$(sync~spin) ' + nls.localize('profilingExtensionHost', "Profiling Extension Host"),
+				ariaLabel: nls.localize('profilingExtensionHost', "Profiling Extension Host"),
 				tooltip: nls.localize('selectAndStartDebug', "Click to stop profiling."),
 				command: 'workbench.action.extensionHostProfilder.stop'
 			};

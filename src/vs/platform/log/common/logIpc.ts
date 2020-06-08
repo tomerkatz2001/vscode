@@ -60,7 +60,11 @@ export class LoggerChannelClient {
 	}
 
 	setLevel(level: LogLevel): void {
-		this.channel.call('setLevel', level);
+		LoggerChannelClient.setLevel(this.channel, level);
+	}
+
+	public static setLevel(channel: IChannel, level: LogLevel): Promise<void> {
+		return channel.call('setLevel', level);
 	}
 
 	consoleLog(severity: string, args: string[]): void {
@@ -69,7 +73,7 @@ export class LoggerChannelClient {
 }
 
 export class FollowerLogService extends DelegatedLogService implements ILogService {
-	_serviceBrand: undefined;
+	declare readonly _serviceBrand: undefined;
 
 	constructor(private master: LoggerChannelClient, logService: ILogService) {
 		super(logService);
