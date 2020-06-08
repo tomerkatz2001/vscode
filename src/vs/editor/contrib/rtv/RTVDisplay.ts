@@ -32,8 +32,6 @@ import { KeybindingWeight } from 'vs/platform/keybinding/common/keybindingsRegis
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { inputBackground, inputBorder, inputForeground, widgetShadow, editorWidgetBackground, badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IIdentifiedSingleEditOperation, ITextModel, IModelDecorationOptions } from 'vs/editor/common/model';
-import { KeybindingsRegistry } from 'vs/platform/keybinding/common/keybindingsRegistry';
-import { ICodeEditorService } from 'vs/editor/browser/services/codeEditorService';
 import { Selection } from 'vs/editor/common/core/selection';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 
@@ -569,7 +567,7 @@ class RTVDisplayBox {
 			this._timesToInclude.add(time);
 
 			// Highligh the row
-			let theme = this._controller._themeService.getTheme();
+			let theme = this._controller._themeService.getColorTheme();
 			row.style.fontWeight = '900';
 			row.style.backgroundColor = String(theme.getColor(badgeBackground) ?? '');
 
@@ -1380,11 +1378,11 @@ function visibilityCursorAndReturn(b: RTVDisplayBox, cursorLineNumber: number) {
 	return b.lineNumber === cursorLineNumber || b.isReturnLine();
 }
 
-enum LangId {
-	NotSupported = 0,
-	Python = 1,
-	Haskell = 2
-}
+// enum LangId {
+// NotSupported = 0,
+// Python = 1,
+// Haskell = 2
+// }
 
 class RTVController implements IEditorContribution {
 	public envs: { [k:string]: any []; } = {};
@@ -1641,23 +1639,23 @@ class RTVController implements IEditorContribution {
 		return model.getLineContent(lineNumber);
 	}
 
-	private getLangId(): LangId {
-		let model = this._editor.getModel();
-		if (model === null) {
-			return LangId.NotSupported;
-		}
-		let uri = model.uri;
-		if (uri.scheme !== "file") {
-			return LangId.NotSupported;
-		}
-		if (strings.endsWith(uri.path, ".py")) {
-			return LangId.Python;
-		}
-		if (strings.endsWith(uri.path, ".hs")) {
-			return LangId.Haskell
-		}
-		return LangId.NotSupported;
-	}
+// private getLangId(): LangId {
+// 	let model = this._editor.getModel();
+// 	if (model === null) {
+// 		return LangId.NotSupported;
+// 	}
+// 	let uri = model.uri;
+// 	if (uri.scheme !== "file") {
+// 		return LangId.NotSupported;
+// 	}
+// 	if (strings.endsWith(uri.path, ".py")) {
+// 		return LangId.Python;
+// 	}
+// 	if (strings.endsWith(uri.path, ".hs")) {
+// 		return LangId.Haskell
+// 	}
+// 	return LangId.NotSupported;
+// }
 
 	private updateMaxPixelCol() {
 		let model = this._editor.getModel();
@@ -2702,7 +2700,7 @@ class RTVController implements IEditorContribution {
 		input.selectionEnd = selectionEnd;
 		input.size = value.length;
 
-		let theme = this._themeService.getTheme();
+		let theme = this._themeService.getColorTheme();
 		const widgetShadowColor = theme.getColor(widgetShadow);
 		domNode.style.backgroundColor = String(theme.getColor(editorWidgetBackground) ?? '');
 		domNode.style.boxShadow = widgetShadowColor ? ` 0 2px 8px ${widgetShadowColor}` : '';
@@ -3144,27 +3142,27 @@ function createRTVAction(id: string, name: string, key: number, callback: (c:RTV
 }
 
 // Another way to register keyboard shortcuts. Not sure which is best.
-function registerKeyShotrcut(id: string, key: number, callback: (c:RTVController) => void) {
-	KeybindingsRegistry.registerCommandAndKeybindingRule({
-		id: id,
-		weight: KeybindingWeight.EditorCore,
-		when: undefined,
-		primary: key,
-		handler: (accessor, args: any) => {
-			const codeEditorService = accessor.get(ICodeEditorService);
-
-			// Find the editor with text focus or active
-			const editor = codeEditorService.getFocusedCodeEditor() || codeEditorService.getActiveCodeEditor();
-			if (!editor) {
-				return;
-			}
-			let controller = RTVController.get(editor);
-			if (controller) {
-				callback(controller);
-			}
-		}
-	});
-}
+// function registerKeyShotrcut(id: string, key: number, callback: (c:RTVController) => void) {
+// KeybindingsRegistry.registerCommandAndKeybindingRule({
+// 	id: id,
+// 	weight: KeybindingWeight.EditorCore,
+// 	when: undefined,
+// 	primary: key,
+// 	handler: (accessor, args: any) => {
+// 		const codeEditorService = accessor.get(ICodeEditorService);
+//
+// 		// Find the editor with text focus or active
+// 		const editor = codeEditorService.getFocusedCodeEditor() || codeEditorService.getActiveCodeEditor();
+// 		if (!editor) {
+// 			return;
+// 		}
+// 		let controller = RTVController.get(editor);
+// 		if (controller) {
+// 			callback(controller);
+// 		}
+// 	}
+// });
+//
 
 createRTVAction(
 	'rtv.flipview',
