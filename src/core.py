@@ -6,18 +6,14 @@ def strip_comment(str):
     return re.sub(r'#.*', '', str)
 
 def strip_comments(lines):
-    # for i in range(len(lines)):
-    #     lines[i] = strip_comment(lines[i])
-    return [strip_comment(x) for x in lines]
+    for i in range(len(lines)):
+        lines[i] = strip_comment(lines[i])
 
-def replace_empty_lines_with_noop(lines, orig):
+def replace_empty_lines_with_noop(lines):
 
     curr_indent = -1
     curr_indent_str = ""
     for i in range(len(lines)):
-        if orig[i].find("#") != -1:
-            curr_indent = -1
-            continue
         line = lines[i]
         stripped = line.strip()
         if stripped == "":
@@ -49,7 +45,6 @@ def replace_empty_lines_with_noop(lines, orig):
 def load_code_lines(file_name):
     with open(file_name) as f:
         lines = f.readlines()
-    orig = lines
-    lines = strip_comments(orig)
-    replace_empty_lines_with_noop(lines, orig)
+    strip_comments(lines)
+    replace_empty_lines_with_noop(lines)
     return lines

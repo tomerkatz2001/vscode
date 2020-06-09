@@ -4,6 +4,7 @@ import bdb
 import json
 import re
 import core
+import time
 
 class LoopInfo:
     def __init__(self, frame, lineno, indent):
@@ -135,6 +136,7 @@ class Logger(bdb.Bdb):
         for k in frame.f_locals:
             if k != core.magic_var_name:
                 env[k] = repr(frame.f_locals[k])
+                #env[k] = "```html\n<i><b>h</b></i>```"
         env["lineno"] = lineno
 
         self.data_at(lineno).append(env)
@@ -233,14 +235,33 @@ def is_return_str(str):
 def indent(str):
     return len(str) - len(str.lstrip())
 
-def compute_writes(code):
-    root = ast.parse(code)
+def compute_writes(lines):
+    done = False
+    i = 0
+    while not done:
+        try:
+            code = "".join(lines)
+            print("Try number " + str(i))
+            print("BEGIN CODE")
+            print(code)
+            print("END CODE")
+            i = i + 1
+            root = ast.parse(code)
+            done = True
+        except IndentationError as e:
+            lineno = e.lineno-1
+            print(lines[lineno])
+            if (lines[lineno].find(core.magic_var_name) == -1):
+                raise
+            else:
+                lines[lineno] = "\n"
     #print(ast.dump(root))
     write_collector = WriteCollector()
     write_collector.visit(root)
     return write_collector.data
 
-def compute_runtime_data(code, lines):
+def compute_runtime_data(lines):
+    code = "".join(lines)
     l = Logger(lines)
     l.run(code)
     #data = adjust_to_next_time_step(l.data)
@@ -278,8 +299,8 @@ def main():
     code = "".join(lines)
     print(code)
 
-    writes = compute_writes(code)
-    run_time_data = compute_runtime_data(code, lines)
+    writes = compute_writes(lines)
+    run_time_data = compute_runtime_data(lines)
 
     with open(sys.argv[1] + ".out", "w") as out:
         out.write(json.dumps((writes, run_time_data)))

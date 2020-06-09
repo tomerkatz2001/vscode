@@ -32,8 +32,8 @@ import { KeybindingWeight } from 'vs/platform/keybinding/common/keybindingsRegis
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { inputBackground, inputBorder, inputForeground, widgetShadow, editorWidgetBackground, badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IIdentifiedSingleEditOperation, ITextModel, IModelDecorationOptions } from 'vs/editor/common/model';
-import { KeybindingsRegistry } from 'vs/platform/keybinding/common/keybindingsRegistry';
-import { ICodeEditorService } from 'vs/editor/browser/services/codeEditorService';
+// import { KeybindingsRegistry } from 'vs/platform/keybinding/common/keybindingsRegistry';
+// import { ICodeEditorService } from 'vs/editor/browser/services/codeEditorService';
 import { Selection } from 'vs/editor/common/core/selection';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 
@@ -57,6 +57,12 @@ function indent(s: string): number {
 
 function isHtmlEscape(s:string):boolean {
 	return strings.startsWith(s, "```html\n") && strings.endsWith(s, "```")
+}
+
+function removeHtmlEscape(s:string):string{
+	let x = "```html\n".length;
+	let y = "```".length;
+	return s.substring(x, s.length-y);
 }
 
 function arrayStartsWith<T>(haystack: T[], needle: T[]): boolean {
@@ -104,6 +110,25 @@ function strNumsToArray(s: string): number[] {
 function regExpMatchEntireString(s: string, regExp: string) {
 	let res = s.match(regExp);
 	return res !== null && res.index === 0 && res[0] === s;
+}
+
+class DelayedRunAtMostOne {
+	private _timer: NodeJS.Timer | null = null;
+
+	public run(delay: number, c:() => void) {
+		if (this._timer != null) {
+			clearTimeout(this._timer);
+		}
+		if (delay === 0) {
+			this._timer = null;
+			c();
+		} else {
+			this._timer = setTimeout(() => {
+				this._timer = null;
+				c();
+			}, delay);
+		}
+	}
 }
 
 class DeltaVarSet {
@@ -660,7 +685,7 @@ class RTVDisplayBox {
 		}
 		else if (isHtmlEscape(s)) {
 			cellContent = document.createElement('div');
-			cellContent.innerHTML = s;
+			cellContent.innerHTML = removeHtmlEscape(s);
 		} else {
 			let renderedText = r.render(new MarkdownString(s));
 			cellContent = renderedText.element;
@@ -1380,11 +1405,11 @@ function visibilityCursorAndReturn(b: RTVDisplayBox, cursorLineNumber: number) {
 	return b.lineNumber === cursorLineNumber || b.isReturnLine();
 }
 
-enum LangId {
-	NotSupported = 0,
-	Python = 1,
-	Haskell = 2
-}
+// enum LangId {
+// 	NotSupported = 0,
+// 	Python = 1,
+// 	Haskell = 2
+// }
 
 class RTVController implements IEditorContribution {
 	public envs: { [k:string]: any []; } = {};
@@ -1405,7 +1430,8 @@ class RTVController implements IEditorContribution {
 	private _peekCounter: number = 0;
 	private _peekTimer: NodeJS.Timer | null = null;
 	private _globalDeltaVarSet: DeltaVarSet = new DeltaVarSet();
-
+	private _pythonProcess: cp.ChildProcessWithoutNullStreams | null = null;
+	private _runProgramDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 
 	public static readonly ID = 'editor.contrib.rtv';
 
@@ -1429,7 +1455,7 @@ class RTVController implements IEditorContribution {
 				this.writes = {};
 				this.runProgram();
 			}
-		})
+		});
 		this._editor.onDidChangeModelLanguage((e) => { this.runProgram(); });
 		this._editor.onMouseWheel((e) => { this.onMouseWheel(e); });
 		this._editor.onKeyUp((e) => { this.onKeyUp(e); });
@@ -1641,23 +1667,23 @@ class RTVController implements IEditorContribution {
 		return model.getLineContent(lineNumber);
 	}
 
-	private getLangId(): LangId {
-		let model = this._editor.getModel();
-		if (model === null) {
-			return LangId.NotSupported;
-		}
-		let uri = model.uri;
-		if (uri.scheme !== "file") {
-			return LangId.NotSupported;
-		}
-		if (strings.endsWith(uri.path, ".py")) {
-			return LangId.Python;
-		}
-		if (strings.endsWith(uri.path, ".hs")) {
-			return LangId.Haskell
-		}
-		return LangId.NotSupported;
-	}
+	// private getLangId(): LangId {
+	// 	let model = this._editor.getModel();
+	// 	if (model === null) {
+	// 		return LangId.NotSupported;
+	// 	}
+	// 	let uri = model.uri;
+	// 	if (uri.scheme !== "file") {
+	// 		return LangId.NotSupported;
+	// 	}
+	// 	if (strings.endsWith(uri.path, ".py")) {
+	// 		return LangId.Python;
+	// 	}
+	// 	if (strings.endsWith(uri.path, ".hs")) {
+	// 		return LangId.Haskell
+	// 	}
+	// 	return LangId.NotSupported;
+	// }
 
 	private updateMaxPixelCol() {
 		let model = this._editor.getModel();
@@ -1836,7 +1862,6 @@ class RTVController implements IEditorContribution {
 	}
 
 	private onDidChangeModelContent(e: IModelContentChangedEvent) {
-		//this.getModelForce().getActiveIndentGuide()
 		this.runProgram(e);
 		let cursorPos = this._editor.getPosition();
 		if (cursorPos === null) {
@@ -2269,10 +2294,6 @@ class RTVController implements IEditorContribution {
 		}
 	}
 
-	// private onChangeModelContent(e: IModelContentChangedEvent) {
-	// 	this.runProgram(e);
-	// }
-
 	private writeModelToDisk(fname: string) {
 		let lines = this.getModelForce().getLinesContent();
 		this.removeSeeds(lines);
@@ -2360,6 +2381,27 @@ class RTVController implements IEditorContribution {
 	}
 
 	public runProgram(e?: IModelContentChangedEvent) {
+
+		function runImmediately(e?: IModelContentChangedEvent):boolean {
+			if (e === undefined) {
+				return true;
+			}
+			// We run immediately when any of the changes span multi-lines.
+			// In this case, we will be either removing or adding projection boxes,
+			// and we want to process this change immediately.
+			for (let i = 0; i < e.changes.length; i++){
+				let change = e.changes[i];
+				if (change.range.endLineNumber - change.range.startLineNumber > 0) {
+					return true;
+				}
+				if (change.text.split("\n").length > 1) {
+					return true;
+				}
+			}
+			// we get here only if all changes are a single line at a time, and do not introduce new lines
+			return false;
+		}
+
 		//console.log(e);
 		this.padBoxArray();
 
@@ -2367,32 +2409,52 @@ class RTVController implements IEditorContribution {
 
 		this.updateMaxPixelCol();
 
-		let code_fname = os.tmpdir() + path.sep + "tmp.py";
-		this.writeModelToDisk(code_fname);
+		let delay = 500;
+		if (runImmediately(e)) {
+			delay = 0;
+		}
 
-		let c = cp.spawn(PY3, [RUNPY, code_fname]);
+		this._runProgramDelay.run(delay, () => {
 
-		c.stdout.on("data", (data) => {
-			//console.log("stdout " + data.toString())
-		});
-		let errorMsg = "";
-		c.stderr.on("data", (data) => {
-			errorMsg = errorMsg + data.toString();
-		});
-		c.on('exit', (exitCode, signalCode) => {
-			this.updateLinesWhenOutOfDate(exitCode, e);
-			if (exitCode === 0) {
-				this.clearError();
-				this.updateData(fs.readFileSync(code_fname + ".out").toString());
-				this.updateContentAndLayout();
+			let code_fname = os.tmpdir() + path.sep + "tmp.py";
+			this.writeModelToDisk(code_fname);
+
+			//console.log(this._pythonProcess);
+			if (this._pythonProcess !== null) {
+				//console.log("kill");
+				this._pythonProcess.kill();
 			}
-			else {
-				this.showErrorWithDelay(errorMsg);
-				// this.updateData(fs.readFileSync(code_fname + ".out").toString());
-				this.updateContentAndLayout();
-			}
-		});
+			let c = cp.spawn(PY3, [RUNPY, code_fname]);
+			this._pythonProcess = c;
 
+			c.stdout.on("data", (data) => {
+				//console.log("stdout " + data.toString())
+			});
+			let errorMsg = "";
+			c.stderr.on("data", (data) => {
+				errorMsg = errorMsg + data.toString();
+			});
+			c.on('exit', (exitCode, signalCode) => {
+				//console.log("exitCode: ", exitCode);
+				//console.log("signalCode: ", signalCode);
+				// When exitCode === null, it means the process was killed,
+				// so there is nothing else to do
+				if (exitCode !== null) {
+					this.updateLinesWhenOutOfDate(exitCode, e);
+					this._pythonProcess = null;
+					if (exitCode === 0) {
+						this.clearError();
+						this.updateData(fs.readFileSync(code_fname + ".out").toString());
+						this.updateContentAndLayout();
+					}
+					else {
+						this.showErrorWithDelay(errorMsg);
+						// this.updateData(fs.readFileSync(code_fname + ".out").toString());
+						this.updateContentAndLayout();
+					}
+				}
+			});
+		});
 	}
 
 	private updateData(str: string) {
@@ -3144,27 +3206,27 @@ function createRTVAction(id: string, name: string, key: number, callback: (c:RTV
 }
 
 // Another way to register keyboard shortcuts. Not sure which is best.
-function registerKeyShotrcut(id: string, key: number, callback: (c:RTVController) => void) {
-	KeybindingsRegistry.registerCommandAndKeybindingRule({
-		id: id,
-		weight: KeybindingWeight.EditorCore,
-		when: undefined,
-		primary: key,
-		handler: (accessor, args: any) => {
-			const codeEditorService = accessor.get(ICodeEditorService);
+// function registerKeyShotrcut(id: string, key: number, callback: (c:RTVController) => void) {
+// 	KeybindingsRegistry.registerCommandAndKeybindingRule({
+// 		id: id,
+// 		weight: KeybindingWeight.EditorCore,
+// 		when: undefined,
+// 		primary: key,
+// 		handler: (accessor, args: any) => {
+// 			const codeEditorService = accessor.get(ICodeEditorService);
 
-			// Find the editor with text focus or active
-			const editor = codeEditorService.getFocusedCodeEditor() || codeEditorService.getActiveCodeEditor();
-			if (!editor) {
-				return;
-			}
-			let controller = RTVController.get(editor);
-			if (controller) {
-				callback(controller);
-			}
-		}
-	});
-}
+// 			// Find the editor with text focus or active
+// 			const editor = codeEditorService.getFocusedCodeEditor() || codeEditorService.getActiveCodeEditor();
+// 			if (!editor) {
+// 				return;
+// 			}
+// 			let controller = RTVController.get(editor);
+// 			if (controller) {
+// 				callback(controller);
+// 			}
+// 		}
+// 	});
+// }
 
 createRTVAction(
 	'rtv.flipview',
