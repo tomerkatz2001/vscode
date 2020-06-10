@@ -1,7 +1,7 @@
 import * as cp from 'child_process';
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 import 'vs/css!./rtv';
 import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
@@ -39,22 +39,28 @@ import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 function getOSEnvVariable(v: string): string {
 	let result = process.env[v];
 	if (result === undefined) {
-		throw new Error("OS environment variable " + v + " is not defined.");
+		throw new Error('OS environment variable ' + v + ' is not defined.');
 	}
 	return result;
 }
 
-let PY3 = getOSEnvVariable("PYTHON3");
-let RUNPY = getOSEnvVariable("RUNPY");
-let SYNTH = getOSEnvVariable("SYNTH");
-let SCALA = getOSEnvVariable("SCALA");
+let PY3 = getOSEnvVariable('PYTHON3');
+let RUNPY = getOSEnvVariable('RUNPY');
+let SYNTH = getOSEnvVariable('SYNTH');
+let SCALA = getOSEnvVariable('SCALA');
 
 function indent(s: string): number {
 	return s.length - s.trimLeft().length;
 }
 
 function isHtmlEscape(s:string):boolean {
-	return strings.startsWith(s, "```html\n") && strings.endsWith(s, "```")
+	return strings.startsWith(s, '```html\n') && strings.endsWith(s, '```')
+}
+
+function removeHtmlEscape(s:string):string{
+	let x = '```html\n'.length;
+	let y = '```'.length;
+	return s.substring(x, s.length-y);
 }
 
 function arrayStartsWith<T>(haystack: T[], needle: T[]): boolean {
@@ -76,25 +82,25 @@ function arrayStartsWith<T>(haystack: T[], needle: T[]): boolean {
 }
 
 function isEmpty(str: string) {
-	return str.trim() === "";
+	return str.trim() === '';
 }
 
 function isSeedLine(str: string) {
-	return str.match("#@") != null;
+	return str.match('#@') != null;
 }
 
 function isLoopStr(str: string) {
 	let trimmed = str.trim();
-	return strings.endsWith(trimmed, ":") &&
-		   (strings.startsWith(trimmed, "for") ||
-			strings.startsWith(trimmed, "while"));
+	return strings.endsWith(trimmed, ':') &&
+		   (strings.startsWith(trimmed, 'for') ||
+			strings.startsWith(trimmed, 'while'));
 }
 
 function strNumsToArray(s: string): number[] {
-	if (s === "") {
+	if (s === '') {
 		return []
 	} else {
-		return s.split(",").map(e => +e);
+		return s.split(',').map(e => +e);
 	}
 }
 
@@ -102,6 +108,25 @@ function strNumsToArray(s: string): number[] {
 function regExpMatchEntireString(s: string, regExp: string) {
 	let res = s.match(regExp);
 	return res !== null && res.index === 0 && res[0] === s;
+}
+
+class DelayedRunAtMostOne {
+	private _timer: NodeJS.Timer | null = null;
+
+	public run(delay: number, c:() => void) {
+		if (this._timer != null) {
+			clearTimeout(this._timer);
+		}
+		if (delay === 0) {
+			this._timer = null;
+			c();
+		} else {
+			this._timer = setTimeout(() => {
+				this._timer = null;
+				c();
+			}, delay);
+		}
+	}
 }
 
 class DeltaVarSet {
@@ -177,13 +202,13 @@ class RTVLine {
 		}
 
 		this._div = document.createElement('div');
-		this._div.style.position = "absolute";
-		this._div.style.borderTop = "1px solid grey";
-		this._div.style.transitionProperty = "all";
-		this._div.style.transitionDuration = "0.3s";
-		this._div.style.transitionDelay = "0s";
-		this._div.style.transitionTimingFunction = "ease-in";
-		this._div.style.transformOrigin = "0% 0%";
+		this._div.style.position = 'absolute';
+		this._div.style.borderTop = '1px solid grey';
+		this._div.style.transitionProperty = 'all';
+		this._div.style.transitionDuration = '0.3s';
+		this._div.style.transitionDelay = '0s';
+		this._div.style.transitionTimingFunction = 'ease-in';
+		this._div.style.transformOrigin = '0% 0%';
 		this.move(x1,y1,x2,y2);
 		editor_div.appendChild(this._div);
 	}
@@ -193,17 +218,17 @@ class RTVLine {
 	}
 
 	public move(x1: number, y1: number, x2: number, y2: number) {
-		this._div.style.left = x1.toString() + "px";
-		this._div.style.top = y1.toString() + "px";
+		this._div.style.left = x1.toString() + 'px';
+		this._div.style.top = y1.toString() + 'px';
 		let deltaX = (x2 - x1);
 		let deltaY = (y2 - y1);
 		let length = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
-		this._div.style.width = length.toString() + "px";
+		this._div.style.width = length.toString() + 'px';
 		let angle = 0;
 		if (length !== 0) {
 			angle = Math.atan(deltaY / deltaX) * 180 / Math.PI;
 		}
-		this._div.style.transform = "rotate(" + angle.toString() + "deg)";
+		this._div.style.transform = 'rotate(' + angle.toString() + 'deg)';
 	}
 
 	public setOpacity(opacity: number) {
@@ -256,16 +281,16 @@ class RTVDisplayBox {
 			throw new Error('Cannot find Monaco Editor');
 		}
 		this._box = document.createElement('div');
-		this._box.textContent = "";
-		this._box.style.position = "absolute";
-		this._box.style.top = "100px";
-		this._box.style.left = "800px";
-		this._box.style.maxWidth = "1366px";
-		this._box.style.transitionProperty = "all";
-		this._box.style.transitionDuration = "0.3s";
-		this._box.style.transitionDelay = "0s";
-		this._box.style.transitionTimingFunction = "ease-in";
-		this._box.className = "monaco-editor-hover";
+		this._box.textContent = '';
+		this._box.style.position = 'absolute';
+		this._box.style.top = '100px';
+		this._box.style.left = '800px';
+		this._box.style.maxWidth = '1366px';
+		this._box.style.transitionProperty = 'all';
+		this._box.style.transitionDuration = '0.3s';
+		this._box.style.transitionDelay = '0s';
+		this._box.style.transitionTimingFunction = 'ease-in';
+		this._box.className = 'monaco-editor-hover';
 		if (!this._controller.supportSynthesis) {
 			this._box.onauxclick = (e) => {
 				this.onClick(e);
@@ -303,8 +328,8 @@ class RTVDisplayBox {
 		// so we take care of layout here, which is to make  invisible (opacity 0).
 		this._allEnvs = [];
 		this._hasContent = false;
-		this._box.textContent = "";
-		this._box.style.opacity = "0";
+		this._box.textContent = '';
+		this._box.style.opacity = '0';
 		this._line.setOpacity(0);
 	}
 
@@ -320,8 +345,8 @@ class RTVDisplayBox {
 			writesAtLine = []
 		}
 		let result = new Set<string>(writesAtLine);
-		if (this._allVars.has("rv")) {
-			result.add("rv");
+		if (this._allVars.has('rv')) {
+			result.add('rv');
 		}
 		return result;
 	}
@@ -347,16 +372,16 @@ class RTVDisplayBox {
 
 	public getLoopID(): string {
 		if (this._allEnvs.length == 0) {
-			return "";
+			return '';
 		}
-		return this._allEnvs[0]["$"];
+		return this._allEnvs[0]['$'];
 	}
 
 	public getFirstLoopIter(): string {
 		if (this._allEnvs.length == 0) {
-			return "";
+			return '';
 		}
-		return this._allEnvs[0]["#"];
+		return this._allEnvs[0]['#'];
 	}
 
 	public getNextLoopIter(loopID: string, iter: string, delta: number): string {
@@ -364,7 +389,7 @@ class RTVDisplayBox {
 			return iter;
 		}
 
-		let first = "";
+		let first = '';
 		let envs = this._allEnvs;
 		if (delta < 0) {
 			envs = envs.slice(0, envs.length).reverse();
@@ -373,26 +398,26 @@ class RTVDisplayBox {
 		for (let i = 0; i < envs.length; i++) {
 			let env = envs[i];
 
-			if (env["$"] !== loopID) {
-				throw Error("Error");
+			if (env['$'] !== loopID) {
+				throw Error('Error');
 			}
-			if (first === "") {
-				if (env["$"] === loopID) {
-					first = env["#"]
+			if (first === '') {
+				if (env['$'] === loopID) {
+					first = env['#']
 				}
 			}
 
-			if (env["$"] === loopID && env["#"] === iter) {
+			if (env['$'] === loopID && env['#'] === iter) {
 				let nexti = i + 1;
 				if (nexti >= envs.length) {
 					return first;
 				}
 				let nextEnv = envs[nexti];
-				if (nextEnv["$"] !== loopID) {
-					throw Error("Error");
+				if (nextEnv['$'] !== loopID) {
+					throw Error('Error');
 				}
-				if (nextEnv["$"] === loopID) {
-					return nextEnv["#"];
+				if (nextEnv['$'] === loopID) {
+					return nextEnv['#'];
 				} else {
 					return first;
 				}
@@ -420,23 +445,23 @@ class RTVDisplayBox {
 		c.contextMenuService.showContextMenu({
 			getAnchor: () => ({x: e.clientX, y: e.clientY }),
 			getActions: () => [
-				this.newAction("Hide This Box", () => {
+				this.newAction('Hide This Box', () => {
 					c.hideBox(this);
 				}),
-				this.newAction("Hide All Other Boxes", () => {
+				this.newAction('Hide All Other Boxes', () => {
 					c.hideAllOtherBoxes(this);
 				}),
 				new Separator(),
-				this.newAction("Restore This Box to Default", () => {
+				this.newAction('Restore This Box to Default', () => {
 					c.restoreBoxToDefault(this);
 				}),
-				this.newAction("Restore All Boxes to Default", () => {
+				this.newAction('Restore All Boxes to Default', () => {
 					c.restoreAllBoxesToDefault();
 				}),
 				new Separator(),
-				new ContextSubMenu("Appearance of All Boxes", viewModeActions),
+				new ContextSubMenu('Appearance of All Boxes', viewModeActions),
 				new Separator(),
-				this.newAction("See All Loop Iterations", () => {
+				this.newAction('See All Loop Iterations', () => {
 					c.loopFocusController = null;
 				}),
 			],
@@ -447,31 +472,31 @@ class RTVDisplayBox {
 
 	private isConditionalLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
-		return strings.endsWith(lineContent, ":") &&
-			   (strings.startsWith(lineContent, "if") ||
-				strings.startsWith(lineContent, "else"));
+		return strings.endsWith(lineContent, ':') &&
+			   (strings.startsWith(lineContent, 'if') ||
+				strings.startsWith(lineContent, 'else'));
 	}
 
 	private isLoopLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
-		return strings.endsWith(lineContent, ":") &&
-			   (strings.startsWith(lineContent, "for") ||
-				strings.startsWith(lineContent, "while"));
+		return strings.endsWith(lineContent, ':') &&
+			   (strings.startsWith(lineContent, 'for') ||
+				strings.startsWith(lineContent, 'while'));
 	}
 
 	public isBreakLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
-		return strings.startsWith(lineContent, "break");
+		return strings.startsWith(lineContent, 'break');
 	}
 
 	public isReturnLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
-		return strings.startsWith(lineContent, "return");
+		return strings.startsWith(lineContent, 'return');
 	}
 
 	private bringToLoopCount(envs:any[], active_loop_iters:number[], loopId: string, iterCount:number) {
 		while (active_loop_iters[active_loop_iters.length-1] < iterCount ) {
-			envs.push({ "#" : active_loop_iters.join(","), "$": loopId });
+			envs.push({ '#' : active_loop_iters.join(','), '$': loopId });
 			active_loop_iters[active_loop_iters.length-1]++;
 		}
 	}
@@ -485,19 +510,19 @@ class RTVDisplayBox {
 			let env = envs[i];
 			if (env.begin_loop !== undefined) {
 				if (active_loop_iters.length > 0) {
-					let loop_iters:string[] = env.begin_loop.split(",");
+					let loop_iters:string[] = env.begin_loop.split(',');
 					this.bringToLoopCount(envs2, active_loop_iters, last(active_loop_ids), +loop_iters[loop_iters.length-2]);
 				}
-				active_loop_ids.push(env["$"]);
+				active_loop_ids.push(env['$']);
 				active_loop_iters.push(0);
 			} else if (env.end_loop !== undefined) {
-				let loop_iters:string[] = env.end_loop.split(",");
+				let loop_iters:string[] = env.end_loop.split(',');
 				this.bringToLoopCount(envs2, active_loop_iters, last(active_loop_ids), +last(loop_iters));
 				active_loop_ids.pop();
 				active_loop_iters.pop();
 				active_loop_iters[active_loop_iters.length-1]++;
 			} else {
-				let loop_iters: string[] = env["#"].split(",");
+				let loop_iters: string[] = env['#'].split(',');
 				this.bringToLoopCount(envs2, active_loop_iters, last(active_loop_ids), +last(loop_iters));
 				envs2.push(env);
 				active_loop_iters[active_loop_iters.length-1]++;
@@ -537,7 +562,7 @@ class RTVDisplayBox {
 
 		let focusCtrl = this._controller.loopFocusController;
 
-		return envs.filter((e,i,a) => focusCtrl.matches(e["$"], e["#"]));
+		return envs.filter((e,i,a) => focusCtrl.matches(e['$'], e['#']));
 	}
 
 	private findParentRow(cell: HTMLElement) : HTMLTableRowElement
@@ -631,13 +656,13 @@ class RTVDisplayBox {
 
 	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r:MarkdownRenderer) {
 		if (this._controller.colBorder) {
-			cell.style.borderLeft = "1px solid #454545";
+			cell.style.borderLeft = '1px solid #454545';
 		}
-		let padding = this._controller.cellPadding + "px";
+		let padding = this._controller.cellPadding + 'px';
 		cell.style.paddingLeft = padding;
 		cell.style.paddingRight = padding;
-		cell.style.paddingTop = "0";
-		cell.style.paddingBottom = "0";
+		cell.style.paddingTop = '0';
+		cell.style.paddingBottom = '0';
 
 		cell.align = 'center';
 
@@ -649,16 +674,16 @@ class RTVDisplayBox {
 
 		let s = elmt.content;
 		let cellContent: HTMLElement;
-		if (s === "") {
+		if (s === '') {
 			// Make empty strings into a space to make sure it's allocated a space
 			// Otherwise, the divs in a row could become invisible if they are
 			// all empty
 			cellContent = document.createElement('div');
-			cellContent.innerHTML = "&nbsp";
+			cellContent.innerHTML = '&nbsp';
 		}
 		else if (isHtmlEscape(s)) {
 			cellContent = document.createElement('div');
-			cellContent.innerHTML = s;
+			cellContent.innerHTML = removeHtmlEscape(s);
 		} else {
 			let renderedText = r.render(new MarkdownString(s));
 			cellContent = renderedText.element;
@@ -726,9 +751,9 @@ class RTVDisplayBox {
 			}
 		}
 		if (this._controller.mouseShortcuts) {
-			if (elmt.iter === "header") {
+			if (elmt.iter === 'header') {
 				cellContent = this.wrapAsVarMenuButton(cellContent, s.substr(2, s.length-4));
-			} else if (elmt.iter !== "") {
+			} else if (elmt.iter !== '') {
 				cellContent = this.wrapAsLoopMenuButton(cellContent, elmt.iter);
 			}
 		}
@@ -765,7 +790,7 @@ class RTVDisplayBox {
 				let elmt = rows[rowIdx][colIdx];
 				let newCell = newRow.insertCell(-1);
 				this.addCellContentAndStyle(newCell, elmt, renderer);
-				if (elmt.iter !== "") {
+				if (elmt.iter !== '') {
 					if (tableCellsByLoop[elmt.iter] === undefined) {
 						tableCellsByLoop[elmt.iter] = [];
 					}
@@ -776,20 +801,20 @@ class RTVDisplayBox {
 	}
 
 	// private createTableByRows2(rows: TableElement[][]) {
-	// 	this._box.textContent = "";
+	// 	this._box.textContent = '';
 	// 	let tableCellsByLoop = this._coordinator.tableCellsByLoop;
 	// 	const renderer = new MarkdownRenderer(this._editor, this._modeService, this._openerService);
 	// 	let table = document.createElement('div');
-	// 	table.style.display = "table";
+	// 	table.style.display = 'table';
 	// 	for (let colIdx = 0; colIdx < rows[0].length; colIdx++) {
 	// 		let newRow = document.createElement('div');
-	// 		newRow.style.display = "table-row";
+	// 		newRow.style.display = 'table-row';
 	// 		table.appendChild(newRow);
 	// 		for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
 	// 			let elmt = rows[rowIdx][colIdx];
 	// 			let newCell = this.computeCellContent(elmt.content, renderer)
-	// 			newCell.style.display = "table-cell";
-	// 			newCell.style.width = "120px";
+	// 			newCell.style.display = 'table-cell';
+	// 			newCell.style.width = '120px';
 	// 			newRow.appendChild(newCell);
 	// 		}
 	// 	}
@@ -858,7 +883,7 @@ class RTVDisplayBox {
 		this._allVars = new Set<string>();
 		envs.forEach((env) => {
 			for (let key in env) {
-				if (key !== "prev_lineno" && key !== "next_lineno" && key !== "lineno" && key !== "time" && key !== "$") {
+				if (key !== 'prev_lineno' && key !== 'next_lineno' && key !== 'lineno' && key !== 'time' && key !== '$') {
 					this._allVars.add(key);
 				}
 			}
@@ -890,24 +915,24 @@ class RTVDisplayBox {
 		let rows: TableElement[][] = [];
 		let header: TableElement[] = [];
 		vars.forEach((v:string) => {
-			header.push(new TableElement("**" + v + "**", "header", "header", 0));
+			header.push(new TableElement('**' + v + '**', 'header', 'header', 0));
 		});
 		rows.push(header);
 
 		// Generate all rows
 		for (let i = 0; i < envs.length; i++) {
 			let env = envs[i];
-			let loopID = env["$"];
-			let iter = env["#"];
+			let loopID = env['$'];
+			let iter = env['#'];
 			let row: TableElement[] = [];
 			vars.forEach((v:string) => {
 				var v_str:string;
 				if (env[v] === undefined) {
-					v_str = "";
+					v_str = '';
 				} else if (isHtmlEscape(env[v])) {
 					v_str = env[v];
 				} else {
-					v_str = "```python\n" + env[v] + "\n```";
+					v_str = '```python\n' + env[v] + '\n```';
 				}
 				row.push(new TableElement(v_str, loopID, iter, this.lineNumber, v, env));
 			});
@@ -916,18 +941,18 @@ class RTVDisplayBox {
 
 		// Set border
 		if (this._controller.boxBorder) {
-			this._box.style.border = "";
+			this._box.style.border = '';
 		} else {
-			this._box.style.border = "0";
+			this._box.style.border = '0';
 		}
 
 		// Create html table from rows
-		this._box.textContent = "";
+		this._box.textContent = '';
 		const renderer = new MarkdownRenderer(this._editor, this._modeService, this._openerService);
 		let table = document.createElement('table');
-		table.style.borderSpacing = "0px";
-		table.style.paddingLeft = "13px";
-		table.style.paddingRight = "13px";
+		table.style.borderSpacing = '0px';
+		table.style.paddingLeft = '13px';
+		table.style.paddingRight = '13px';
 
 		this._cellDictionary = {};
 		if (this._controller.byRowOrCol === RowColMode.ByRow) {
@@ -969,8 +994,8 @@ class RTVDisplayBox {
 	}
 
 	public varRemove(regExp: string, removed?: Set<string>) {
-		if (regExp === "*") {
-			regExp = ".*";
+		if (regExp === '*') {
+			regExp = '.*';
 		}
 		this.allVars().forEach((v) => {
 			if (regExpMatchEntireString(v, regExp) && this._displayedVars.has(v)) {
@@ -983,12 +1008,12 @@ class RTVDisplayBox {
 	}
 
 	public varRemoveAll(removed?: Set<string>) {
-		this.varRemove("*", removed);
+		this.varRemove('*', removed);
 	}
 
 	public varAdd(regExp: string, added?: Set<string>) {
-		if (regExp === "*") {
-			regExp = ".*";
+		if (regExp === '*') {
+			regExp = '.*';
 		}
 		this.allVars().forEach((v) => {
 			if (regExpMatchEntireString(v, regExp) && !this._displayedVars.has(v)) {
@@ -1007,7 +1032,7 @@ class RTVDisplayBox {
 	}
 
 	public varAddAll(added?: Set<string>) {
-		this.varAdd("*", added);
+		this.varAdd('*', added);
 	}
 
 	public varRestoreToDefault() {
@@ -1021,7 +1046,7 @@ class RTVDisplayBox {
 	}
 
 	private newAction(label: string, actionCallBack: () => void): Action {
-		return new Action("id", label, "", true, (event?) => {
+		return new Action('id', label, '', true, (event?) => {
 			actionCallBack();
 			return new Promise((resolve, reject) => {
 				resolve();
@@ -1031,30 +1056,30 @@ class RTVDisplayBox {
 
 	private wrapAsVarMenuButton(elmt: HTMLElement, varname: string): HTMLDivElement {
 		let menubar = document.createElement('div');
-		menubar.className = "menubar";
+		menubar.className = 'menubar';
 		if (this._controller.byRowOrCol === RowColMode.ByCol) {
-			menubar.style.height = "23px";
+			menubar.style.height = '23px';
 		} else {
-			menubar.style.height = "19.5px";
+			menubar.style.height = '19.5px';
 		}
 		menubar.appendChild(elmt);
-		elmt.className = "menubar-menu-button";
+		elmt.className = 'menubar-menu-button';
 		let c = this._controller;
 		elmt.onclick = (e) => {
 			e.stopImmediatePropagation();
 			c.contextMenuService.showContextMenu({
 				getAnchor: () => elmt,
 				getActions: () => [
-					this.newAction("Remove <strong> " + varname + " </strong> in This Box", () => {
+					this.newAction('Remove <strong> ' + varname + ' </strong> in This Box', () => {
 						c.varRemoveInThisBox(varname, this);
 					}),
-					this.newAction("Remove <strong> " + varname + " </strong> in All Boxes", () => {
+					this.newAction('Remove <strong> ' + varname + ' </strong> in All Boxes', () => {
 						c.varRemoveInAllBoxes(varname);
 					}),
-					this.newAction("Only <strong> " + varname + " </strong> in This Box", () => {
+					this.newAction('Only <strong> ' + varname + ' </strong> in This Box', () => {
 						c.varKeepOnlyInThisBox(varname, this);
 					}),
-					this.newAction("Only <strong> " + varname + " </strong> in All Boxes", () => {
+					this.newAction('Only <strong> ' + varname + ' </strong> in All Boxes', () => {
 						c.varKeepOnlyInAllBoxes(varname);
 					})
 				],
@@ -1067,23 +1092,23 @@ class RTVDisplayBox {
 
 	private wrapAsLoopMenuButton(elmt: HTMLElement, iter: string): HTMLDivElement {
 		let menubar = document.createElement('div');
-		menubar.className = "menubar";
-		menubar.style.height = "19.5px";
+		menubar.className = 'menubar';
+		menubar.style.height = '19.5px';
 		// if (this._controller.byRowOrCol === RowColMode.ByCol) {
-		// 	menubar.style.height = "23px";
+		// 	menubar.style.height = '23px';
 		// } else {
-		// 	menubar.style.height = "19.5px";
+		// 	menubar.style.height = '19.5px';
 		// }
 		menubar.appendChild(elmt);
-		elmt.className = "menubar-menu-button";
-		elmt.style.padding = "0px";
+		elmt.className = 'menubar-menu-button';
+		elmt.style.padding = '0px';
 		let c = this._controller;
 		elmt.onclick = (e) => {
 			e.stopImmediatePropagation();
 			c.contextMenuService.showContextMenu({
 				getAnchor: () => elmt,
 				getActions: () => [
-					this.newAction("Focus on This Loop Iteration", () => {
+					this.newAction('Focus on This Loop Iteration', () => {
 						c.loopFocusController = new LoopFocusController(this._controller, this, iter);
 					})
 				],
@@ -1096,15 +1121,15 @@ class RTVDisplayBox {
 
 	private addPlusButton() {
 		let menubar = document.createElement('div');
-		menubar.className = "menubar";
-		menubar.style.height = "23px";
+		menubar.className = 'menubar';
+		menubar.style.height = '23px';
 		menubar.style.position = 'absolute';
 		menubar.style.top = '0px';
 		menubar.style.right = '0px';
 		let addButton = document.createElement('div');
 		menubar.appendChild(addButton)
-		addButton.className = "menubar-menu-button";
-		addButton.innerHTML = "+";
+		addButton.className = 'menubar-menu-button';
+		addButton.innerHTML = '+';
 		addButton.onclick = (e) => {
 			e.stopImmediatePropagation();
 			this._controller.contextMenuService.showContextMenu({
@@ -1122,20 +1147,20 @@ class RTVDisplayBox {
 	private createActionsForPlusMenu(): (IAction | ContextSubMenu)[] {
 		let res: (IAction | ContextSubMenu)[] = [];
 		this.notDisplayedVars().forEach((v) => {
-			res.push(new ContextSubMenu("Add <strong> " + v , [
-				this.newAction("to This Box", () => {
+			res.push(new ContextSubMenu('Add <strong> ' + v , [
+				this.newAction('to This Box', () => {
 					this._controller.varAddInThisBox(v, this);
 				}),
-				this.newAction("to All Boxes", () => {
+				this.newAction('to All Boxes', () => {
 					this._controller.varAddInAllBoxes(v);
 				})
 			]));
 		});
-		res.push(new ContextSubMenu("Add All Vars ", [
-			this.newAction("to This Box", () => {
+		res.push(new ContextSubMenu('Add All Vars ', [
+			this.newAction('to This Box', () => {
 				this._controller.varAddAllInThisBox(this);
 			}),
-			this.newAction("to All Boxes", () => {
+			this.newAction('to All Boxes', () => {
 				this._controller.varAddAllInAllBoxes();
 			})
 		]));
@@ -1206,9 +1231,9 @@ class RTVDisplayBox {
 		let left = this._controller.maxPixelCol+130;
 		let zoom_adjusted_left =  left - ((1-this._zoom) * (this._box.offsetWidth / 2));
 		let zoom_adjusted_top = boxTop - ((1-this._zoom) * (this._box.offsetHeight / 2));
-		this._box.style.top = zoom_adjusted_top.toString() + "px";
-		this._box.style.left = zoom_adjusted_left.toString() + "px";
-		this._box.style.transform = "scale(" + this._zoom.toString() +")";
+		this._box.style.top = zoom_adjusted_top.toString() + 'px';
+		this._box.style.left = zoom_adjusted_left.toString() + 'px';
+		this._box.style.transform = 'scale(' + this._zoom.toString() +')';
 		this._box.style.opacity = this._opacity.toString();
 
 		// update the line
@@ -1236,7 +1261,7 @@ class RTVDisplayBox {
 	}
 
 	public fade() {
-		let oldOpacity = this._box.style.opacity === "" ? '1' : this._box.style.opacity;
+		let oldOpacity = this._box.style.opacity === '' ? '1' : this._box.style.opacity;
 		if (oldOpacity) {
 			let newOpacity = parseFloat(oldOpacity) * 0.9;
 			this._box.style.opacity = newOpacity.toString();
@@ -1313,15 +1338,15 @@ class LoopFocusController {
 			let range2 = new Range(end, 1, maxline, model.getLineMaxColumn(maxline));
 			let seedLineContent = lines[seedLineno-1];
 			let range3 = new Range(seedLineno, indent(seedLineContent)+1, seedLineno, seedLineContent.length+1);
-			this._decoration1 = this._controller.addDecoration(range1, { inlineClassName: "rtv-code-fade" });
-			this._decoration2 = this._controller.addDecoration(range2, { inlineClassName: "rtv-code-fade" });
-			this._decoration3 = this._controller.addDecoration(range3, { className: "squiggly-info"});
+			this._decoration1 = this._controller.addDecoration(range1, { inlineClassName: 'rtv-code-fade' });
+			this._decoration2 = this._controller.addDecoration(range2, { inlineClassName: 'rtv-code-fade' });
+			this._decoration3 = this._controller.addDecoration(range3, { className: 'squiggly-info'});
 
-			let endToken = "## END LOOP";
+			let endToken = '## END LOOP';
 			if (addEndToken && !lines[end-2].endsWith(endToken)) {
 				let endCol = model.getLineMaxColumn(end-1)
 				let range4 = new Range(end-1, endCol, end-1, endCol);
-				this._controller.executeEdits([{range: range4, text: "\n" + seedLineContent.substr(0,currIndent) + endToken}]);
+				this._controller.executeEdits([{range: range4, text: '\n' + seedLineContent.substr(0,currIndent) + endToken}]);
 			}
 		}
 	}
@@ -1379,9 +1404,9 @@ function visibilityCursorAndReturn(b: RTVDisplayBox, cursorLineNumber: number) {
 }
 
 // enum LangId {
-// NotSupported = 0,
-// Python = 1,
-// Haskell = 2
+// 	NotSupported = 0,
+// 	Python = 1,
+// 	Haskell = 2
 // }
 
 class RTVController implements IEditorContribution {
@@ -1403,7 +1428,8 @@ class RTVController implements IEditorContribution {
 	private _peekCounter: number = 0;
 	private _peekTimer: NodeJS.Timer | null = null;
 	private _globalDeltaVarSet: DeltaVarSet = new DeltaVarSet();
-
+	private _pythonProcess: cp.ChildProcessWithoutNullStreams | null = null;
+	private _runProgramDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 
 	public static readonly ID = 'editor.contrib.rtv';
 
@@ -1427,12 +1453,12 @@ class RTVController implements IEditorContribution {
 				this.writes = {};
 				this.runProgram();
 			}
-		})
+		});
 		this._editor.onDidChangeModelLanguage((e) => { this.runProgram(); });
 		this._editor.onMouseWheel((e) => { this.onMouseWheel(e); });
 		this._editor.onKeyUp((e) => { this.onKeyUp(e); });
 		this._editor.onKeyDown((e) => { this.onKeyDown(e); });
-		//this._modelService.onModelModeChanged((e) => { console.log("BBBB");  });
+		//this._modelService.onModelModeChanged((e) => { console.log('BBBB');  });
 
 		this.logger = new RTVLogger(this._editor);
 
@@ -1448,7 +1474,7 @@ class RTVController implements IEditorContribution {
 		};
 		this.changeViewMode(this.viewMode);
 
-		//this._modVarsInputField.getDomNode().style.width = "300px";
+		//this._modVarsInputField.getDomNode().style.width = '300px';
 	}
 
 	public static get(editor: ICodeEditor): RTVController {
@@ -1618,7 +1644,7 @@ class RTVController implements IEditorContribution {
 	public getModelForce(): ITextModel {
 		let model = this._editor.getModel();
 		if (model === null) {
-			throw Error("Expecting a model");
+			throw Error('Expecting a model');
 		}
 		return model;
 	}
@@ -1634,28 +1660,28 @@ class RTVController implements IEditorContribution {
 	public getLineContent(lineNumber: number): string {
 		let model = this._editor.getModel();
 		if (model === null) {
-			return "";
+			return '';
 		}
 		return model.getLineContent(lineNumber);
 	}
 
-// private getLangId(): LangId {
-// 	let model = this._editor.getModel();
-// 	if (model === null) {
-// 		return LangId.NotSupported;
-// 	}
-// 	let uri = model.uri;
-// 	if (uri.scheme !== "file") {
-// 		return LangId.NotSupported;
-// 	}
-// 	if (strings.endsWith(uri.path, ".py")) {
-// 		return LangId.Python;
-// 	}
-// 	if (strings.endsWith(uri.path, ".hs")) {
-// 		return LangId.Haskell
-// 	}
-// 	return LangId.NotSupported;
-// }
+	// private getLangId(): LangId {
+	// 	let model = this._editor.getModel();
+	// 	if (model === null) {
+	// 		return LangId.NotSupported;
+	// 	}
+	// 	let uri = model.uri;
+	// 	if (uri.scheme !== 'file') {
+	// 		return LangId.NotSupported;
+	// 	}
+	// 	if (strings.endsWith(uri.path, '.py')) {
+	// 		return LangId.Python;
+	// 	}
+	// 	if (strings.endsWith(uri.path, '.hs')) {
+	// 		return LangId.Haskell
+	// 	}
+	// 	return LangId.NotSupported;
+	// }
 
 	private updateMaxPixelCol() {
 		let model = this._editor.getModel();
@@ -1666,7 +1692,7 @@ class RTVController implements IEditorContribution {
 		let lineCount = model.getLineCount();
 		for (let line = 1; line <= lineCount; line++) {
 			let s = model.getLineContent(line)
-			if (s.length > 0 && s[0] == "#") {
+			if (s.length > 0 && s[0] == '#') {
 				continue
 			}
 			let col = model.getLineMaxColumn(line);
@@ -1691,18 +1717,18 @@ class RTVController implements IEditorContribution {
 			return;
 		}
 		let div = document.createElement('div');
-		div.textContent = "";
-		div.style.position = "absolute";
-		div.style.top = "200px";
-		div.style.left = "800px";
+		div.textContent = '';
+		div.style.position = 'absolute';
+		div.style.top = '200px';
+		div.style.left = '800px';
 		div.style.width = '100px';
 		div.style.textAlign = 'left';
-		div.style.transitionProperty = "all";
-		div.style.transitionDuration = "0.3s";
-		div.style.transitionDelay = "0s";
-		div.style.transitionTimingFunction = "ease-in";
-		div.style.boxShadow = "0px 2px 8px black";
-		div.className = "monaco-editor-hover";
+		div.style.transitionProperty = 'all';
+		div.style.transitionDuration = '0.3s';
+		div.style.transitionDelay = '0s';
+		div.style.transitionTimingFunction = 'ease-in';
+		div.style.boxShadow = '0px 2px 8px black';
+		div.className = 'monaco-editor-hover';
 		div.style.display = 'block';
 
 		/*Creates the row selector
@@ -1800,7 +1826,7 @@ class RTVController implements IEditorContribution {
 	public getBoxAtCurrLine() {
 		let cursorPos = this._editor.getPosition();
 		if (cursorPos === null) {
-			throw new Error("No position to get box at");
+			throw new Error('No position to get box at');
 		}
 
 		return this.getBox(cursorPos.lineNumber);
@@ -1834,7 +1860,6 @@ class RTVController implements IEditorContribution {
 	}
 
 	private onDidChangeModelContent(e: IModelContentChangedEvent) {
-		//this.getModelForce().getActiveIndentGuide()
 		this.runProgram(e);
 		let cursorPos = this._editor.getPosition();
 		if (cursorPos === null) {
@@ -1880,7 +1905,7 @@ class RTVController implements IEditorContribution {
 		let widths: { [k:string]: number; } = {};
 		loops.forEach((loop:string) => {
 			widths[loop] = Math.max(...this.tableCellsByLoop[loop].map(e=>e.offsetWidth));
-			//console.log("Max for " + loop + " :" + widths[loop]);
+			//console.log('Max for ' + loop + ' :' + widths[loop]);
 		});
 
 		let spaceBetweenCells = 2 * this.cellPadding;
@@ -1905,8 +1930,8 @@ class RTVController implements IEditorContribution {
 		}
 
 		loops.forEach((loop:string) => {
-			// console.log("Computed width for " + loop + ": " + widths[loop]);
-			this.tableCellsByLoop[loop].forEach(e => { e.width = (widths[loop] - spaceBetweenCells) + "px"; });
+			// console.log('Computed width for ' + loop + ': ' + widths[loop]);
+			this.tableCellsByLoop[loop].forEach(e => { e.width = (widths[loop] - spaceBetweenCells) + 'px'; });
 		});
 
 	}
@@ -1919,7 +1944,7 @@ class RTVController implements IEditorContribution {
 		setTimeout(() => {
 			for (let x in this.tableCellsByLoop) {
 				this.tableCellsByLoop[x].forEach(y => {
-					//console.log("Delayed: " + x + " " + y.offsetWidth + " " + y.clientWidth);
+					//console.log('Delayed: ' + x + ' ' + y.offsetWidth + ' ' + y.clientWidth);
 				});
 			}
 			this.updateCellSizesForNewContent();
@@ -2108,7 +2133,7 @@ class RTVController implements IEditorContribution {
 			} else {
 				let line = i + 1;
 				let change = changes[changeIdx];
-				let numAddedLines = change.text.split("\n").length-1;
+				let numAddedLines = change.text.split('\n').length-1;
 				let changeStartLine = change.range.startLineNumber;
 				let changeEndLine = change.range.endLineNumber;
 				let numRemovedLines = changeEndLine - changeStartLine;
@@ -2146,7 +2171,7 @@ class RTVController implements IEditorContribution {
 	}
 
 	public addDecoration(range: IRange, options: IModelDecorationOptions) {
-		let result = "";
+		let result = '';
 		this._editor.changeDecorations((c) => {
 			result = c.addDecoration(range, options);
 		});
@@ -2175,12 +2200,12 @@ class RTVController implements IEditorContribution {
 		//
 		// I. Runtime errors, which end like this:
 		//
-		// File "<string>", line 4, in mean_average"
+		// File '<string>', line 4, in mean_average'
 		// TypeError: list indices must be integers or slices, not float
 		//
 		// II. Parse errors, which end like this:
 		//
-		// File "<unknown>", line 4
+		// File '<unknown>', line 4
 		//    median = a[int(mid ]
 		//                       ^
 		// SyntaxError: invalid syntax
@@ -2204,12 +2229,12 @@ class RTVController implements IEditorContribution {
 		if (lineno === undefined) {
 			return;
 		}
-		let linenoRE = "line ([0-9]*)";
+		let linenoRE = 'line ([0-9]*)';
 		let match = lineno.match(linenoRE);
 
 		if (match !== null) {
 			// found a line number here, so this is a runtime error)
-			// match[0] is entire "line N" match, match[1] is just the number N
+			// match[0] is entire 'line N' match, match[1] is just the number N
 			lineNumber = +match[1];
 			colStart = this.firstNonWhitespaceCol(lineNumber);
 			colEnd = this.lastNonWhitespaceCol(lineNumber)
@@ -2218,7 +2243,7 @@ class RTVController implements IEditorContribution {
 			// didn't get the error line number, we got the line with the caret
 			let caret = lineno;
 
-			let caretIndex = caret.indexOf("^");
+			let caretIndex = caret.indexOf('^');
 			if (caretIndex === -1) {
 				// can't figure out the format, give up
 				return;
@@ -2242,7 +2267,7 @@ class RTVController implements IEditorContribution {
 				return;
 			} else {
 				// found a line number here, so this is a runtime error)
-				// match[0] is entire "line N" match, match[1] is just the number N
+				// match[0] is entire 'line N' match, match[1] is just the number N
 				lineNumber = +match[1];
 				colStart = this.firstNonWhitespaceCol(lineNumber) + caretIndex;
 				if (colStart < 1) {
@@ -2252,7 +2277,7 @@ class RTVController implements IEditorContribution {
 			}
 		}
 		let range = new Range(lineNumber, colStart, lineNumber, colEnd);
-		let options = { className: "squiggly-error", hoverMessage: new MarkdownString(description) };
+		let options = { className: 'squiggly-error', hoverMessage: new MarkdownString(description) };
 		this._errorDecorationID = this.addDecoration(range, options);
 	}
 
@@ -2267,14 +2292,10 @@ class RTVController implements IEditorContribution {
 		}
 	}
 
-	// private onChangeModelContent(e: IModelContentChangedEvent) {
-	// 	this.runProgram(e);
-	// }
-
 	private writeModelToDisk(fname: string) {
 		let lines = this.getModelForce().getLinesContent();
 		this.removeSeeds(lines);
-		fs.writeFileSync(fname, lines.join("\n"));
+		fs.writeFileSync(fname, lines.join('\n'));
 	}
 
 	private insertSynthesizedFragment(fragment: string, lineno: number) {
@@ -2358,6 +2379,27 @@ class RTVController implements IEditorContribution {
 	}
 
 	public runProgram(e?: IModelContentChangedEvent) {
+
+		function runImmediately(e?: IModelContentChangedEvent):boolean {
+			if (e === undefined) {
+				return true;
+			}
+			// We run immediately when any of the changes span multi-lines.
+			// In this case, we will be either removing or adding projection boxes,
+			// and we want to process this change immediately.
+			for (let i = 0; i < e.changes.length; i++){
+				let change = e.changes[i];
+				if (change.range.endLineNumber - change.range.startLineNumber > 0) {
+					return true;
+				}
+				if (change.text.split('\n').length > 1) {
+					return true;
+				}
+			}
+			// we get here only if all changes are a single line at a time, and do not introduce new lines
+			return false;
+		}
+
 		//console.log(e);
 		this.padBoxArray();
 
@@ -2365,32 +2407,52 @@ class RTVController implements IEditorContribution {
 
 		this.updateMaxPixelCol();
 
-		let code_fname = os.tmpdir() + path.sep + "tmp.py";
-		this.writeModelToDisk(code_fname);
+		let delay = 500;
+		if (runImmediately(e)) {
+			delay = 0;
+		}
 
-		let c = cp.spawn(PY3, [RUNPY, code_fname]);
+		this._runProgramDelay.run(delay, () => {
 
-		c.stdout.on("data", (data) => {
-			//console.log("stdout " + data.toString())
-		});
-		let errorMsg = "";
-		c.stderr.on("data", (data) => {
-			errorMsg = errorMsg + data.toString();
-		});
-		c.on('exit', (exitCode, signalCode) => {
-			this.updateLinesWhenOutOfDate(exitCode, e);
-			if (exitCode === 0) {
-				this.clearError();
-				this.updateData(fs.readFileSync(code_fname + ".out").toString());
-				this.updateContentAndLayout();
+			let code_fname = os.tmpdir() + path.sep + 'tmp.py';
+			this.writeModelToDisk(code_fname);
+
+			//console.log(this._pythonProcess);
+			if (this._pythonProcess !== null) {
+				//console.log('kill');
+				this._pythonProcess.kill();
 			}
-			else {
-				this.showErrorWithDelay(errorMsg);
-				// this.updateData(fs.readFileSync(code_fname + ".out").toString());
-				this.updateContentAndLayout();
-			}
-		});
+			let c = cp.spawn(PY3, [RUNPY, code_fname]);
+			this._pythonProcess = c;
 
+			c.stdout.on('data', (data) => {
+				//console.log('stdout ' + data.toString())
+			});
+			let errorMsg = '';
+			c.stderr.on('data', (data) => {
+				errorMsg = errorMsg + data.toString();
+			});
+			c.on('exit', (exitCode, signalCode) => {
+				//console.log('exitCode: ', exitCode);
+				//console.log('signalCode: ', signalCode);
+				// When exitCode === null, it means the process was killed,
+				// so there is nothing else to do
+				if (exitCode !== null) {
+					this.updateLinesWhenOutOfDate(exitCode, e);
+					this._pythonProcess = null;
+					if (exitCode === 0) {
+						this.clearError();
+						this.updateData(fs.readFileSync(code_fname + '.out').toString());
+						this.updateContentAndLayout();
+					}
+					else {
+						this.showErrorWithDelay(errorMsg);
+						// this.updateData(fs.readFileSync(code_fname + '.out').toString());
+						this.updateContentAndLayout();
+					}
+				}
+			});
+		});
 	}
 
 	private updateData(str: string) {
@@ -2484,7 +2546,7 @@ class RTVController implements IEditorContribution {
 		this._boxes.forEach((box) => {
 			box.varAdd(regExp, added);
 		});
-		if (!this.displayOnlyModifiedVars && (regExp === "*" || regExp === ".*")) {
+		if (!this.displayOnlyModifiedVars && (regExp === '*' || regExp === '.*')) {
 			this._globalDeltaVarSet.clear();
 		} else {
 			added.forEach((v) => {
@@ -2650,13 +2712,13 @@ class RTVController implements IEditorContribution {
 			if (where === ChangeVarsWhere.All) {
 				text = text + '@' + ChangeVarsWhere.All;
 			}
-			let varNameText = "<VarNameRegExp>";
+			let varNameText = '<VarNameRegExp>';
 			text = text + ' ' + varNameText;
 
 			selectionEnd = text.length;
 			selectionStart = selectionEnd - varNameText.length;
 		} else {
-			text = "add|del|keep [@all] <RegExp>";
+			text = 'add|del|keep [@all] <RegExp>';
 			selectionStart = 0;
 			selectionEnd = text.length;
 		}
@@ -2688,7 +2750,7 @@ class RTVController implements IEditorContribution {
 		let input = document.createElement('input');
 		input.className = 'rename-input';
 		input.type = 'text';
-		input.setAttribute('aria-label', localize('renameAriaLabel', "Rename input. Type new name and press Enter to commit."));
+		input.setAttribute('aria-label', localize('renameAriaLabel', 'Rename input. Type new name and press Enter to commit.'));
 		domNode.appendChild(input);
 
 		const fontInfo = this._editor.getOption(EditorOption.fontInfo);
@@ -2706,9 +2768,9 @@ class RTVController implements IEditorContribution {
 		domNode.style.boxShadow = widgetShadowColor ? ` 0 2px 8px ${widgetShadowColor}` : '';
 		domNode.style.color = String(theme.getColor(inputForeground) ?? '');
 
-		domNode.style.position = "absolute";
-		domNode.style.top = pixelPos.top + "px";
-		domNode.style.left = pixelPos.left + "px";
+		domNode.style.position = 'absolute';
+		domNode.style.top = pixelPos.top + 'px';
+		domNode.style.left = pixelPos.left + 'px';
 
 		input.style.backgroundColor = String(theme.getColor(inputBackground) ?? '');
 		const border = theme.getColor(inputBorder);
@@ -2723,13 +2785,13 @@ class RTVController implements IEditorContribution {
 		}, 100);
 
 		input.onkeydown = (e) => {
-			if (e.key === "Enter") {
+			if (e.key === 'Enter') {
 				onEnter(input.value);
 				domNode.remove();
 				setTimeout(() => {
 					this._editor.focus();
 				}, 100);
-			} else if (e.key === "Escape") {
+			} else if (e.key === 'Escape') {
 				domNode.remove();
 				this._editor.focus();
 			}
@@ -2746,19 +2808,19 @@ class RTVController implements IEditorContribution {
 				case ChangeVarsOp.Add:
 					this.varAddInThisBox(varName, this.getBoxAtCurrLine());
 					break;
-				case ChangeVarsOp.Add + "@" + ChangeVarsWhere.All:
+				case ChangeVarsOp.Add + '@' + ChangeVarsWhere.All:
 					this.varAddInAllBoxes(varName);
 					break;
 				case ChangeVarsOp.Del:
 					this.varRemoveInThisBox(varName, this.getBoxAtCurrLine());
 					break;
-				case ChangeVarsOp.Del + "@" + ChangeVarsWhere.All:
+				case ChangeVarsOp.Del + '@' + ChangeVarsWhere.All:
 					this.varRemoveInAllBoxes(varName);
 					break;
 				case ChangeVarsOp.Keep:
 					this.varKeepOnlyInThisBox(varName, this.getBoxAtCurrLine());
 					break;
-				case ChangeVarsOp.Keep + "@" + ChangeVarsWhere.All:
+				case ChangeVarsOp.Keep + '@' + ChangeVarsWhere.All:
 					this.varKeepOnlyInAllBoxes(varName);
 					break;
 			}
@@ -2850,7 +2912,7 @@ class RTVController implements IEditorContribution {
 	}
 
 	private onKeyUp(e: IKeyboardEvent) {
-		// console.log("In controller Up:" + e.code);
+		// console.log('In controller Up:' + e.code);
 		if (e.keyCode === KeyCode.Escape) {
 			if (this.loopFocusController !== null) {
 				e.stopPropagation();
@@ -2871,7 +2933,7 @@ class RTVController implements IEditorContribution {
 	}
 
 	private onKeyDown(e: IKeyboardEvent) {
-		// console.log("In controller Down:" + e.code);
+		// console.log('In controller Down:' + e.code);
 		if (e.keyCode === KeyCode.Ctrl) {
 			this._peekCounter = this._peekCounter + 1;
 			if (this._peekCounter > 1) {
@@ -2901,8 +2963,8 @@ class RTVController implements IEditorContribution {
 	private removeSeeds(lines: string[]) {
 		if (this.loopFocusController !== null) {
 			for (let i = 0; i < lines.length; i++) {
-				if (lines[i].match("#@") != null) {
-					lines[i] = lines[i].replace(/#@\s*/, "");
+				if (lines[i].match('#@') != null) {
+					lines[i] = lines[i].replace(/#@\s*/, '');
 				}
 			}
 		}
@@ -2988,7 +3050,7 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 	'id': 'rtv',
 	'order': 110,
 	'type': 'object',
-	'title': localize('rtvConfigurationTitle', "RTV"),
+	'title': localize('rtvConfigurationTitle', 'RTV'),
 	'properties': {
 		[viewModeKey]: {
 			'type': 'string',
@@ -3120,7 +3182,7 @@ function createRTVAction(id: string, name: string, key: number, callback: (c:RTV
 				// 	menuId: MenuId.GlobalActivity,
 				// 	group: 'navigation',
 				// 	order: 1,
-				// 	title: localize('rtv.blerg', "Blerg"),
+				// 	title: localize('rtv.blerg', 'Blerg'),
 				// },
 				kbOpts: {
 					kbExpr: null,
@@ -3143,30 +3205,30 @@ function createRTVAction(id: string, name: string, key: number, callback: (c:RTV
 
 // Another way to register keyboard shortcuts. Not sure which is best.
 // function registerKeyShotrcut(id: string, key: number, callback: (c:RTVController) => void) {
-// KeybindingsRegistry.registerCommandAndKeybindingRule({
-// 	id: id,
-// 	weight: KeybindingWeight.EditorCore,
-// 	when: undefined,
-// 	primary: key,
-// 	handler: (accessor, args: any) => {
-// 		const codeEditorService = accessor.get(ICodeEditorService);
-//
-// 		// Find the editor with text focus or active
-// 		const editor = codeEditorService.getFocusedCodeEditor() || codeEditorService.getActiveCodeEditor();
-// 		if (!editor) {
-// 			return;
+// 	KeybindingsRegistry.registerCommandAndKeybindingRule({
+// 		id: id,
+// 		weight: KeybindingWeight.EditorCore,
+// 		when: undefined,
+// 		primary: key,
+// 		handler: (accessor, args: any) => {
+// 			const codeEditorService = accessor.get(ICodeEditorService);
+
+// 			// Find the editor with text focus or active
+// 			const editor = codeEditorService.getFocusedCodeEditor() || codeEditorService.getActiveCodeEditor();
+// 			if (!editor) {
+// 				return;
+// 			}
+// 			let controller = RTVController.get(editor);
+// 			if (controller) {
+// 				callback(controller);
+// 			}
 // 		}
-// 		let controller = RTVController.get(editor);
-// 		if (controller) {
-// 			callback(controller);
-// 		}
-// 	}
-// });
-//
+// 	});
+// }
 
 createRTVAction(
 	'rtv.flipview',
-	"Flip View Mode",
+	'Flip View Mode',
 	KeyMod.Alt | KeyCode.Enter,
 	(c) => {
 		c.flipThroughViewModes();
@@ -3175,7 +3237,7 @@ createRTVAction(
 
 createRTVAction(
 	'rtv.fullview',
-	"Full View",
+	'Full View',
 	KeyMod.Alt | KeyCode.KEY_1,
 	(c) => {
 		c.changeViewMode(ViewMode.Full);
@@ -3184,7 +3246,7 @@ createRTVAction(
 
 createRTVAction(
 	'rtv.cursorview',
-	"Cursor and Return View",
+	'Cursor and Return View',
 	KeyMod.Alt | KeyCode.KEY_2,
 	(c) => {
 		c.changeViewMode(ViewMode.CursorAndReturn);
@@ -3193,7 +3255,7 @@ createRTVAction(
 
 createRTVAction(
 	'rtv.compactview',
-	"Compact View",
+	'Compact View',
 	KeyMod.Alt | KeyCode.KEY_3,
 	(c) => {
 		c.changeViewMode(ViewMode.Compact);
@@ -3202,7 +3264,7 @@ createRTVAction(
 
 createRTVAction(
 	'rtv.stealthview',
-	"Stealth View",
+	'Stealth View',
 	KeyMod.Alt | KeyCode.KEY_4,
 	(c) => {
 		c.changeViewMode(ViewMode.Stealth);
@@ -3211,7 +3273,7 @@ createRTVAction(
 
 createRTVAction(
 	'rtv.zoomin',
-	"Flip Zoom",
+	'Flip Zoom',
 	KeyMod.Alt | KeyCode.US_BACKSLASH,
 	(c) => {
 		c.flipZoom();
@@ -3220,7 +3282,7 @@ createRTVAction(
 
 createRTVAction(
 	'rtv.changevars',
-	"Add/Remove/Keep Vars",
+	'Add/Remove/Keep Vars',
 	KeyMod.Alt | KeyCode.Backspace,
 	(c) => {
 		c.changeVars();
@@ -3229,7 +3291,7 @@ createRTVAction(
 
 createRTVAction(
 	'rtv.addVarHere',
-	"Add Var to This Box",
+	'Add Var to This Box',
 	KeyMod.Alt | KeyCode.Insert,
 	(c) => {
 		c.changeVars(ChangeVarsOp.Add, ChangeVarsWhere.Here);
@@ -3238,7 +3300,7 @@ createRTVAction(
 
 createRTVAction(
 	'rtv.addVarEverywhere',
-	"Add Var to All Boxes",
+	'Add Var to All Boxes',
 	KeyMod.Alt | KeyMod.Shift | KeyCode.Insert,
 	(c) => {
 		c.changeVars(ChangeVarsOp.Add, ChangeVarsWhere.All);
@@ -3247,7 +3309,7 @@ createRTVAction(
 
 createRTVAction(
 	'rtv.delVarHere',
-	"Delete Var from This Box",
+	'Delete Var from This Box',
 	KeyMod.Alt | KeyCode.Delete,
 	(c) => {
 		c.changeVars(ChangeVarsOp.Del, ChangeVarsWhere.Here);
@@ -3256,7 +3318,7 @@ createRTVAction(
 
 createRTVAction(
 	'rtv.delVarEverywhere',
-	"Delete Var from All Boxes",
+	'Delete Var from All Boxes',
 	KeyMod.Alt | KeyMod.Shift | KeyCode.Delete,
 	(c) => {
 		c.changeVars(ChangeVarsOp.Del, ChangeVarsWhere.All);
@@ -3265,7 +3327,7 @@ createRTVAction(
 
 createRTVAction(
 	'rtv.keepVarHere',
-	"Keep Only Var in This Box",
+	'Keep Only Var in This Box',
 	KeyMod.Alt | KeyCode.End,
 	(c) => {
 		c.changeVars(ChangeVarsOp.Keep, ChangeVarsWhere.Here);
@@ -3274,7 +3336,7 @@ createRTVAction(
 
 createRTVAction(
 	'rtv.keepVarEverywhere',
-	"Keep Only Var in All Boxes",
+	'Keep Only Var in All Boxes',
 	KeyMod.Alt | KeyMod.Shift | KeyCode.End,
 	(c) => {
 		c.changeVars(ChangeVarsOp.Keep, ChangeVarsWhere.All);
@@ -3283,7 +3345,7 @@ createRTVAction(
 
 createRTVAction(
 	'rtv.focusOnLoop',
-	"Focus on Loop using Localized Live Programming",
+	'Focus on Loop using Localized Live Programming',
 	KeyMod.Alt | KeyCode.US_DOT,
 	(c) => {
 		c.focusOnLoopWithSeed();
@@ -3310,7 +3372,7 @@ createRTVAction(
 
 createRTVAction(
 	'rtv.editVar',
-	"Start Editing the Var",
+	'Start Editing the Var',
 	KeyMod.Shift | KeyCode.Space,
 	(c) => {
 		c.editingVar();
