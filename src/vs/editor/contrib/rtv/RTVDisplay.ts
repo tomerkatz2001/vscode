@@ -1,3 +1,4 @@
+// TODO These should be factored into another module
 import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -17,7 +18,7 @@ import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { MarkdownRenderer } from 'vs/editor/contrib/markdown/markdownRenderer';
 import { IPosition, Position } from 'vs/editor/common/core/position';
 import { MarkdownString } from 'vs/base/common/htmlContent';
-import { IConfigurationService,  IConfigurationChangeEvent } from 'vs/platform/configuration/common/configuration';
+import { IConfigurationService, IConfigurationChangeEvent } from 'vs/platform/configuration/common/configuration';
 import { Registry } from 'vs/platform/registry/common/platform';
 import { IConfigurationRegistry, Extensions } from 'vs/platform/configuration/common/configurationRegistry';
 import { localize } from 'vs/nls';
@@ -53,14 +54,14 @@ function indent(s: string): number {
 	return s.length - s.trimLeft().length;
 }
 
-function isHtmlEscape(s:string):boolean {
+function isHtmlEscape(s: string): boolean {
 	return strings.startsWith(s, '```html\n') && strings.endsWith(s, '```')
 }
 
-function removeHtmlEscape(s:string):string{
+function removeHtmlEscape(s: string): string {
 	let x = '```html\n'.length;
 	let y = '```'.length;
-	return s.substring(x, s.length-y);
+	return s.substring(x, s.length - y);
 }
 
 function arrayStartsWith<T>(haystack: T[], needle: T[]): boolean {
@@ -86,19 +87,19 @@ function isEmpty(str: string) {
 }
 
 function isSeedLine(str: string) {
-	return str.match('#@') != null;
+	return str.match('#@') !== null;
 }
 
 function isLoopStr(str: string) {
 	let trimmed = str.trim();
 	return strings.endsWith(trimmed, ':') &&
-		   (strings.startsWith(trimmed, 'for') ||
+		(strings.startsWith(trimmed, 'for') ||
 			strings.startsWith(trimmed, 'while'));
 }
 
 function strNumsToArray(s: string): number[] {
 	if (s === '') {
-		return []
+		return [];
 	} else {
 		return s.split(',').map(e => +e);
 	}
@@ -113,8 +114,8 @@ function regExpMatchEntireString(s: string, regExp: string) {
 class DelayedRunAtMostOne {
 	private _timer: NodeJS.Timer | null = null;
 
-	public run(delay: number, c:() => void) {
-		if (this._timer != null) {
+	public run(delay: number, c: () => void) {
+		if (this._timer !== null) {
 			clearTimeout(this._timer);
 		}
 		if (delay === 0) {
@@ -209,7 +210,7 @@ class RTVLine {
 		this._div.style.transitionDelay = '0s';
 		this._div.style.transitionTimingFunction = 'ease-in';
 		this._div.style.transformOrigin = '0% 0%';
-		this.move(x1,y1,x2,y2);
+		this.move(x1, y1, x2, y2);
 		editor_div.appendChild(this._div);
 	}
 
@@ -245,10 +246,10 @@ class TableElement {
 		public controllingLineNumber: number,
 		public vname?: string,
 		public env?: any
-	) {}
+	) { }
 }
 
-type MapLoopsToCells = { [k:string]: HTMLTableDataCellElement[]; };
+type MapLoopsToCells = { [k: string]: HTMLTableDataCellElement[]; };
 
 class RTVDisplayBox {
 	private _box: HTMLDivElement;
@@ -260,7 +261,7 @@ class RTVDisplayBox {
 	private _allVars: Set<string> = new Set<string>();
 	private _displayedVars: Set<string> = new Set<string>();
 	private _deltaVarSet: DeltaVarSet;
-	private _cellDictionary: {[k: string]: [HTMLElement]} = {};
+	private _cellDictionary: { [k: string]: [HTMLElement] } = {};
 	private _timesToInclude: Set<number> = new Set<number>();
 
 	constructor(
@@ -309,7 +310,7 @@ class RTVDisplayBox {
 		return this._hasContent;
 	}
 
-	public getCellContent(){
+	public getCellContent() {
 
 		return this._cellDictionary;
 	}
@@ -340,9 +341,9 @@ class RTVDisplayBox {
 	}
 
 	public modVars() {
-		let writesAtLine = this._controller.writes[this.lineNumber-1];
+		let writesAtLine = this._controller.writes[this.lineNumber - 1];
 		if (writesAtLine === undefined) {
-			writesAtLine = []
+			writesAtLine = [];
 		}
 		let result = new Set<string>(writesAtLine);
 		if (this._allVars.has('rv')) {
@@ -358,7 +359,7 @@ class RTVDisplayBox {
 	public notDisplayedVars() {
 		let result = new Set<string>();
 		let displayed = this._displayedVars;
-		this._allVars.forEach((v:string) => {
+		this._allVars.forEach((v: string) => {
 			if (!displayed.has(v)) {
 				result.add(v);
 			}
@@ -371,14 +372,14 @@ class RTVDisplayBox {
 	}
 
 	public getLoopID(): string {
-		if (this._allEnvs.length == 0) {
+		if (this._allEnvs.length === 0) {
 			return '';
 		}
 		return this._allEnvs[0]['$'];
 	}
 
 	public getFirstLoopIter(): string {
-		if (this._allEnvs.length == 0) {
+		if (this._allEnvs.length === 0) {
 			return '';
 		}
 		return this._allEnvs[0]['#'];
@@ -403,7 +404,7 @@ class RTVDisplayBox {
 			}
 			if (first === '') {
 				if (env['$'] === loopID) {
-					first = env['#']
+					first = env['#'];
 				}
 			}
 
@@ -443,7 +444,7 @@ class RTVDisplayBox {
 		});
 
 		c.contextMenuService.showContextMenu({
-			getAnchor: () => ({x: e.clientX, y: e.clientY }),
+			getAnchor: () => ({ x: e.clientX, y: e.clientY }),
 			getActions: () => [
 				this.newAction('Hide This Box', () => {
 					c.hideBox(this);
@@ -465,7 +466,7 @@ class RTVDisplayBox {
 					c.loopFocusController = null;
 				}),
 			],
-			onHide: () => {},
+			onHide: () => { },
 			autoSelectFirstItem: true
 		});
 	}
@@ -473,14 +474,14 @@ class RTVDisplayBox {
 	private isConditionalLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
 		return strings.endsWith(lineContent, ':') &&
-			   (strings.startsWith(lineContent, 'if') ||
+			(strings.startsWith(lineContent, 'if') ||
 				strings.startsWith(lineContent, 'else'));
 	}
 
 	private isLoopLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
 		return strings.endsWith(lineContent, ':') &&
-			   (strings.startsWith(lineContent, 'for') ||
+			(strings.startsWith(lineContent, 'for') ||
 				strings.startsWith(lineContent, 'while'));
 	}
 
@@ -494,15 +495,15 @@ class RTVDisplayBox {
 		return strings.startsWith(lineContent, 'return');
 	}
 
-	private bringToLoopCount(envs:any[], active_loop_iters:number[], loopId: string, iterCount:number) {
-		while (active_loop_iters[active_loop_iters.length-1] < iterCount ) {
-			envs.push({ '#' : active_loop_iters.join(','), '$': loopId });
-			active_loop_iters[active_loop_iters.length-1]++;
+	private bringToLoopCount(envs: any[], active_loop_iters: number[], loopId: string, iterCount: number) {
+		while (active_loop_iters[active_loop_iters.length - 1] < iterCount) {
+			envs.push({ '#': active_loop_iters.join(','), '$': loopId });
+			active_loop_iters[active_loop_iters.length - 1]++;
 		}
 	}
 
 	private addMissingLines(envs: any[]): any[] {
-		let last = function<T>(a: T[]): T { return a[a.length-1] };
+		let last = function <T>(a: T[]): T { return a[a.length - 1]; };
 		let active_loop_iters: number[] = [];
 		let active_loop_ids: string[] = [];
 		let envs2: any[] = [];
@@ -510,22 +511,22 @@ class RTVDisplayBox {
 			let env = envs[i];
 			if (env.begin_loop !== undefined) {
 				if (active_loop_iters.length > 0) {
-					let loop_iters:string[] = env.begin_loop.split(',');
-					this.bringToLoopCount(envs2, active_loop_iters, last(active_loop_ids), +loop_iters[loop_iters.length-2]);
+					let loop_iters: string[] = env.begin_loop.split(',');
+					this.bringToLoopCount(envs2, active_loop_iters, last(active_loop_ids), +loop_iters[loop_iters.length - 2]);
 				}
 				active_loop_ids.push(env['$']);
 				active_loop_iters.push(0);
 			} else if (env.end_loop !== undefined) {
-				let loop_iters:string[] = env.end_loop.split(',');
+				let loop_iters: string[] = env.end_loop.split(',');
 				this.bringToLoopCount(envs2, active_loop_iters, last(active_loop_ids), +last(loop_iters));
 				active_loop_ids.pop();
 				active_loop_iters.pop();
-				active_loop_iters[active_loop_iters.length-1]++;
+				active_loop_iters[active_loop_iters.length - 1]++;
 			} else {
 				let loop_iters: string[] = env['#'].split(',');
 				this.bringToLoopCount(envs2, active_loop_iters, last(active_loop_ids), +last(loop_iters));
 				envs2.push(env);
-				active_loop_iters[active_loop_iters.length-1]++;
+				active_loop_iters[active_loop_iters.length - 1]++;
 			}
 		}
 		return envs2;
@@ -544,7 +545,7 @@ class RTVDisplayBox {
 			} else if (env.end_loop !== undefined) {
 				envs2.push(env);
 			} else if (env.next_lineno !== undefined) {
-				if (!isLoop || this.indentAtLine(env.next_lineno+1) > currIndent) {
+				if (!isLoop || this.indentAtLine(env.next_lineno + 1) > currIndent) {
 					let nextEnv = this._controller.getEnvAtNextTimeStep(env);
 					if (nextEnv !== null) {
 						envs2.push(nextEnv);
@@ -562,11 +563,10 @@ class RTVDisplayBox {
 
 		let focusCtrl = this._controller.loopFocusController;
 
-		return envs.filter((e,i,a) => focusCtrl.matches(e['$'], e['#']));
+		return envs.filter((e, i, a) => focusCtrl.matches(e['$'], e['#']));
 	}
 
-	private findParentRow(cell: HTMLElement) : HTMLTableRowElement
-	{
+	private findParentRow(cell: HTMLElement): HTMLTableRowElement {
 		let rs = cell;
 		while (rs.nodeName !== 'TR') {
 			rs = rs.parentElement!;
@@ -574,8 +574,7 @@ class RTVDisplayBox {
 		return rs as HTMLTableRowElement;
 	}
 
-	private synthToggleElement(elmt: TableElement, cell: HTMLElement, force: boolean|null = null)
-	{
+	private synthToggleElement(elmt: TableElement, cell: HTMLElement, force: boolean | null = null) {
 		let time = elmt.env['time'];
 		let row = this.findParentRow(cell);
 		let on: boolean;
@@ -608,7 +607,7 @@ class RTVDisplayBox {
 		}
 	}
 
-	private synthFocusNextRow(backwards: boolean = false) : void {
+	private synthFocusNextRow(backwards: boolean = false): void {
 		let selection = window.getSelection()!;
 		let cell: HTMLTableCellElement;
 		let row: HTMLTableRowElement;
@@ -654,7 +653,7 @@ class RTVDisplayBox {
 		}
 	}
 
-	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r:MarkdownRenderer) {
+	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer) {
 		if (this._controller.colBorder) {
 			cell.style.borderLeft = '1px solid #454545';
 		}
@@ -703,7 +702,7 @@ class RTVDisplayBox {
 				cellContent.onkeydown = (e: KeyboardEvent) => {
 					let rs: boolean = true;
 
-					switch(e.key) {
+					switch (e.key) {
 						case 'Enter':
 							e.preventDefault();
 
@@ -752,7 +751,7 @@ class RTVDisplayBox {
 		}
 		if (this._controller.mouseShortcuts) {
 			if (elmt.iter === 'header') {
-				cellContent = this.wrapAsVarMenuButton(cellContent, s.substr(2, s.length-4));
+				cellContent = this.wrapAsVarMenuButton(cellContent, s.substr(2, s.length - 4));
 			} else if (elmt.iter !== '') {
 				cellContent = this.wrapAsLoopMenuButton(cellContent, elmt.iter);
 			}
@@ -773,7 +772,7 @@ class RTVDisplayBox {
 	}
 
 	private populateTableByCols(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
-		rows.forEach((row:TableElement[]) => {
+		rows.forEach((row: TableElement[]) => {
 			let newRow = table.insertRow(-1);
 			row.forEach((elmt: TableElement) => {
 				let newCell = newRow.insertCell(-1);
@@ -838,7 +837,7 @@ class RTVDisplayBox {
 		}
 
 		// Get all envs at this line number
-		let envs = this._controller.envs[this.lineNumber-1];
+		let envs = this._controller.envs[this.lineNumber - 1];
 		if (envs === undefined) {
 			this.setContentFalse();
 			return;
@@ -866,7 +865,7 @@ class RTVDisplayBox {
 		}
 
 		// Get all envs at this line number
-		let envs = this._controller.envs[this.lineNumber-1];
+		let envs = this._controller.envs[this.lineNumber - 1];
 		if (envs === undefined) {
 			this.setContentFalse();
 			return;
@@ -914,7 +913,7 @@ class RTVDisplayBox {
 		// Generate header
 		let rows: TableElement[][] = [];
 		let header: TableElement[] = [];
-		vars.forEach((v:string) => {
+		vars.forEach((v: string) => {
 			header.push(new TableElement('**' + v + '**', 'header', 'header', 0));
 		});
 		rows.push(header);
@@ -925,8 +924,8 @@ class RTVDisplayBox {
 			let loopID = env['$'];
 			let iter = env['#'];
 			let row: TableElement[] = [];
-			vars.forEach((v:string) => {
-				var v_str:string;
+			vars.forEach((v: string) => {
+				let v_str: string;
 				if (env[v] === undefined) {
 					v_str = '';
 				} else if (isHtmlEscape(env[v])) {
@@ -937,7 +936,7 @@ class RTVDisplayBox {
 				row.push(new TableElement(v_str, loopID, iter, this.lineNumber, v, env));
 			});
 			rows.push(row);
-		};
+		}
 
 		// Set border
 		if (this._controller.boxBorder) {
@@ -983,7 +982,7 @@ class RTVDisplayBox {
 		if (x === null) {
 			stalenessIndicator.style.backgroundColor = 'green';
 		} else {
-			let green = 165 - (x.size-1) * 35;
+			let green = 165 - (x.size - 1) * 35;
 			if (green < 0) {
 				green = 0;
 			}
@@ -1040,7 +1039,7 @@ class RTVDisplayBox {
 	}
 
 	public varMakeVisible() {
-		if (this._displayedVars.size == 0) {
+		if (this._displayedVars.size === 0) {
 			this.varRestoreToDefault();
 		}
 	}
@@ -1083,10 +1082,10 @@ class RTVDisplayBox {
 						c.varKeepOnlyInAllBoxes(varname);
 					})
 				],
-				onHide: () => {},
+				onHide: () => { },
 				autoSelectFirstItem: true
 			});
-		}
+		};
 		return menubar;
 	}
 
@@ -1112,10 +1111,10 @@ class RTVDisplayBox {
 						c.loopFocusController = new LoopFocusController(this._controller, this, iter);
 					})
 				],
-				onHide: () => {},
+				onHide: () => { },
 				autoSelectFirstItem: true
 			});
-		}
+		};
 		return menubar;
 	}
 
@@ -1127,7 +1126,7 @@ class RTVDisplayBox {
 		menubar.style.top = '0px';
 		menubar.style.right = '0px';
 		let addButton = document.createElement('div');
-		menubar.appendChild(addButton)
+		menubar.appendChild(addButton);
 		addButton.className = 'menubar-menu-button';
 		addButton.innerHTML = '+';
 		addButton.onclick = (e) => {
@@ -1135,11 +1134,11 @@ class RTVDisplayBox {
 			this._controller.contextMenuService.showContextMenu({
 				getAnchor: () => addButton,
 				getActions: () => this.createActionsForPlusMenu(),
-				onHide: () => {},
+				onHide: () => { },
 				autoSelectFirstItem: true
 			});
 
-		}
+		};
 		this._box.appendChild(menubar);
 
 	}
@@ -1147,7 +1146,7 @@ class RTVDisplayBox {
 	private createActionsForPlusMenu(): (IAction | ContextSubMenu)[] {
 		let res: (IAction | ContextSubMenu)[] = [];
 		this.notDisplayedVars().forEach((v) => {
-			res.push(new ContextSubMenu('Add <strong> ' + v , [
+			res.push(new ContextSubMenu('Add <strong> ' + v, [
 				this.newAction('to This Box', () => {
 					this._controller.varAddInThisBox(v, this);
 				}),
@@ -1217,7 +1216,7 @@ class RTVDisplayBox {
 
 
 	public getHeight() {
-		return this._box.offsetHeight*this._zoom;
+		return this._box.offsetHeight * this._zoom;
 	}
 
 	public updateLayout(top: number) {
@@ -1225,36 +1224,36 @@ class RTVDisplayBox {
 
 		let boxTop = top;
 		if (this._controller.boxAlignsToTopOfLine) {
-			boxTop = boxTop - (pixelPosAtLine.height/2);
+			boxTop = boxTop - (pixelPosAtLine.height / 2);
 		}
 		//let left = this._controller.maxPixelCol+50;
-		let left = this._controller.maxPixelCol+130;
-		let zoom_adjusted_left =  left - ((1-this._zoom) * (this._box.offsetWidth / 2));
-		let zoom_adjusted_top = boxTop - ((1-this._zoom) * (this._box.offsetHeight / 2));
+		let left = this._controller.maxPixelCol + 130;
+		let zoom_adjusted_left = left - ((1 - this._zoom) * (this._box.offsetWidth / 2));
+		let zoom_adjusted_top = boxTop - ((1 - this._zoom) * (this._box.offsetHeight / 2));
 		this._box.style.top = zoom_adjusted_top.toString() + 'px';
 		this._box.style.left = zoom_adjusted_left.toString() + 'px';
-		this._box.style.transform = 'scale(' + this._zoom.toString() +')';
+		this._box.style.transform = 'scale(' + this._zoom.toString() + ')';
 		this._box.style.opacity = this._opacity.toString();
 
 		// update the line
 		let midPointTop = pixelPosAtLine.top + (pixelPosAtLine.height / 2);
 
 		//this._line.move(this._controller.maxPixelCol-50, midPointTop, left, top);
-		this._line.move(this._controller.maxPixelCol+30, midPointTop, left, top);
+		this._line.move(this._controller.maxPixelCol + 30, midPointTop, left, top);
 
 	}
 
 	public updateZoomAndOpacity(dist: number, opacityMult: number) {
 		let distAbs = Math.abs(dist);
 		let zoom_upper = 1;
-		let zoom_lower = 1 / (distAbs*0.5 + 1);
-		this._zoom = zoom_lower + (zoom_upper-zoom_lower) * this._controller.zoomLevel;
+		let zoom_lower = 1 / (distAbs * 0.5 + 1);
+		this._zoom = zoom_lower + (zoom_upper - zoom_lower) * this._controller.zoomLevel;
 
 		this._opacity = 1;
 		if (distAbs !== 0) {
 			let opacity_upper = 1;
-			let opacity_lower = 1/distAbs;
-			this._opacity = opacity_lower + (opacity_upper-opacity_lower) * this._controller.opacityLevel;
+			let opacity_lower = 1 / distAbs;
+			this._opacity = opacity_lower + (opacity_upper - opacity_lower) * this._controller.opacityLevel;
 		}
 		this._opacity = this._opacity * opacityMult;
 		this._line.setOpacity(this._opacity);
@@ -1320,33 +1319,33 @@ class LoopFocusController {
 			let seedLineno = this.controllingBox.lineNumber;
 			let model = this._controller.getModelForce();
 			let lines = model.getLinesContent();
-			let currIndent = indent(lines[seedLineno-1]);
+			let currIndent = indent(lines[seedLineno - 1]);
 			let start = seedLineno;
 			function isStillInLoop(s: string) {
 				return isEmpty(s) || indent(s) >= currIndent;
 			}
-			while (start >= 1 && isStillInLoop(lines[start-1])) {
+			while (start >= 1 && isStillInLoop(lines[start - 1])) {
 				start = start - 1;
 			}
 			let end = seedLineno;
-			while (end < lines.length+1 && isStillInLoop(lines[end-1])) {
+			while (end < lines.length + 1 && isStillInLoop(lines[end - 1])) {
 				end = end + 1;
 			}
 
 			let range1 = new Range(1, 1, start, model.getLineMaxColumn(start));
 			let maxline = lines.length;
 			let range2 = new Range(end, 1, maxline, model.getLineMaxColumn(maxline));
-			let seedLineContent = lines[seedLineno-1];
-			let range3 = new Range(seedLineno, indent(seedLineContent)+1, seedLineno, seedLineContent.length+1);
+			let seedLineContent = lines[seedLineno - 1];
+			let range3 = new Range(seedLineno, indent(seedLineContent) + 1, seedLineno, seedLineContent.length + 1);
 			this._decoration1 = this._controller.addDecoration(range1, { inlineClassName: 'rtv-code-fade' });
 			this._decoration2 = this._controller.addDecoration(range2, { inlineClassName: 'rtv-code-fade' });
-			this._decoration3 = this._controller.addDecoration(range3, { className: 'squiggly-info'});
+			this._decoration3 = this._controller.addDecoration(range3, { className: 'squiggly-info' });
 
 			let endToken = '## END LOOP';
-			if (addEndToken && !lines[end-2].endsWith(endToken)) {
-				let endCol = model.getLineMaxColumn(end-1)
-				let range4 = new Range(end-1, endCol, end-1, endCol);
-				this._controller.executeEdits([{range: range4, text: '\n' + seedLineContent.substr(0,currIndent) + endToken}]);
+			if (addEndToken && !lines[end - 2].endsWith(endToken)) {
+				let endCol = model.getLineMaxColumn(end - 1);
+				let range4 = new Range(end - 1, endCol, end - 1, endCol);
+				this._controller.executeEdits([{ range: range4, text: '\n' + seedLineContent.substr(0, currIndent) + endToken }]);
 			}
 		}
 	}
@@ -1410,8 +1409,8 @@ function visibilityCursorAndReturn(b: RTVDisplayBox, cursorLineNumber: number) {
 // }
 
 class RTVController implements IEditorContribution {
-	public envs: { [k:string]: any []; } = {};
-	public writes: { [k:string]: string[]; } = {};
+	public envs: { [k: string]: any[]; } = {};
+	public writes: { [k: string]: string[]; } = {};
 	private _boxes: RTVDisplayBox[] = [];
 	private _maxPixelCol = 0;
 	private _prevModel: string[] = [];
@@ -1463,12 +1462,12 @@ class RTVController implements IEditorContribution {
 		this.logger = new RTVLogger(this._editor);
 
 		for (let i = 0; i < this.getLineCount(); i++) {
-			this._boxes.push(new RTVDisplayBox(this, _editor, _modeService, _openerService, i+1, this._globalDeltaVarSet));
+			this._boxes.push(new RTVDisplayBox(this, _editor, _modeService, _openerService, i + 1, this._globalDeltaVarSet));
 		}
 
 		this.updateMaxPixelCol();
 
-		this._config = new ConfigurationServiceCache(configurationService)
+		this._config = new ConfigurationServiceCache(configurationService);
 		this._config.onDidUserChangeConfiguration = (e) => {
 			this.onUserChangeConfiguration(e);
 		};
@@ -1485,7 +1484,7 @@ class RTVController implements IEditorContribution {
 		return RTVController.ID;
 	}
 
-	public dispose():void {
+	public dispose(): void {
 		this.logger.dispose();
 	}
 
@@ -1634,7 +1633,7 @@ class RTVController implements IEditorContribution {
 	}
 
 	private onUserChangeConfiguration(e: IConfigurationChangeEvent) {
-		if (e.affectedKeys.indexOf(viewModeKey) != -1) {
+		if (e.affectedKeys.indexOf(viewModeKey) !== -1) {
 			this.changeViewMode(this.viewMode);
 		} else if (e.affectedKeys.some((s) => strings.startsWith(s, 'rtv'))) {
 			this.viewMode = ViewMode.Custom;
@@ -1691,12 +1690,12 @@ class RTVController implements IEditorContribution {
 		let max = 0;
 		let lineCount = model.getLineCount();
 		for (let line = 1; line <= lineCount; line++) {
-			let s = model.getLineContent(line)
-			if (s.length > 0 && s[0] == '#') {
-				continue
+			let s = model.getLineContent(line);
+			if (s.length > 0 && s[0] === '#') {
+				continue;
 			}
 			let col = model.getLineMaxColumn(line);
-			let pixelPos = this._editor.getScrolledVisiblePosition(new Position(line,col));
+			let pixelPos = this._editor.getScrolledVisiblePosition(new Position(line, col));
 			if (pixelPos !== null && pixelPos.left > max) {
 				max = pixelPos.left;
 			}
@@ -1704,16 +1703,16 @@ class RTVController implements IEditorContribution {
 		this._maxPixelCol = max;
 	}
 
-	public showOrHideConfigDialogBox(){
-		if(!this._configBox){
+	public showOrHideConfigDialogBox() {
+		if (!this._configBox) {
 			return;
 		}
 		this._configBox.style.display = this._configBox.style.display === 'block' ? 'none' : 'block';
 	}
 
-	public addConfigDialogBox(){
+	public addConfigDialogBox() {
 		let editor_div = this._editor.getDomNode();
-		if(!editor_div){
+		if (!editor_div) {
 			return;
 		}
 		let div = document.createElement('div');
@@ -1807,17 +1806,17 @@ class RTVController implements IEditorContribution {
 		}
 		let s = this._changedLinesWhenOutOfDate;
 		e.changes.forEach((change) => {
-			for (let i = change.range.startLineNumber; i <= change.range.endLineNumber; i++){
+			for (let i = change.range.startLineNumber; i <= change.range.endLineNumber; i++) {
 				s.add(i);
 			}
 		});
 	}
 
-	private getBox(lineNumber:number) {
+	private getBox(lineNumber: number) {
 		let i = lineNumber - 1;
 		if (i >= this._boxes.length) {
 			for (let j = this._boxes.length; j <= i; j++) {
-				this._boxes[j] = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, j+1, this._globalDeltaVarSet);
+				this._boxes[j] = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, j + 1, this._globalDeltaVarSet);
 			}
 		}
 		return this._boxes[i];
@@ -1836,7 +1835,7 @@ class RTVController implements IEditorContribution {
 		let lineCount = this.getLineCount();
 		if (lineCount > this._boxes.length) {
 			for (let j = this._boxes.length; j < lineCount; j++) {
-				this._boxes[j] = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, j+1, this._globalDeltaVarSet);
+				this._boxes[j] = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, j + 1, this._globalDeltaVarSet);
 			}
 		}
 	}
@@ -1845,7 +1844,7 @@ class RTVController implements IEditorContribution {
 		this.updateLayout();
 	}
 
-	private onDidScrollChange(e:IScrollEvent) {
+	private onDidScrollChange(e: IScrollEvent) {
 		if (e.scrollHeightChanged || e.scrollWidthChanged) {
 			// this means the content also changed, so we will let the onChangeModelContent event handle it
 			return;
@@ -1900,11 +1899,11 @@ class RTVController implements IEditorContribution {
 			loops.push(loop);
 		}
 		// sort by deeper iterations first
-		loops = loops.sort((a,b) => b.split(',').length - a.split(',').length);
+		loops = loops.sort((a, b) => b.split(',').length - a.split(',').length);
 
-		let widths: { [k:string]: number; } = {};
-		loops.forEach((loop:string) => {
-			widths[loop] = Math.max(...this.tableCellsByLoop[loop].map(e=>e.offsetWidth));
+		let widths: { [k: string]: number; } = {};
+		loops.forEach((loop: string) => {
+			widths[loop] = Math.max(...this.tableCellsByLoop[loop].map(e => e.offsetWidth));
 			//console.log('Max for ' + loop + ' :' + widths[loop]);
 		});
 
@@ -1929,7 +1928,7 @@ class RTVController implements IEditorContribution {
 			}
 		}
 
-		loops.forEach((loop:string) => {
+		loops.forEach((loop: string) => {
 			// console.log('Computed width for ' + loop + ': ' + widths[loop]);
 			this.tableCellsByLoop[loop].forEach(e => { e.width = (widths[loop] - spaceBetweenCells) + 'px'; });
 		});
@@ -1978,7 +1977,7 @@ class RTVController implements IEditorContribution {
 		for (let line = 1; line <= this.getLineCount(); line++) {
 			if (toProcess(this.getBox(line))) {
 				let dist = Math.abs(cursorPos.lineNumber - line);
-				if (dist <  minDist) {
+				if (dist < minDist) {
 					minDist = dist;
 					focusedLine = line;
 				}
@@ -1986,7 +1985,7 @@ class RTVController implements IEditorContribution {
 		}
 		// this can happen if no boxes are to be processed
 		if (minDist === Infinity) {
-			return
+			return;
 		}
 
 		// compute distances from focused line, ignoring hidden lines.
@@ -1995,14 +1994,14 @@ class RTVController implements IEditorContribution {
 		let dist = 0;
 		for (let line = focusedLine; line >= 1; line--) {
 			if (toProcess(this.getBox(line))) {
-				distancesFromFocus[line-1] = dist;
+				distancesFromFocus[line - 1] = dist;
 				dist = dist - 1;
 			}
 		}
 		dist = 1;
-		for (let line = focusedLine+1; line <= this.getLineCount(); line++) {
+		for (let line = focusedLine + 1; line <= this.getLineCount(); line++) {
 			if (toProcess(this.getBox(line))) {
-				distancesFromFocus[line-1] = dist;
+				distancesFromFocus[line - 1] = dist;
 				dist = dist + 1;
 			}
 		}
@@ -2010,7 +2009,7 @@ class RTVController implements IEditorContribution {
 		for (let line = 1; line <= this.getLineCount(); line++) {
 			let box = this.getBox(line);
 			if (toProcess(this.getBox(line))) {
-				box.updateZoomAndOpacity(distancesFromFocus[line-1], opacityMult);
+				box.updateZoomAndOpacity(distancesFromFocus[line - 1], opacityMult);
 			}
 		}
 		// let cursorPixelPos = this._editor.getScrolledVisiblePosition(cursorPos);
@@ -2020,7 +2019,7 @@ class RTVController implements IEditorContribution {
 		// }
 
 		let focusedLinePixelPos = this._editor.getScrolledVisiblePosition(new Position(focusedLine, 1));
-		let nextLinePixelPos = this._editor.getScrolledVisiblePosition(new Position(focusedLine+1, 1));
+		let nextLinePixelPos = this._editor.getScrolledVisiblePosition(new Position(focusedLine + 1, 1));
 		if (focusedLinePixelPos === null || nextLinePixelPos === null) {
 			return;
 		}
@@ -2031,7 +2030,7 @@ class RTVController implements IEditorContribution {
 		//let top_start = focusedLinePixelPos.top;
 		let top_start = this.getLinePixelMid(focusedLine);
 		let top = top_start;
-		for (let line = focusedLine-1; line >= 1; line--) {
+		for (let line = focusedLine - 1; line >= 1; line--) {
 			let box = this.getBox(line);
 			if (toProcess(box)) {
 				top = top - spaceBetweenBoxes - box.getHeight();
@@ -2064,10 +2063,10 @@ class RTVController implements IEditorContribution {
 		}
 		let curr = cursorPos.lineNumber;
 		this.updateLayoutHelper(b => b.hasContent(), 0);
-		this.updateLayoutHelper(b => b.hasContent() && this._visibilityPolicy(b,curr), 1);
+		this.updateLayoutHelper(b => b.hasContent() && this._visibilityPolicy(b, curr), 1);
 	}
 
-	public getLinePixelPos(line:number): { top: number; left: number; height: number; } {
+	public getLinePixelPos(line: number): { top: number; left: number; height: number; } {
 		// let result = this._editor.getScrolledVisiblePosition(new Position(line, 1));
 		// if (result === null) {
 		// 	throw new Error();
@@ -2086,7 +2085,7 @@ class RTVController implements IEditorContribution {
 
 	public getLinePixelMid(line: number): number {
 		let pixelPos = this.getLinePixelPos(line);
-		return pixelPos.top + (pixelPos.height / 2)
+		return pixelPos.top + (pixelPos.height / 2);
 	}
 
 	private updatePrevModel() {
@@ -2097,7 +2096,7 @@ class RTVController implements IEditorContribution {
 	}
 
 	public lastNonWhitespaceCol(lineNumber: number, lines?: string[]): number {
-		let line = (lines === undefined) ? this.getLineContent(lineNumber) : lines[lineNumber-1];
+		let line = (lines === undefined) ? this.getLineContent(lineNumber) : lines[lineNumber - 1];
 		const result = strings.lastNonWhitespaceIndex(line);
 		if (result === -1) {
 			return 0;
@@ -2106,7 +2105,7 @@ class RTVController implements IEditorContribution {
 	}
 
 	public firstNonWhitespaceCol(lineNumber: number, lines?: string[]): number {
-		let line = (lines === undefined) ? this.getLineContent(lineNumber) : lines[lineNumber-1];
+		let line = (lines === undefined) ? this.getLineContent(lineNumber) : lines[lineNumber - 1];
 		const result = strings.firstNonWhitespaceIndex(line);
 		if (result === -1) {
 			return 0;
@@ -2120,7 +2119,7 @@ class RTVController implements IEditorContribution {
 			return;
 		}
 		let orig = this._boxes;
-		let changes = e.changes.sort((a,b) => Range.compareRangesUsingStarts(a.range,b.range));
+		let changes = e.changes.sort((a, b) => Range.compareRangesUsingStarts(a.range, b.range));
 		let changeIdx = 0;
 		let origIdx = 0;
 		let i = 0;
@@ -2129,11 +2128,11 @@ class RTVController implements IEditorContribution {
 		while (i < lineCount) {
 			if (changeIdx >= changes.length) {
 				this._boxes[i++] = orig[origIdx++];
-				this._boxes[i-1].lineNumber = i;
+				this._boxes[i - 1].lineNumber = i;
 			} else {
 				let line = i + 1;
 				let change = changes[changeIdx];
-				let numAddedLines = change.text.split('\n').length-1;
+				let numAddedLines = change.text.split('\n').length - 1;
 				let changeStartLine = change.range.startLineNumber;
 				let changeEndLine = change.range.endLineNumber;
 				let numRemovedLines = changeEndLine - changeStartLine;
@@ -2141,13 +2140,13 @@ class RTVController implements IEditorContribution {
 				let changeStartCol = change.range.startColumn;
 				if ((deltaNumLines <= 0 && changeStartLine === line) ||
 					(deltaNumLines > 0 && ((changeStartLine === line && changeStartCol < this.lastNonWhitespaceCol(line, this._prevModel)) ||
-						 				   (changeStartLine === line-1 && changeStartCol >= this.lastNonWhitespaceCol(line-1, this._prevModel))))) {
+						(changeStartLine === line - 1 && changeStartCol >= this.lastNonWhitespaceCol(line - 1, this._prevModel))))) {
 					changeIdx++;
 					if (deltaNumLines === 0) {
 						// nothing to do
 					} else if (deltaNumLines > 0) {
 						for (let j = 0; j < deltaNumLines; j++) {
-							let new_box = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, i+1, this._globalDeltaVarSet);
+							let new_box = new RTVDisplayBox(this, this._editor, this._modeService, this._openerService, i + 1, this._globalDeltaVarSet);
 							if (!this._makeNewBoxesVisible) {
 								new_box.varRemoveAll();
 							}
@@ -2157,13 +2156,13 @@ class RTVController implements IEditorContribution {
 						for (let j = origIdx; j < origIdx + (-deltaNumLines); j++) {
 							orig[j].destroy();
 						}
-						// need to make the removed boxes disapear
+						// need to make the removed boxes disappear
 						origIdx = origIdx + (-deltaNumLines);
 					}
 				}
 				else {
 					this._boxes[i++] = orig[origIdx++];
-					this._boxes[i-1].lineNumber = i;
+					this._boxes[i - 1].lineNumber = i;
 				}
 			}
 		}
@@ -2185,7 +2184,7 @@ class RTVController implements IEditorContribution {
 	}
 
 	private showErrorWithDelay(errorMsg: string) {
-		if (this._errorDisplayTimer != null) {
+		if (this._errorDisplayTimer !== null) {
 			clearTimeout(this._errorDisplayTimer);
 		}
 		this._errorDisplayTimer = setTimeout(() => {
@@ -2212,7 +2211,7 @@ class RTVController implements IEditorContribution {
 
 		let lineNumber = 0;
 		let colStart = 0;
-		let colEnd = 0
+		let colEnd = 0;
 
 		let errorLines = errorMsg.split(os.EOL);
 		errorLines.pop(); // last element is empty line
@@ -2237,7 +2236,7 @@ class RTVController implements IEditorContribution {
 			// match[0] is entire 'line N' match, match[1] is just the number N
 			lineNumber = +match[1];
 			colStart = this.firstNonWhitespaceCol(lineNumber);
-			colEnd = this.lastNonWhitespaceCol(lineNumber)
+			colEnd = this.lastNonWhitespaceCol(lineNumber);
 		} else {
 			// No line number here so this is a syntax error, so we in fact
 			// didn't get the error line number, we got the line with the caret
@@ -2282,7 +2281,7 @@ class RTVController implements IEditorContribution {
 	}
 
 	private clearError() {
-		if (this._errorDisplayTimer != null) {
+		if (this._errorDisplayTimer !== null) {
 			clearTimeout(this._errorDisplayTimer);
 			this._errorDisplayTimer = null;
 		}
@@ -2304,7 +2303,7 @@ class RTVController implements IEditorContribution {
 		let startCol: number;
 		let endCol: number;
 
-		if (model.getLineContent(lineno).trim() === '' && cursorPos !== null && cursorPos.lineNumber == lineno) {
+		if (model.getLineContent(lineno).trim() === '' && cursorPos !== null && cursorPos.lineNumber === lineno) {
 			startCol = cursorPos.column;
 			endCol = cursorPos.column;
 		} else {
@@ -2314,12 +2313,11 @@ class RTVController implements IEditorContribution {
 		let range = new Range(lineno, startCol, lineno, endCol);
 
 		this._editor.pushUndoStop();
-		let selection = new Selection(lineno, startCol, lineno, startCol+fragment.length);
-		this._editor.executeEdits(this.getId(), [{range: range, text: fragment}], [selection]);
+		let selection = new Selection(lineno, startCol, lineno, startCol + fragment.length);
+		this._editor.executeEdits(this.getId(), [{ range: range, text: fragment }], [selection]);
 	}
 
-	private getVarAssignmentAtLine(lineNo: number) : null|string
-	{
+	private getVarAssignmentAtLine(lineNo: number): null | string {
 		let line = this.getLineContent(lineNo).trim();
 		if (!line) { return null; }
 		let content = line.split('=');
@@ -2327,8 +2325,7 @@ class RTVController implements IEditorContribution {
 		return content[0].trim();
 	}
 
-	public synthesizeFragment(lineno: number, timesToInclude: Set<number>)
-	{
+	public synthesizeFragment(lineno: number, timesToInclude: Set<number>) {
 		let varName = this.getVarAssignmentAtLine(lineno);
 
 		// Build and write the synth_example.json file content
@@ -2346,7 +2343,7 @@ class RTVController implements IEditorContribution {
 			}
 		}
 
-		let problem = {'varName' : varName, 'env': envs};
+		let problem = { 'varName': varName, 'env': envs };
 		fs.writeFileSync(example_fname, JSON.stringify(problem));
 		this.logger.synthStart(problem, timesToInclude.size, lineno);
 
@@ -2380,14 +2377,14 @@ class RTVController implements IEditorContribution {
 
 	public runProgram(e?: IModelContentChangedEvent) {
 
-		function runImmediately(e?: IModelContentChangedEvent):boolean {
+		function runImmediately(e?: IModelContentChangedEvent): boolean {
 			if (e === undefined) {
 				return true;
 			}
 			// We run immediately when any of the changes span multi-lines.
 			// In this case, we will be either removing or adding projection boxes,
 			// and we want to process this change immediately.
-			for (let i = 0; i < e.changes.length; i++){
+			for (let i = 0; i < e.changes.length; i++) {
 				let change = e.changes[i];
 				if (change.range.endLineNumber - change.range.startLineNumber > 0) {
 					return true;
@@ -2467,8 +2464,8 @@ class RTVController implements IEditorContribution {
 		}
 	}
 
-	public getEnvAtNextTimeStep(env: any): any|null {
-		let result:any|null = null;
+	public getEnvAtNextTimeStep(env: any): any | null {
+		let result: any | null = null;
 		let nextEnvs = this.envs[env.next_lineno];
 		if (nextEnvs !== undefined) {
 			nextEnvs.forEach((nextEnv) => {
@@ -2483,8 +2480,8 @@ class RTVController implements IEditorContribution {
 		return result;
 	}
 
-	public getEnvAtPrevTimeStep(env: any): any|null {
-		let result:any|null = null;
+	public getEnvAtPrevTimeStep(env: any): any | null {
+		let result: any | null = null;
 		let prevEnvs = this.envs[env.prev_lineno];
 		if (prevEnvs !== undefined) {
 			prevEnvs.forEach((prevEnv) => {
@@ -2621,11 +2618,27 @@ class RTVController implements IEditorContribution {
 
 	public flipThroughViewModes() {
 		function computeNextViewMode(v: ViewMode) {
-			if (v === ViewMode.Full) return ViewMode.CursorAndReturn;
-			if (v === ViewMode.CursorAndReturn) return ViewMode.Compact;
-			if (v === ViewMode.Compact)	return ViewMode.Stealth;
-			if (v === ViewMode.Stealth)	 return ViewMode.Full;
-			return ViewMode.Full;
+			let rs: ViewMode;
+
+			switch (v) {
+				case ViewMode.Full:
+					rs = ViewMode.CursorAndReturn;
+					break;
+				case ViewMode.CursorAndReturn:
+					rs = ViewMode.Compact;
+					break;
+				case ViewMode.Compact:
+					rs = ViewMode.Stealth;
+					break;
+				case ViewMode.Stealth:
+					rs = ViewMode.Full;
+					break;
+				default:
+					rs = ViewMode.Full;
+					break;
+			}
+
+			return rs;
 		}
 
 		this.changeViewMode(computeNextViewMode(this.viewMode));
@@ -2707,7 +2720,7 @@ class RTVController implements IEditorContribution {
 		let selectionEnd: number;
 		let selectionStart: number;
 
-		if (op !== undefined && where != undefined) {
+		if (op !== undefined && where !== undefined) {
 			text = op;
 			if (where === ChangeVarsWhere.All) {
 				text = text + '@' + ChangeVarsWhere.All;
@@ -2723,12 +2736,12 @@ class RTVController implements IEditorContribution {
 			selectionEnd = text.length;
 		}
 
-		this.getUserInputAndDo(text, selectionStart, selectionEnd, (n:string)=>{
+		this.getUserInputAndDo(text, selectionStart, selectionEnd, (n: string) => {
 			this.runChangeVarsCommand(n);
 		});
 	}
 
-	private getUserInputAndDo(value: string, selectionStart: number, selectionEnd: number, onEnter: (n:string) => void) {
+	private getUserInputAndDo(value: string, selectionStart: number, selectionEnd: number, onEnter: (n: string) => void) {
 		let cursorPos = this._editor.getPosition();
 		if (cursorPos === null) {
 			return;
@@ -2828,8 +2841,7 @@ class RTVController implements IEditorContribution {
 		}
 	}
 
-	public editingVar()
-	{
+	public editingVar() {
 		let d = this._editor.getPosition();
 		let controller = RTVController.get(this._editor);
 		let s = '';
@@ -2843,20 +2855,19 @@ class RTVController implements IEditorContribution {
 			s = controller.getLineContent(line).trim();
 		}
 
-		if (line > -1){
-			this.getDicitonaryMakeEdit(s, line, controller);
+		if (line > -1) {
+			this.getDictionaryMakeEdit(s, line, controller);
 		}
 	}
 
-	private getDicitonaryMakeEdit(s: string, line: number, controller: RTVController)
-	{
+	private getDictionaryMakeEdit(s: string, line: number, controller: RTVController) {
 		let listOfElems = s.split('=');
 
 		if (listOfElems.length !== 2) {
 			// TODO Can we inform the user of this?
 			console.error('Invalid input format. Must be of the form <varname> = ??');
 		}
-		else{
+		else {
 			let l_operand = listOfElems[0].trim();
 			let r_operand = listOfElems[1].trim();
 
@@ -2878,11 +2889,11 @@ class RTVController implements IEditorContribution {
 
 				let range = new Range(line, startCol, line, endCol);
 				let txt = l_operand + ' = ' + (r_operand ? r_operand : '0');
-				this._editor.executeEdits(this.getId(), [{range: range, text: txt}]);
+				this._editor.executeEdits(this.getId(), [{ range: range, text: txt }]);
 
 				setTimeout(() => {
 					let k: string = l_operand;
-					let cellContents = controller._boxes[line-1].getCellContent()[k];
+					let cellContents = controller._boxes[line - 1].getCellContent()[k];
 
 					if (cellContents) {
 						cellContents.forEach(function (cellContent) {
@@ -2963,7 +2974,7 @@ class RTVController implements IEditorContribution {
 	private removeSeeds(lines: string[]) {
 		if (this.loopFocusController !== null) {
 			for (let i = 0; i < lines.length; i++) {
-				if (lines[i].match('#@') != null) {
+				if (lines[i].match('#@') !== null) {
 					lines[i] = lines[i].replace(/#@\s*/, '');
 				}
 			}
@@ -2983,7 +2994,7 @@ class RTVController implements IEditorContribution {
 		let minIndent = Infinity;
 		let i = currLineNumber;
 		while (i >= 1) {
-			let currLine = lines[i-1]
+			let currLine = lines[i - 1];
 			if (isSeedLine(currLine)) {
 				if (indent(currLine) <= minIndent) {
 					return i;
@@ -2995,7 +3006,7 @@ class RTVController implements IEditorContribution {
 					minIndent = currIndent;
 				}
 			}
-			i = i-1;
+			i = i - 1;
 		}
 		return 0;
 	}
@@ -3076,7 +3087,7 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 		},
 		[byRowOrColKey]: {
 			'type': 'string',
-			'enum': [ RowColMode.ByCol, RowColMode.ByRow],
+			'enum': [RowColMode.ByCol, RowColMode.ByRow],
 			'enumDescriptions': [
 				localize('rtv.byRowOrColumn.byCol', 'Each column is a variable'),
 				localize('rtv.byRowOrColumn.byRow', 'Each row is a variable')
@@ -3102,7 +3113,7 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 		[opacityKey]: {
 			'type': 'number',
 			'default': 0,
-			'description': localize('rtv.zoom', 'Controls opacity level (value between 0 and 1; 0: see-through; 1: no see-through)')
+			'description': localize('rtv.opacity', 'Controls opacity level (value between 0 and 1; 0: see-through; 1: no see-through)')
 		},
 		[showBoxAtLoopStmtKey]: {
 			'type': 'boolean',
@@ -3127,15 +3138,15 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 		[supportSynthesisKey]: {
 			'type': 'boolean',
 			'default': false,
-			'description': localize('rtv.supportsynth', 'Controls whether sythesis is supported')
+			'description': localize('rtv.supportsynth', 'Controls whether synthesis is supported')
 		}
 	}
 });
 
 
 class ConfigurationServiceCache {
-	private _vals: { [k:string]: any; } = {};
-	public onDidUserChangeConfiguration: ((e:IConfigurationChangeEvent)=>void)|undefined = undefined;
+	private _vals: { [k: string]: any; } = {};
+	public onDidUserChangeConfiguration: ((e: IConfigurationChangeEvent) => void) | undefined = undefined;
 	constructor(private readonly configurationService: IConfigurationService) {
 		this.configurationService.onDidChangeConfiguration((e) => { this.onChangeConfiguration(e); });
 	}
@@ -3169,12 +3180,14 @@ class ConfigurationServiceCache {
 	}
 }
 
-function createRTVAction(id: string, name: string, key: number, callback: (c:RTVController) => void) {
+function createRTVAction(id: string, name: string, key: number, callback: (c: RTVController) => void) {
 	class RTVAction extends EditorAction {
-		private _callback: (c:RTVController) => void;
+		private _callback: (c: RTVController) => void;
 		constructor() {
 			super({
 				id: id,
+				// eslint complains that we shouldn't call `localize` with a non-literal argument.
+				// eslint-disable-next-line code-no-unexternalized-strings
 				label: localize(id, name),
 				alias: name,
 				precondition: undefined,
@@ -3204,7 +3217,7 @@ function createRTVAction(id: string, name: string, key: number, callback: (c:RTV
 }
 
 // Another way to register keyboard shortcuts. Not sure which is best.
-// function registerKeyShotrcut(id: string, key: number, callback: (c:RTVController) => void) {
+// function registerKeyShortcut(id: string, key: number, callback: (c:RTVController) => void) {
 // 	KeybindingsRegistry.registerCommandAndKeybindingRule({
 // 		id: id,
 // 		weight: KeybindingWeight.EditorCore,
@@ -3354,7 +3367,7 @@ createRTVAction(
 
 // Not ready yet -- can't figure out how to make these shortcuts
 // higher priority than standard VSCode shortcuts
-// registerKeyShotrcut(
+// registerKeyShortcut(
 // 	'zzzz',
 // 	KeyMod.CtrlCmd | KeyCode.UpArrow,
 // 	(c) => {
@@ -3362,7 +3375,7 @@ createRTVAction(
 // 	}
 // );
 
-// registerKeyShotrcut(
+// registerKeyShortcut(
 // 	'rtv.ScrollLoopIterDown',
 // 	KeyMod.CtrlCmd | KeyCode.DownArrow,
 // 	(c) => {
