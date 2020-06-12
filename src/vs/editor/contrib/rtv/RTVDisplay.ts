@@ -1,8 +1,7 @@
-// TODO These should be factored into another module
-import * as cp from 'child_process';
-import * as fs from 'fs';
+/* import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+ */
 
 import 'vs/css!./rtv';
 import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
@@ -35,10 +34,11 @@ import { inputBackground, inputBorder, inputForeground, widgetShadow, editorWidg
 import { IIdentifiedSingleEditOperation, ITextModel, IModelDecorationOptions } from 'vs/editor/common/model';
 import { Selection } from 'vs/editor/common/core/selection';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
+import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
 
 // Helper functions
 function getOSEnvVariable(v: string): string {
-	let result = process.env[v];
+	let result = utils.process.env[v];
 	if (result === undefined) {
 		throw new Error('OS environment variable ' + v + ' is not defined.');
 	}
@@ -55,7 +55,7 @@ function indent(s: string): number {
 }
 
 function isHtmlEscape(s: string): boolean {
-	return strings.startsWith(s, '```html\n') && strings.endsWith(s, '```')
+	return strings.startsWith(s, '```html\n') && strings.endsWith(s, '```');
 }
 
 function removeHtmlEscape(s: string): string {
@@ -112,17 +112,17 @@ function regExpMatchEntireString(s: string, regExp: string) {
 }
 
 class DelayedRunAtMostOne {
-	private _timer: NodeJS.Timer | null = null;
+	private _timer: utils.Timer | null = null;
 
 	public run(delay: number, c: () => void) {
 		if (this._timer !== null) {
-			clearTimeout(this._timer);
+			utils.clearTimeout(this._timer);
 		}
 		if (delay === 0) {
 			this._timer = null;
 			c();
 		} else {
-			this._timer = setTimeout(() => {
+			this._timer = utils.setTimeout(() => {
 				this._timer = null;
 				c();
 			}, delay);
@@ -1422,12 +1422,12 @@ class RTVController implements IEditorContribution {
 	private _makeNewBoxesVisible: boolean = true;
 	private _loopFocusController: LoopFocusController | null = null;
 	private _errorDecorationID: string | null = null;
-	private _errorDisplayTimer: NodeJS.Timer | null = null;
+	private _errorDisplayTimer: utils.Timer | null = null;
 	private _visibilityPolicy: VisibilityPolicy = visibilityAll;
 	private _peekCounter: number = 0;
-	private _peekTimer: NodeJS.Timer | null = null;
+	private _peekTimer: utils.Timer | null = null;
 	private _globalDeltaVarSet: DeltaVarSet = new DeltaVarSet();
-	private _pythonProcess: cp.ChildProcessWithoutNullStreams | null = null;
+	private _pythonProcess: utils.cp.Process | null = null;
 	private _runProgramDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 
 	public static readonly ID = 'editor.contrib.rtv';
@@ -2185,7 +2185,7 @@ class RTVController implements IEditorContribution {
 
 	private showErrorWithDelay(errorMsg: string) {
 		if (this._errorDisplayTimer !== null) {
-			clearTimeout(this._errorDisplayTimer);
+			utils.clearTimeout(this._errorDisplayTimer);
 		}
 		this._errorDisplayTimer = setTimeout(() => {
 			this._errorDisplayTimer = null;
@@ -2213,7 +2213,7 @@ class RTVController implements IEditorContribution {
 		let colStart = 0;
 		let colEnd = 0;
 
-		let errorLines = errorMsg.split(os.EOL);
+		let errorLines = errorMsg.split(utils.os.EOL);
 		errorLines.pop(); // last element is empty line
 
 		// The error description is always the last line
@@ -2282,7 +2282,7 @@ class RTVController implements IEditorContribution {
 
 	private clearError() {
 		if (this._errorDisplayTimer !== null) {
-			clearTimeout(this._errorDisplayTimer);
+			utils.clearTimeout(this._errorDisplayTimer);
 			this._errorDisplayTimer = null;
 		}
 		if (this._errorDecorationID !== null) {
@@ -2294,7 +2294,7 @@ class RTVController implements IEditorContribution {
 	private writeModelToDisk(fname: string) {
 		let lines = this.getModelForce().getLinesContent();
 		this.removeSeeds(lines);
-		fs.writeFileSync(fname, lines.join('\n'));
+		utils.fs.writeFileSync(fname, lines.join('\n'));
 	}
 
 	private insertSynthesizedFragment(fragment: string, lineno: number) {
@@ -2329,11 +2329,12 @@ class RTVController implements IEditorContribution {
 		let varName = this.getVarAssignmentAtLine(lineno);
 
 		// Build and write the synth_example.json file content
-		let example_fname = os.tmpdir() + path.sep + 'synth_example.json';
+		let example_fname = utils.os.tmpdir() + utils.path.sep + 'synth_example.json';
 		let envs: any[] = [];
 
 		search_loop:
-		for (let env_list of Object.values(this.envs)) {
+		for (let key in this.envs) {
+			let env_list = this.envs[key];
 			for (let env of env_list) {
 				if (envs.length === timesToInclude.size) { break search_loop; }
 
@@ -2344,13 +2345,13 @@ class RTVController implements IEditorContribution {
 		}
 
 		let problem = { 'varName': varName, 'env': envs };
-		fs.writeFileSync(example_fname, JSON.stringify(problem));
+		utils.fs.writeFileSync(example_fname, JSON.stringify(problem));
 		this.logger.synthStart(problem, timesToInclude.size, lineno);
 
 		this.insertSynthesizedFragment('# Synthesizing. Please wait...', lineno);
 
 		// Spawn the synthesizer
-		let c = cp.spawn(SCALA, [SYNTH, example_fname]);
+		let c = utils.cp.spawn(SCALA, [SYNTH, example_fname]);
 
 		c.stdout.on('data', (data) => this.logger.synthOut(String(data)));
 		c.stderr.on('data', (data) => this.logger.synthErr(String(data)));
@@ -2359,7 +2360,7 @@ class RTVController implements IEditorContribution {
 			let error: boolean = exitCode !== 0;
 
 			if (!error) {
-				let fragment = fs.readFileSync(example_fname + '.out').toString();
+				let fragment = utils.fs.readFileSync(example_fname + '.out').toString();
 				this.logger.synthEnd(exitCode, fragment);
 				error = fragment === 'None';
 				if (!error) {
@@ -2411,7 +2412,7 @@ class RTVController implements IEditorContribution {
 
 		this._runProgramDelay.run(delay, () => {
 
-			let code_fname = os.tmpdir() + path.sep + 'tmp.py';
+			let code_fname = utils.os.tmpdir() + utils.path.sep + 'tmp.py';
 			this.writeModelToDisk(code_fname);
 
 			//console.log(this._pythonProcess);
@@ -2419,7 +2420,7 @@ class RTVController implements IEditorContribution {
 				//console.log('kill');
 				this._pythonProcess.kill();
 			}
-			let c = cp.spawn(PY3, [RUNPY, code_fname]);
+			let c = utils.cp.spawn(PY3, [RUNPY, code_fname]);
 			this._pythonProcess = c;
 
 			c.stdout.on('data', (data) => {
@@ -2439,7 +2440,7 @@ class RTVController implements IEditorContribution {
 					this._pythonProcess = null;
 					if (exitCode === 0) {
 						this.clearError();
-						this.updateData(fs.readFileSync(code_fname + '.out').toString());
+						this.updateData(utils.fs.readFileSync(code_fname + '.out').toString());
 						this.updateContentAndLayout();
 					}
 					else {
@@ -2934,7 +2935,7 @@ class RTVController implements IEditorContribution {
 		if (e.keyCode === KeyCode.Ctrl) {
 			this._peekCounter = 0;
 			if (this._peekTimer !== null) {
-				clearTimeout(this._peekTimer);
+				utils.clearTimeout(this._peekTimer);
 			}
 			if (this.viewMode === ViewMode.Stealth) {
 				this.setVisibilityNone();
@@ -2949,7 +2950,7 @@ class RTVController implements IEditorContribution {
 			this._peekCounter = this._peekCounter + 1;
 			if (this._peekCounter > 1) {
 				if (this._peekTimer !== null) {
-					clearTimeout(this._peekTimer);
+					utils.clearTimeout(this._peekTimer);
 				}
 				this._peekTimer = setTimeout(() => {
 					this._peekTimer = null;

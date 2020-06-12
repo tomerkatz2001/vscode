@@ -1,6 +1,7 @@
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
+//import * as fs from 'fs';
+//import * as os from 'os';
+//import * as path from 'path';
+import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
 /*
@@ -51,26 +52,26 @@ export class RTVLogger {
 		}
 
 		console.log(str);
-		fs.appendFileSync(this.logDir + this.logFile, str + '\n');
+		utils.fs.appendFileSync(this.logDir + this.logFile, str + '\n');
 	}
 
 	private write(file: string, content: any): void {
-		fs.writeFileSync(this.logDir + file, String(content));
+		utils.fs.writeFileSync(this.logDir + file, String(content));
 	}
 
 	constructor(private readonly _editor: ICodeEditor) {
 		// Build output dir name
-		let dir = process.env['LOG_DIR'];
+		let dir = utils.process.env['LOG_DIR'];
 
 		if (!dir) {
-			dir = os.tmpdir() + path.sep;
+			dir = utils.os.tmpdir() + utils.path.sep;
 		} else {
-			if (!dir.endsWith(path.sep)) {
-				dir += path.sep;
+			if (!dir.endsWith(utils.path.sep)) {
+				dir += utils.path.sep;
 			}
 
-			if (!fs.existsSync(dir)) {
-				fs.mkdirSync(dir);
+			if (!utils.fs.existsSync(dir)) {
+				utils.fs.mkdirSync(dir);
 			}
 		}
 
@@ -83,17 +84,17 @@ export class RTVLogger {
 			now.getMinutes();
 
 		// Don't overwrite existing logs!
-		if (fs.existsSync(dir)) {
+		if (utils.fs.existsSync(dir!!)) {
 			console.error('Two log dirs created at the exact same time. This should not happen.');
 			let counter = 0;
 			dir = dir + '_' + counter;
-			while (fs.existsSync(dir)) {
+			while (utils.fs.existsSync(dir)) {
 				dir = dir.substring(0, dir.length - 1) + counter++;
 			}
 		}
 
-		this.logDir = dir! + path.sep;
-		fs.mkdirSync(this.logDir);
+		this.logDir = dir! + utils.path.sep;
+		utils.fs.mkdirSync(this.logDir);
 		this.logFile = 'snippy.log';
 	}
 
