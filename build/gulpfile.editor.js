@@ -61,6 +61,20 @@ const languages = i18n.defaultLanguages.concat([]);  // i18n.defaultLanguages.co
 const extractEditorSrcTask = task.define('extract-editor-src', () => {
 	const apiusages = monacoapi.execute().usageContent;
 	const extrausages = fs.readFileSync(path.join(root, 'build', 'monaco', 'monaco.usage.recipe')).toString();
+
+	// Copy the RTVUtil file for front-end to the src dir
+	const utils = 'RTVUtils.ts';
+	const logger = 'RTVLogger.ts';
+	const orgPath = 'src/vs/editor/contrib/rtv/frontend/';
+	const srcPath = 'src/vs/editor/contrib/rtv/frontend/';
+	const dstPath = 'src/vs/editor/contrib/rtv/';
+
+	console.log(`Copying ${srcPath + utils} to ${dstPath + utils}`);
+	fs.copyFileSync(srcPath + utils, dstPath + utils);
+
+	console.log(`Copying ${srcPath + logger} to ${dstPath + logger}`);
+	fs.copyFileSync(srcPath + logger, dstPath + logger);
+
 	standalone.extractEditor({
 		sourcesRoot: path.join(root, 'src'),
 		entryPoints: [
@@ -77,6 +91,10 @@ const extractEditorSrcTask = task.define('extract-editor-src', () => {
 		destRoot: path.join(root, 'out-editor-src'),
 		redirects: []
 	});
+
+	// Return the original utils
+	fs.symlinkSync(dstPath + utils, orgPath + utils);
+	fs.symlinkSync(dstPath + logger, orgPath + logger);
 });
 
 const compileEditorAMDTask = task.define('compile-editor-amd', compilation.compileTask('out-editor-src', 'out-editor-build', true));
@@ -118,6 +136,8 @@ const createESMSourcesAndResourcesTask = task.define('extract-editor-esm', () =>
 			'vs/css.build.js',
 			'vs/css.d.ts',
 			'vs/base/worker/workerMain.ts',
+			'vs/editor/contrib/rtv/backend**',
+			'vs/editor/contrib/rtv/frontend**'
 		],
 		renames: {
 			'vs/nls.mock.ts': 'vs/nls.ts'

@@ -36,20 +36,6 @@ import { Selection } from 'vs/editor/common/core/selection';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
 
-// Helper functions
-function getOSEnvVariable(v: string): string {
-	let result = utils.process.env[v];
-	if (result === undefined) {
-		throw new Error('OS environment variable ' + v + ' is not defined.');
-	}
-	return result;
-}
-
-let PY3 = getOSEnvVariable('PYTHON3');
-let RUNPY = getOSEnvVariable('RUNPY');
-let SYNTH = getOSEnvVariable('SYNTH');
-let SCALA = getOSEnvVariable('SCALA');
-
 function indent(s: string): number {
 	return s.length - s.trimLeft().length;
 }
@@ -112,17 +98,17 @@ function regExpMatchEntireString(s: string, regExp: string) {
 }
 
 class DelayedRunAtMostOne {
-	private _timer: utils.Timer | null = null;
+	private _timer: ReturnType<typeof setTimeout> | null = null;
 
 	public run(delay: number, c: () => void) {
 		if (this._timer !== null) {
-			utils.clearTimeout(this._timer);
+			clearTimeout(this._timer);
 		}
 		if (delay === 0) {
 			this._timer = null;
 			c();
 		} else {
-			this._timer = utils.setTimeout(() => {
+			this._timer = setTimeout(() => {
 				this._timer = null;
 				c();
 			}, delay);
@@ -1422,12 +1408,12 @@ class RTVController implements IEditorContribution {
 	private _makeNewBoxesVisible: boolean = true;
 	private _loopFocusController: LoopFocusController | null = null;
 	private _errorDecorationID: string | null = null;
-	private _errorDisplayTimer: utils.Timer | null = null;
+	private _errorDisplayTimer: ReturnType<typeof setTimeout> | null = null;
 	private _visibilityPolicy: VisibilityPolicy = visibilityAll;
 	private _peekCounter: number = 0;
-	private _peekTimer: utils.Timer | null = null;
+	private _peekTimer: ReturnType<typeof setTimeout> | null = null;
 	private _globalDeltaVarSet: DeltaVarSet = new DeltaVarSet();
-	private _pythonProcess: utils.cp.Process | null = null;
+	private _pythonProcess?: utils.Process = undefined;
 	private _runProgramDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 
 	public static readonly ID = 'editor.contrib.rtv';
@@ -1459,7 +1445,7 @@ class RTVController implements IEditorContribution {
 		this._editor.onKeyDown((e) => { this.onKeyDown(e); });
 		//this._modelService.onModelModeChanged((e) => { console.log('BBBB');  });
 
-		this.logger = new RTVLogger(this._editor);
+		this.logger = utils.getLogger(this._editor);
 
 		for (let i = 0; i < this.getLineCount(); i++) {
 			this._boxes.push(new RTVDisplayBox(this, _editor, _modeService, _openerService, i + 1, this._globalDeltaVarSet));
@@ -2185,7 +2171,7 @@ class RTVController implements IEditorContribution {
 
 	private showErrorWithDelay(errorMsg: string) {
 		if (this._errorDisplayTimer !== null) {
-			utils.clearTimeout(this._errorDisplayTimer);
+			clearTimeout(this._errorDisplayTimer);
 		}
 		this._errorDisplayTimer = setTimeout(() => {
 			this._errorDisplayTimer = null;
@@ -2213,7 +2199,7 @@ class RTVController implements IEditorContribution {
 		let colStart = 0;
 		let colEnd = 0;
 
-		let errorLines = errorMsg.split(utils.os.EOL);
+		let errorLines = errorMsg.split(utils.EOL);
 		errorLines.pop(); // last element is empty line
 
 		// The error description is always the last line
@@ -2282,19 +2268,13 @@ class RTVController implements IEditorContribution {
 
 	private clearError() {
 		if (this._errorDisplayTimer !== null) {
-			utils.clearTimeout(this._errorDisplayTimer);
+			clearTimeout(this._errorDisplayTimer);
 			this._errorDisplayTimer = null;
 		}
 		if (this._errorDecorationID !== null) {
 			this.removeDecoration(this._errorDecorationID);
 			this._errorDecorationID = null;
 		}
-	}
-
-	private writeModelToDisk(fname: string) {
-		let lines = this.getModelForce().getLinesContent();
-		this.removeSeeds(lines);
-		utils.fs.writeFileSync(fname, lines.join('\n'));
 	}
 
 	private insertSynthesizedFragment(fragment: string, lineno: number) {
@@ -2329,7 +2309,6 @@ class RTVController implements IEditorContribution {
 		let varName = this.getVarAssignmentAtLine(lineno);
 
 		// Build and write the synth_example.json file content
-		let example_fname = utils.os.tmpdir() + utils.path.sep + 'synth_example.json';
 		let envs: any[] = [];
 
 		search_loop:
@@ -2345,26 +2324,21 @@ class RTVController implements IEditorContribution {
 		}
 
 		let problem = { 'varName': varName, 'env': envs };
-		utils.fs.writeFileSync(example_fname, JSON.stringify(problem));
+		const c = utils.synthesizeSnippet(JSON.stringify(problem));
 		this.logger.synthStart(problem, timesToInclude.size, lineno);
-
 		this.insertSynthesizedFragment('# Synthesizing. Please wait...', lineno);
 
-		// Spawn the synthesizer
-		let c = utils.cp.spawn(SCALA, [SYNTH, example_fname]);
+		c.onStdout((data) => this.logger.synthOut(String(data)));
+		c.onStderr((data) => this.logger.synthErr(String(data)));
 
-		c.stdout.on('data', (data) => this.logger.synthOut(String(data)));
-		c.stderr.on('data', (data) => this.logger.synthErr(String(data)));
-
-		c.on('close', (exitCode) => {
+		c.onExit((exitCode, result) => {
 			let error: boolean = exitCode !== 0;
 
 			if (!error) {
-				let fragment = utils.fs.readFileSync(example_fname + '.out').toString();
-				this.logger.synthEnd(exitCode, fragment);
-				error = fragment === 'None';
+				this.logger.synthEnd(exitCode, result);
+				error = result != undefined && result === 'None';
 				if (!error) {
-					this.insertSynthesizedFragment(fragment, lineno);
+					this.insertSynthesizedFragment(result!!, lineno);
 				}
 			} else {
 				this.logger.synthEnd(exitCode);
@@ -2398,54 +2372,42 @@ class RTVController implements IEditorContribution {
 			return false;
 		}
 
-		//console.log(e);
 		this.padBoxArray();
-
 		this.addRemoveBoxes(e);
-
 		this.updateMaxPixelCol();
-
 		let delay = 500;
 		if (runImmediately(e)) {
 			delay = 0;
 		}
 
 		this._runProgramDelay.run(delay, () => {
+			let lines = this.getModelForce().getLinesContent();
+			this.removeSeeds(lines);
+			const program = lines.join('\n');
 
-			let code_fname = utils.os.tmpdir() + utils.path.sep + 'tmp.py';
-			this.writeModelToDisk(code_fname);
-
-			//console.log(this._pythonProcess);
-			if (this._pythonProcess !== null) {
-				//console.log('kill');
+			if (this._pythonProcess !== undefined) {
 				this._pythonProcess.kill();
 			}
-			let c = utils.cp.spawn(PY3, [RUNPY, code_fname]);
+
+			let c = utils.runProgram(program);
 			this._pythonProcess = c;
 
-			c.stdout.on('data', (data) => {
-				//console.log('stdout ' + data.toString())
-			});
-			let errorMsg = '';
-			c.stderr.on('data', (data) => {
-				errorMsg = errorMsg + data.toString();
-			});
-			c.on('exit', (exitCode, signalCode) => {
-				//console.log('exitCode: ', exitCode);
-				//console.log('signalCode: ', signalCode);
+			let errorMsg: string = '';
+			c.onStderr((msg) => errorMsg += msg);
+
+			c.onExit((exitCode, program) => {
 				// When exitCode === null, it means the process was killed,
 				// so there is nothing else to do
 				if (exitCode !== null) {
 					this.updateLinesWhenOutOfDate(exitCode, e);
-					this._pythonProcess = null;
+					this._pythonProcess = undefined;
 					if (exitCode === 0) {
 						this.clearError();
-						this.updateData(utils.fs.readFileSync(code_fname + '.out').toString());
+						this.updateData(program);
 						this.updateContentAndLayout();
 					}
 					else {
 						this.showErrorWithDelay(errorMsg);
-						// this.updateData(fs.readFileSync(code_fname + '.out').toString());
 						this.updateContentAndLayout();
 					}
 				}
@@ -2453,9 +2415,10 @@ class RTVController implements IEditorContribution {
 		});
 	}
 
-	private updateData(str: string) {
+	private updateData(str?: string) {
 		try {
-			let data = JSON.parse(str);
+			// TODO better error handling instead of !!
+			let data = JSON.parse(str!!);
 			this.envs = data[1];
 			this.writes = data[0];
 		}
@@ -2480,23 +2443,6 @@ class RTVController implements IEditorContribution {
 		}
 		return result;
 	}
-
-	public getEnvAtPrevTimeStep(env: any): any | null {
-		let result: any | null = null;
-		let prevEnvs = this.envs[env.prev_lineno];
-		if (prevEnvs !== undefined) {
-			prevEnvs.forEach((prevEnv) => {
-				if (prevEnv.time === env.time - 1) {
-					if (result !== null) {
-						throw new Error('Should not have more than one prev time step');
-					}
-					result = prevEnv;
-				}
-			});
-		}
-		return result;
-	}
-
 
 	public varRemoveInThisBox(varname: string, box: RTVDisplayBox) {
 		box.varRemove(varname);
@@ -3181,7 +3127,7 @@ class ConfigurationServiceCache {
 	}
 }
 
-function createRTVAction(id: string, name: string, key: number, callback: (c: RTVController) => void) {
+function createRTVAction(id: string, name: string, key: number, label: string, callback: (c: RTVController) => void) {
 	class RTVAction extends EditorAction {
 		private _callback: (c: RTVController) => void;
 		constructor() {
@@ -3189,7 +3135,7 @@ function createRTVAction(id: string, name: string, key: number, callback: (c: RT
 				id: id,
 				// eslint complains that we shouldn't call `localize` with a non-literal argument.
 				// eslint-disable-next-line code-no-unexternalized-strings
-				label: localize(id, name),
+				label: label,
 				alias: name,
 				precondition: undefined,
 				// menuOpts: {
@@ -3244,6 +3190,7 @@ createRTVAction(
 	'rtv.flipview',
 	'Flip View Mode',
 	KeyMod.Alt | KeyCode.Enter,
+	localize('rtv.flipview', 'Flip View Mode'),
 	(c) => {
 		c.flipThroughViewModes();
 	}
@@ -3253,6 +3200,7 @@ createRTVAction(
 	'rtv.fullview',
 	'Full View',
 	KeyMod.Alt | KeyCode.KEY_1,
+	localize('rtv.fullview', 'Full View'),
 	(c) => {
 		c.changeViewMode(ViewMode.Full);
 	}
@@ -3262,6 +3210,7 @@ createRTVAction(
 	'rtv.cursorview',
 	'Cursor and Return View',
 	KeyMod.Alt | KeyCode.KEY_2,
+	localize('rtv.cursorview', 'Cursor and Return View'),
 	(c) => {
 		c.changeViewMode(ViewMode.CursorAndReturn);
 	}
@@ -3271,6 +3220,7 @@ createRTVAction(
 	'rtv.compactview',
 	'Compact View',
 	KeyMod.Alt | KeyCode.KEY_3,
+	localize('rtv.compactview', 'Compact View'),
 	(c) => {
 		c.changeViewMode(ViewMode.Compact);
 	}
@@ -3280,6 +3230,7 @@ createRTVAction(
 	'rtv.stealthview',
 	'Stealth View',
 	KeyMod.Alt | KeyCode.KEY_4,
+	localize('rtv.stealthview', 'Stealth View'),
 	(c) => {
 		c.changeViewMode(ViewMode.Stealth);
 	}
@@ -3289,6 +3240,7 @@ createRTVAction(
 	'rtv.zoomin',
 	'Flip Zoom',
 	KeyMod.Alt | KeyCode.US_BACKSLASH,
+	localize('rtv.zoomin', 'Flip Zoom'),
 	(c) => {
 		c.flipZoom();
 	}
@@ -3298,6 +3250,7 @@ createRTVAction(
 	'rtv.changevars',
 	'Add/Remove/Keep Vars',
 	KeyMod.Alt | KeyCode.Backspace,
+	localize('rtv.changevars', 'Add/Remove/Keep Vars'),
 	(c) => {
 		c.changeVars();
 	}
@@ -3307,6 +3260,7 @@ createRTVAction(
 	'rtv.addVarHere',
 	'Add Var to This Box',
 	KeyMod.Alt | KeyCode.Insert,
+	localize('rtv.addVarHere', 'Add Var to This Box'),
 	(c) => {
 		c.changeVars(ChangeVarsOp.Add, ChangeVarsWhere.Here);
 	}
@@ -3316,6 +3270,7 @@ createRTVAction(
 	'rtv.addVarEverywhere',
 	'Add Var to All Boxes',
 	KeyMod.Alt | KeyMod.Shift | KeyCode.Insert,
+	localize('rtv.addVarEverywhere', 'Add Var to All Boxes'),
 	(c) => {
 		c.changeVars(ChangeVarsOp.Add, ChangeVarsWhere.All);
 	}
@@ -3325,6 +3280,7 @@ createRTVAction(
 	'rtv.delVarHere',
 	'Delete Var from This Box',
 	KeyMod.Alt | KeyCode.Delete,
+	localize('rtv.delVarHere', 'Delete Var from This Box'),
 	(c) => {
 		c.changeVars(ChangeVarsOp.Del, ChangeVarsWhere.Here);
 	}
@@ -3334,6 +3290,7 @@ createRTVAction(
 	'rtv.delVarEverywhere',
 	'Delete Var from All Boxes',
 	KeyMod.Alt | KeyMod.Shift | KeyCode.Delete,
+	localize('rtv.delVarEverywhere', 'Delete Var from All Boxes'),
 	(c) => {
 		c.changeVars(ChangeVarsOp.Del, ChangeVarsWhere.All);
 	}
@@ -3343,6 +3300,7 @@ createRTVAction(
 	'rtv.keepVarHere',
 	'Keep Only Var in This Box',
 	KeyMod.Alt | KeyCode.End,
+	localize('rtv.keepVarHere', 'Keep Only Var in This Box'),
 	(c) => {
 		c.changeVars(ChangeVarsOp.Keep, ChangeVarsWhere.Here);
 	}
@@ -3352,6 +3310,7 @@ createRTVAction(
 	'rtv.keepVarEverywhere',
 	'Keep Only Var in All Boxes',
 	KeyMod.Alt | KeyMod.Shift | KeyCode.End,
+	localize('rtv.keepVarEverywhere', 'Keep Only Var in All Boxes'),
 	(c) => {
 		c.changeVars(ChangeVarsOp.Keep, ChangeVarsWhere.All);
 	}
@@ -3361,6 +3320,7 @@ createRTVAction(
 	'rtv.focusOnLoop',
 	'Focus on Loop using Localized Live Programming',
 	KeyMod.Alt | KeyCode.US_DOT,
+	localize('rtv.focusOnLoop', 'Focus on Loop using Localized Live Programming'),
 	(c) => {
 		c.focusOnLoopWithSeed();
 	}
@@ -3388,6 +3348,7 @@ createRTVAction(
 	'rtv.editVar',
 	'Start Editing the Var',
 	KeyMod.Shift | KeyCode.Space,
+	localize('rtv.editVar', 'Start Editing the Var'),
 	(c) => {
 		c.editingVar();
 	}

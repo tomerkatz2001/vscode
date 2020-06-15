@@ -26,6 +26,8 @@
 		"vs/platform/*/browser/*"
 	],
 	"exclude": [
-		"node_modules/*"
+		"node_modules/*",
+		"vs/editor/contrib/rtv/frontend**",
+		"vs/editor/contrib/rtv/frontend**"
 	]
 }
