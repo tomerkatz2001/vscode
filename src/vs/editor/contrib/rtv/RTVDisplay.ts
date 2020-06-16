@@ -2892,7 +2892,7 @@ class RTVController implements IEditorContribution {
 		if (e.keyCode === KeyCode.Ctrl) {
 			this._peekCounter = 0;
 			if (this._peekTimer !== null) {
-				utils.clearTimeout(this._peekTimer);
+				clearTimeout(this._peekTimer);
 			}
 			if (this.viewMode === ViewMode.Stealth) {
 				this.setVisibilityNone();
@@ -2907,7 +2907,7 @@ class RTVController implements IEditorContribution {
 			this._peekCounter = this._peekCounter + 1;
 			if (this._peekCounter > 1) {
 				if (this._peekTimer !== null) {
-					utils.clearTimeout(this._peekTimer);
+					clearTimeout(this._peekTimer);
 				}
 				this._peekTimer = setTimeout(() => {
 					this._peekTimer = null;
