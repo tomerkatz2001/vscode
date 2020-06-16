@@ -19,13 +19,6 @@ let RUNPY = getOSEnvVariable('RUNPY');
 let SYNTH = getOSEnvVariable('SYNTH');
 let SCALA = getOSEnvVariable('SCALA');
 
-export interface Timer {
-}
-
-export function clearTimeout(t: Timer): void {
-
-}
-
 export interface Process {
 	onExit(fn: (exitCode: any, result?: string) => void): void;
 	onStdout(fn: (data: any) => void): void;

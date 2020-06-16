@@ -93,8 +93,8 @@ const extractEditorSrcTask = task.define('extract-editor-src', () => {
 	});
 
 	// Return the original utils
-	fs.symlinkSync(dstPath + utils, orgPath + utils);
-	fs.symlinkSync(dstPath + logger, orgPath + logger);
+	fs.symlinkSync(orgPath + utils, dstPath + utils);
+	fs.symlinkSync(orgPath + logger, dstPath + logger);
 });
 
 const compileEditorAMDTask = task.define('compile-editor-amd', compilation.compileTask('out-editor-src', 'out-editor-build', true));
