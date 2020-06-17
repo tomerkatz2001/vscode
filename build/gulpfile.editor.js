@@ -65,15 +65,15 @@ const extractEditorSrcTask = task.define('extract-editor-src', () => {
 	// Copy the RTVUtil file for front-end to the src dir
 	const utils = 'RTVUtils.ts';
 	const logger = 'RTVLogger.ts';
-	const orgPath = 'src/vs/editor/contrib/rtv/frontend/';
-	const srcPath = 'src/vs/editor/contrib/rtv/frontend/';
+	const orgPath = 'local/';
+	const srcPath = 'remote/';
 	const dstPath = 'src/vs/editor/contrib/rtv/';
 
-	console.log(`Copying ${srcPath + utils} to ${dstPath + utils}`);
-	fs.copyFileSync(srcPath + utils, dstPath + utils);
-
-	console.log(`Copying ${srcPath + logger} to ${dstPath + logger}`);
-	fs.copyFileSync(srcPath + logger, dstPath + logger);
+	// Return the original utils
+	fs.unlinkSync(dstPath + utils);
+	fs.symlinkSync(srcPath + utils, dstPath + utils);
+	fs.unlinkSync(dstPath + logger);
+	fs.symlinkSync(srcPath + logger, dstPath + logger);
 
 	standalone.extractEditor({
 		sourcesRoot: path.join(root, 'src'),
@@ -93,7 +93,9 @@ const extractEditorSrcTask = task.define('extract-editor-src', () => {
 	});
 
 	// Return the original utils
+	fs.unlinkSync(dstPath + utils);
 	fs.symlinkSync(orgPath + utils, dstPath + utils);
+	fs.unlinkSync(dstPath + logger);
 	fs.symlinkSync(orgPath + logger, dstPath + logger);
 });
 

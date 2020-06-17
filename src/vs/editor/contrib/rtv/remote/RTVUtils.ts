@@ -9,27 +9,29 @@ export interface Process {
 }
 
 class RunpyProcess implements Process {
-	private errFn: (data: any) => void = (_) => {};
-	private exitFn: (data: any) => void = (_) => {};
-
-	constructor(private request: Promise<Response>) { }
+    constructor(private request: Promise<Response>,
+		private abortController: AbortController) { }
 
 	onStdout(fn: (data: any) => void): void {
 		// TODO (How) could we use this?
 	}
 
-	onStderr(fn: (data: any) => void): void {
-		this.errFn = fn;
-		this.request.then(this.exitFn, this.errFn);
+	onStderr(fn: (data: any) => void): void {		
+	    this.request.catch(fn);
 	}
 
 	kill() {
-		this.request.then(() => {}, () => {});
+	    this.abortController.abort();
 	}
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {
-		this.exitFn = fn;
-		this.request.then(this.exitFn, this.errFn);
+	    this.request.then(
+		async (response: Response) => {
+		    const success = (await response.status) === 200;
+		    const result = await response.text();
+		    fn(success ? 0 : 1, result);
+		}
+	    );
 	}
 }
 
@@ -52,15 +54,27 @@ class SynthProcess implements Process {
 }
 
 export function runProgram(program: string): Process {
-	const baseUrl = 'localhost:8080'; // $(location).attr('href');
+    // We need this for CSRF protection on the server
+    const csrfInput = document.getElementById("csrf-parameter") as HTMLInputElement;
+    const csrfToken = csrfInput.value;
+    const csrfHeaderName = csrfInput.name;
 
-	const response = fetch(`${baseUrl}/editor/runProgram`, {
-		method: 'POST',
-		body: program,
-		headers: { 'Content-Type': 'text/plain; charset=UTF-8' }
-	});
+    const headers = new Headers();
+    headers.append('Content-Type', 'text/plain;charset=UTF-8');
+    headers.append(csrfHeaderName, csrfToken);
+    
+    const abortController = new AbortController();
+    const promise = fetch(
+	"/editor/runProgram",
+	{
+	    method: 'POST',
+	    body: program,
+	    mode: 'same-origin',
+	    headers: headers,
+	    signal: abortController.signal
+	});   
 
-	return new RunpyProcess(response);
+    return new RunpyProcess(promise, abortController);
 }
 
 export function synthesizeSnippet(problem: string): Process {

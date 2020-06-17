@@ -2348,7 +2348,7 @@ class RTVController implements IEditorContribution {
 
 			if (!error) {
 				this.logger.synthEnd(exitCode, result);
-				error = result != undefined && result === 'None';
+				error = result !== undefined && result === 'None';
 				if (!error) {
 					this.insertSynthesizedFragment(result!!, lineno);
 				}
@@ -2407,18 +2407,20 @@ class RTVController implements IEditorContribution {
 			let errorMsg: string = '';
 			c.onStderr((msg) => errorMsg += msg);
 
-			c.onExit((exitCode, program) => {
+			c.onExit((exitCode, result) => {
 				// When exitCode === null, it means the process was killed,
 				// so there is nothing else to do
 				if (exitCode !== null) {
 					this.updateLinesWhenOutOfDate(exitCode, e);
 					this._pythonProcess = undefined;
-					if (exitCode === 0) {
+				    if (exitCode === 0) {
+						console.log(`runProgram succeeded with respose ${result}`);
 						this.clearError();
-						this.updateData(program);
+						this.updateData(result);
 						this.updateContentAndLayout();
 					}
-					else {
+				    else {
+						console.log(`runProgram failed`);
 						this.showErrorWithDelay(errorMsg);
 						this.updateContentAndLayout();
 					}
