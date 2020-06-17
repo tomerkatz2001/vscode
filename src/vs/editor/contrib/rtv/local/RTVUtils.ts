@@ -3,8 +3,8 @@ import * as child_process from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import {LocalLogger, RTVLogger} from "vs/editor/contrib/rtv/RTVLogger";
-import {ICodeEditor} from "vs/editor/browser/editorBrowser";
+import { LocalLogger, RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
+import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
 // Helper functions
 function getOSEnvVariable(v: string): string {
@@ -29,7 +29,7 @@ export interface Process {
 
 class RunpyProcess implements Process {
 	constructor(private file: string,
-				private p: child_process.ChildProcessWithoutNullStreams) {
+		private p: child_process.ChildProcessWithoutNullStreams) {
 	}
 
 	onStdout(fn: (data: any) => void): void {
@@ -61,7 +61,7 @@ class RunpyProcess implements Process {
 
 class SynthProcess implements Process {
 	constructor(private file: string,
-				private process: child_process.ChildProcessWithoutNullStreams) {}
+		private process: child_process.ChildProcessWithoutNullStreams) { }
 
 	onStdout(fn: (data: any) => void): void {
 		this.process.stdout.on('data', fn);

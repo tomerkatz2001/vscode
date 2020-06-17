@@ -124,7 +124,10 @@ const copyrightFilter = [
 	'!extensions/html-language-features/server/src/modes/typescript/*',
 	'!extensions/*/server/bin/*',
 	'!src/vs/editor/test/node/classification/typescript-test.ts',
-	'!scripts/code-web.js'
+	'!scripts/code-web.js',
+	'!src/vs/editor/contrib/rtv/**',
+	'!src/*.py',
+	'!test/rtv/**',
 ];
 
 const jsHygieneFilter = [

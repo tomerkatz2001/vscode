@@ -4,37 +4,37 @@ import * as path from 'path';
  */
 
 import 'vs/css!./rtv';
-import {ICursorPositionChangedEvent} from 'vs/editor/common/controller/cursorEvents';
-import {IModelContentChangedEvent} from 'vs/editor/common/model/textModelEvents';
-import {IEditorContribution, IScrollEvent} from 'vs/editor/common/editorCommon';
+import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
+import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
+import { IEditorContribution, IScrollEvent } from 'vs/editor/common/editorCommon';
 import {
 	EditorAction,
 	registerEditorAction,
 	registerEditorContribution,
 	ServicesAccessor
 } from 'vs/editor/browser/editorExtensions';
-import {EditorLayoutInfo, EditorOption} from 'vs/editor/common/config/editorOptions';
+import { EditorLayoutInfo, EditorOption } from 'vs/editor/common/config/editorOptions';
 import * as strings from 'vs/base/common/strings';
-import {IRange, Range} from 'vs/editor/common/core/range';
-import {IOpenerService} from 'vs/platform/opener/common/opener';
-import {IModeService} from 'vs/editor/common/services/modeService';
-import {ICodeEditor} from 'vs/editor/browser/editorBrowser';
-import {MarkdownRenderer} from 'vs/editor/contrib/markdown/markdownRenderer';
-import {IPosition, Position} from 'vs/editor/common/core/position';
-import {MarkdownString} from 'vs/base/common/htmlContent';
-import {IConfigurationChangeEvent, IConfigurationService} from 'vs/platform/configuration/common/configuration';
-import {Registry} from 'vs/platform/registry/common/platform';
-import {Extensions, IConfigurationRegistry} from 'vs/platform/configuration/common/configurationRegistry';
-import {localize} from 'vs/nls';
-import {IContextMenuService} from 'vs/platform/contextview/browser/contextView';
-import {Action, IAction} from 'vs/base/common/actions';
-import {Separator} from 'vs/base/browser/ui/actionbar/actionbar';
-import {ContextSubMenu} from 'vs/base/browser/contextmenu';
-import {IMouseWheelEvent} from 'vs/base/browser/mouseEvent';
-import {IKeyboardEvent} from 'vs/base/browser/keyboardEvent';
-import {KeyCode, KeyMod} from 'vs/base/common/keyCodes';
-import {KeybindingWeight} from 'vs/platform/keybinding/common/keybindingsRegistry';
-import {IThemeService} from 'vs/platform/theme/common/themeService';
+import { IRange, Range } from 'vs/editor/common/core/range';
+import { IOpenerService } from 'vs/platform/opener/common/opener';
+import { IModeService } from 'vs/editor/common/services/modeService';
+import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
+import { MarkdownRenderer } from 'vs/editor/contrib/markdown/markdownRenderer';
+import { IPosition, Position } from 'vs/editor/common/core/position';
+import { MarkdownString } from 'vs/base/common/htmlContent';
+import { IConfigurationChangeEvent, IConfigurationService } from 'vs/platform/configuration/common/configuration';
+import { Registry } from 'vs/platform/registry/common/platform';
+import { Extensions, IConfigurationRegistry } from 'vs/platform/configuration/common/configurationRegistry';
+import { localize } from 'vs/nls';
+import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
+import { Action, IAction } from 'vs/base/common/actions';
+import { Separator } from 'vs/base/browser/ui/actionbar/actionbar';
+import { ContextSubMenu } from 'vs/base/browser/contextmenu';
+import { IMouseWheelEvent } from 'vs/base/browser/mouseEvent';
+import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
+import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
+import { KeybindingWeight } from 'vs/platform/keybinding/common/keybindingsRegistry';
+import { IThemeService } from 'vs/platform/theme/common/themeService';
 import {
 	badgeBackground,
 	editorWidgetBackground,
@@ -43,9 +43,9 @@ import {
 	inputForeground,
 	widgetShadow
 } from 'vs/platform/theme/common/colorRegistry';
-import {IIdentifiedSingleEditOperation, IModelDecorationOptions, ITextModel} from 'vs/editor/common/model';
-import {Selection} from 'vs/editor/common/core/selection';
-import {RTVLogger} from 'vs/editor/contrib/rtv/RTVLogger';
+import { IIdentifiedSingleEditOperation, IModelDecorationOptions, ITextModel } from 'vs/editor/common/model';
+import { Selection } from 'vs/editor/common/core/selection';
+import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
 
 function indent(s: string): number {
@@ -2413,13 +2413,13 @@ class RTVController implements IEditorContribution {
 				if (exitCode !== null) {
 					this.updateLinesWhenOutOfDate(exitCode, e);
 					this._pythonProcess = undefined;
-				    if (exitCode === 0) {
+					if (exitCode === 0) {
 						console.log(`runProgram succeeded with respose ${result}`);
 						this.clearError();
 						this.updateData(result);
 						this.updateContentAndLayout();
 					}
-				    else {
+					else {
 						console.log(`runProgram failed`);
 						this.showErrorWithDelay(errorMsg);
 						this.updateContentAndLayout();
