@@ -289,7 +289,7 @@ class RTVDisplayBox {
 		this._box.style.transitionDuration = '0.3s';
 		this._box.style.transitionDelay = '0s';
 		this._box.style.transitionTimingFunction = 'ease-in';
-		this._box.className = 'monaco-editor-hover';
+		this._box.className = 'monaco-hover';
 		if (!this._controller.supportSynthesis) {
 			this._box.onauxclick = (e) => {
 				this.onClick(e);
@@ -1725,7 +1725,7 @@ class RTVController implements IEditorContribution {
 		div.style.transitionDelay = '0s';
 		div.style.transitionTimingFunction = 'ease-in';
 		div.style.boxShadow = '0px 2px 8px black';
-		div.className = 'monaco-editor-hover';
+		div.className = 'monaco-hover';
 		div.style.display = 'block';
 
 		/*Creates the row selector
