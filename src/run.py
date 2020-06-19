@@ -10,6 +10,11 @@ import json
 import re
 import core
 import time
+import base64
+import io
+import time
+import numpy as np
+from PIL import Image
 
 class LoopInfo:
 	def __init__(self, frame, lineno, indent):
@@ -54,8 +59,6 @@ class Logger(bdb.Bdb):
 		# self.exception = False
 
 		adjusted_lineno = frame.f_lineno-1
-		print("---------------------------------------")
-		print("About to execute: " + self.lines[adjusted_lineno].strip())
 		self.record_loop_end(frame, adjusted_lineno)
 		self.record_env(frame, adjusted_lineno)
 		self.record_loop_begin(frame, adjusted_lineno)
@@ -86,8 +89,8 @@ class Logger(bdb.Bdb):
 				del self.active_loops[-1]
 
 	def record_loop_begin(self, frame, lineno):
-		for l in self.active_loops:
-			print("Active loop at line " + str(l.lineno) + ", iter " + str(l.iter))
+		# for l in self.active_loops:
+		#	 print("Active loop at line " + str(l.lineno) + ", iter " + str(l.iter))
 		curr_stmt = self.lines[lineno]
 		if is_loop_str(curr_stmt):
 			if len(self.active_loops) > 0 and self.active_loops[-1].lineno == lineno:
@@ -132,7 +135,7 @@ class Logger(bdb.Bdb):
 
 	def record_env(self, frame, lineno):
 		if self.time >= 100:
-			self.set_quit()
+			#self.set_quit()
 			return
 		env = {}
 		env["time"] = self.time
@@ -140,7 +143,14 @@ class Logger(bdb.Bdb):
 		self.time = self.time + 1
 		for k in frame.f_locals:
 			if k != core.magic_var_name:
-				env[k] = repr(frame.f_locals[k])
+				v = frame.f_locals[k]
+				if isinstance(v, np.ndarray):
+					# r = "```html\n<i><b>h</b></i>```"
+					html = ndarray_to_html(v, format='png')
+					r = f"```html\n{html}\n```"
+				else:
+					r = repr(v)
+				env[k] = r
 				#env[k] = "```html\n<i><b>h</b></i>```"
 		env["lineno"] = lineno
 
@@ -153,7 +163,7 @@ class Logger(bdb.Bdb):
 		self.prev_env = env
 
 	# def user_exception(self, frame, e):
-	#     self.exception = True
+	#	 self.exception = True
 
 	def user_return(self, frame, rv):
 		# print("user_return ============================================")
@@ -170,18 +180,18 @@ class Logger(bdb.Bdb):
 			return
 
 		# if self.exception:
-		#     if rv == None:
-		#         rv_str = "Exception"
-		#     else:
-		#         rv_str = "Exception(" + repr(rv) + ")"
+		#	 if rv == None:
+		#		 rv_str = "Exception"
+		#	 else:
+		#		 rv_str = "Exception(" + repr(rv) + ")"
 		# else:
-		#     rv_str = repr(rv)
+		#	 rv_str = repr(rv)
 		adjusted_lineno = frame.f_lineno-1
-		print("About to return: " + self.lines[adjusted_lineno].strip())
+		# print("About to return: " + self.lines[adjusted_lineno].strip())
 
 		self.record_env(frame, "R" + str(adjusted_lineno))
 		#self.data_at("R" + str(adjusted_lineno))[-1]["rv"] = rv_str
-		self.data_at("R" + str(adjusted_lineno))[-1]["rv"] = repr(rv)
+		#self.data_at("R" + str(adjusted_lineno))[-1]["rv"] = repr(rv)
 		self.record_loop_end(frame, adjusted_lineno)
 		#self.record_loop_begin(frame, adjusted_lineno)
 
@@ -246,16 +256,16 @@ def compute_writes(lines):
 	while not done:
 		try:
 			code = "".join(lines)
-			print("Try number " + str(i))
-			print("BEGIN CODE")
-			print(code)
-			print("END CODE")
+			# print("Try number " + str(i))
+			# print("BEGIN CODE")
+			# print(code)
+			# print("END CODE")
 			i = i + 1
 			root = ast.parse(code)
 			done = True
 		except IndentationError as e:
 			lineno = e.lineno-1
-			print(lines[lineno])
+			# print(lines[lineno])
 			if (lines[lineno].find(core.magic_var_name) == -1):
 				raise
 			else:
@@ -293,8 +303,25 @@ def adjust_to_next_time_step(data):
 		new_data[lineno] = next_envs
 	return new_data
 
+def pil_to_html(img, **kwargs):
+	file_buffer = io.BytesIO()
+	img.save(file_buffer, **kwargs)
+	encoded = base64.b64encode(file_buffer.getvalue())
+	encoded_str = str(encoded)[2:-1]
+	img_format = kwargs["format"]
+	return f"<img src='data:image/{img_format};base64,{encoded_str}'>"
+
+def ndarray_to_html(arr, **kwargs):
+	img = Image.fromarray(arr)
+	h = img.height
+	w = img.width
+	new_width = 60
+	img = img.resize((new_width, int(h*(new_width / w))), resample = Image.BOX)
+	return pil_to_html(img, **kwargs)
+
 def main():
 
+	start = time.time()
 	if len(sys.argv) != 2:
 		print("Usage: run <file-name>")
 		exit(-1)
@@ -302,12 +329,15 @@ def main():
 	lines = core.load_code_lines(sys.argv[1])
 
 	code = "".join(lines)
-	print(code)
+	#print(code)
 
 	writes = compute_writes(lines)
 	run_time_data = compute_runtime_data(lines)
 
 	with open(sys.argv[1] + ".out", "w") as out:
 		out.write(json.dumps((writes, run_time_data)))
+
+	end = time.time()
+	print("Time: " + str(end - start))
 
 main()
