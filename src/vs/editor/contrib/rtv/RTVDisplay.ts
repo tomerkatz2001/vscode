@@ -2348,7 +2348,7 @@ class RTVController implements IEditorContribution {
 
 			if (!error) {
 				this.logger.synthEnd(exitCode, result);
-				error = result !== undefined && result === 'None';
+				error = result === undefined || result === 'None';
 				if (!error) {
 					this.insertSynthesizedFragment(result!!, lineno);
 				}
@@ -2414,13 +2414,11 @@ class RTVController implements IEditorContribution {
 					this.updateLinesWhenOutOfDate(exitCode, e);
 					this._pythonProcess = undefined;
 					if (exitCode === 0) {
-						console.log(`runProgram succeeded with respose ${result}`);
 						this.clearError();
 						this.updateData(result);
 						this.updateContentAndLayout();
 					}
 					else {
-						console.log(`runProgram failed`);
 						this.showErrorWithDelay(errorMsg);
 						this.updateContentAndLayout();
 					}

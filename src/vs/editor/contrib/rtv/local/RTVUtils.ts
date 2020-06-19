@@ -48,10 +48,8 @@ class RunpyProcess implements Process {
 		this.p.on('exit', (exitCode, _) => {
 			let result = undefined;
 
-			if (exitCode !== null) {
-				if (exitCode === 0) {
-					result = fs.readFileSync(this.file + '.out').toString();
-				}
+			if (exitCode === 0) {
+				result = fs.readFileSync(this.file + '.out').toString();
 			}
 
 			fn(exitCode, result);
@@ -79,7 +77,7 @@ class SynthProcess implements Process {
 		this.process.on('close', (exitCode) => {
 			let result = undefined;
 
-			if (exitCode !== null && exitCode !== 0) {
+			if (exitCode === 0) {
 				result = fs.readFileSync(this.file + '.out').toString();
 			}
 
