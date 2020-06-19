@@ -40,7 +40,7 @@ import { parseLinkedText } from 'vs/base/common/linkedText';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
 import { Button } from 'vs/base/browser/ui/button/button';
 import { Link } from 'vs/platform/opener/browser/link';
-import { CompositeDragAndDropObserver, DragAndDropObserver } from 'vs/workbench/browser/dnd';
+import { CompositeDragAndDropObserver, DragAndDropObserver, toggleDropEffect } from 'vs/workbench/browser/dnd';
 import { Orientation } from 'vs/base/browser/ui/sash/sash';
 import { ProgressBar } from 'vs/base/browser/ui/progressbar/progressbar';
 import { CompositeProgressIndicator } from 'vs/workbench/services/progress/browser/progressIndicator';
@@ -917,11 +917,16 @@ export class ViewPaneContainer extends Component implements IViewPaneContainer {
 						const container = this.viewDescriptorService.getViewContainerById(dropData.id)!;
 						const viewsToMove = this.viewDescriptorService.getViewContainerModel(container).allViewDescriptors;
 
-						if (!viewsToMove.some(v => !v.canMoveView)) {
+						if (!viewsToMove.some(v => !v.canMoveView) && viewsToMove.length > 0) {
 							overlay = new ViewPaneDropOverlay(parent, undefined, this.viewDescriptorService.getViewContainerLocation(this.viewContainer)!, this.themeService);
 						}
 					}
 
+				}
+			},
+			onDragOver: (e) => {
+				if (this.panes.length === 0) {
+					toggleDropEffect(e.eventData.dataTransfer, 'move', overlay !== undefined);
 				}
 			},
 			onDragLeave: (e) => {
@@ -1357,11 +1362,14 @@ export class ViewPaneContainer extends Component implements IViewPaneContainer {
 						const container = this.viewDescriptorService.getViewContainerById(dropData.id)!;
 						const viewsToMove = this.viewDescriptorService.getViewContainerModel(container).allViewDescriptors;
 
-						if (!viewsToMove.some(v => !v.canMoveView)) {
+						if (!viewsToMove.some(v => !v.canMoveView) && viewsToMove.length > 0) {
 							overlay = new ViewPaneDropOverlay(pane.dropTargetElement, this.orientation ?? Orientation.VERTICAL, this.viewDescriptorService.getViewContainerLocation(this.viewContainer)!, this.themeService);
 						}
 					}
 				}
+			},
+			onDragOver: (e) => {
+				toggleDropEffect(e.eventData.dataTransfer, 'move', overlay !== undefined);
 			},
 			onDragLeave: (e) => {
 				overlay?.dispose();

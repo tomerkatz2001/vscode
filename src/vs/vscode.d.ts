@@ -2415,6 +2415,11 @@ declare module 'vscode' {
 		isTrusted?: boolean;
 
 		/**
+		 * Indicates that this markdown string can contain [ThemeIcons](#ThemeIcon), e.g. `$(zap)`.
+		 */
+		readonly supportThemeIcons?: boolean;
+
+		/**
 		 * Creates a new markdown string with the given value.
 		 *
 		 * @param value Optional, initial value.
@@ -5416,6 +5421,30 @@ declare module 'vscode' {
 	}
 
 	/**
+	 * The ExtensionMode is provided on the `ExtensionContext` and indicates the
+	 * mode the specific extension is running in.
+	 */
+	export enum ExtensionMode {
+		/**
+		 * The extension is installed normally (for example, from the marketplace
+		 * or VSIX) in VS Code.
+		 */
+		Production = 1,
+
+		/**
+		 * The extension is running from an `--extensionDevelopmentPath` provided
+		 * when launching VS Code.
+		 */
+		Development = 2,
+
+		/**
+		 * The extension is running from an `--extensionTestsPath` and
+		 * the extension host is running unit tests.
+		 */
+		Test = 3,
+	}
+
+	/**
 	 * An extension context is a collection of utilities private to an
 	 * extension.
 	 *
@@ -5492,6 +5521,13 @@ declare module 'vscode' {
 		 * the parent directory is guaranteed to be existent.
 		 */
 		readonly logPath: string;
+
+		/**
+		 * The mode the extension is running in. This is specific to the current
+		 * extension. One extension may be in `ExtensionMode.Development` while
+		 * other extensions in the host run in `ExtensionMode.Release`.
+		 */
+		readonly extensionMode: ExtensionMode;
 	}
 
 	/**
@@ -8408,8 +8444,9 @@ declare module 'vscode' {
 	interface Pseudoterminal {
 		/**
 		 * An event that when fired will write data to the terminal. Unlike
-		 * [Terminal.sendText](#Terminal.sendText) which sends text to the underlying _process_
-		 * (the pty "slave"), this will write the text to the terminal itself (the pty "master").
+		 * [Terminal.sendText](#Terminal.sendText) which sends text to the underlying child
+		 * pseudo-device (the child), this will write the text to parent pseudo-device (the
+		 * _terminal_ itself).
 		 *
 		 * Note writing `\n` will just move the cursor down 1 row, you need to write `\r` as well
 		 * to move the cursor to the left-most cell.
