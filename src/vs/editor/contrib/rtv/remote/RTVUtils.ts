@@ -1,4 +1,4 @@
-import { RTVLogger, RemoteLogger } from 'vs/editor/contrib/rtv/RTVLogger';
+import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
 export interface Process {
@@ -82,7 +82,7 @@ export function synthesizeSnippet(problem: string): Process {
 }
 
 export function getLogger(editor: ICodeEditor): RTVLogger {
-	return new RemoteLogger();
+	return new RTVLogger(editor);
 }
 
 // Assuming the server is running on a unix system

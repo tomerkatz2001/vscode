@@ -46,6 +46,7 @@ import {
 import { IIdentifiedSingleEditOperation, IModelDecorationOptions, ITextModel } from 'vs/editor/common/model';
 import { Selection } from 'vs/editor/common/core/selection';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
+import { Process } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
 
 function indent(s: string): number {
@@ -1425,7 +1426,7 @@ class RTVController implements IEditorContribution {
 	private _peekCounter: number = 0;
 	private _peekTimer: ReturnType<typeof setTimeout> | null = null;
 	private _globalDeltaVarSet: DeltaVarSet = new DeltaVarSet();
-	private _pythonProcess?: utils.Process = undefined;
+	private _pythonProcess?: Process = undefined;
 	private _runProgramDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 
 	public static readonly ID = 'editor.contrib.rtv';

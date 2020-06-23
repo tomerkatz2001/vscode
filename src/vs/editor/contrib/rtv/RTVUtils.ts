@@ -3,7 +3,8 @@ import * as child_process from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { LocalLogger, RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
+import { Process } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
 // Helper functions
@@ -19,13 +20,6 @@ let PY3 = getOSEnvVariable('PYTHON3');
 let RUNPY = getOSEnvVariable('RUNPY');
 let SYNTH = getOSEnvVariable('SYNTH');
 let SCALA = getOSEnvVariable('SCALA');
-
-export interface Process {
-	onExit(fn: (exitCode: any, result?: string) => void): void;
-	onStdout(fn: (data: any) => void): void;
-	onStderr(fn: (data: any) => void): void;
-	kill(): void;
-}
 
 class RunpyProcess implements Process {
 	constructor(private file: string,
@@ -101,7 +95,7 @@ export function synthesizeSnippet(problem: string): Process {
 }
 
 export function getLogger(editor: ICodeEditor): RTVLogger {
-	return new LocalLogger(editor);
+	return new RTVLogger(editor);
 }
 
 export const EOL: string = os.EOL;
