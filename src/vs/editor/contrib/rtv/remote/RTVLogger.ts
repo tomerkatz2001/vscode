@@ -2,6 +2,8 @@ import { IRTVLogger } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
 export class RTVLogger implements IRTVLogger {
+	// TODO Actually use the editor, so we can remove the following:
+	// @ts-ignore
 	constructor(private readonly _editor: ICodeEditor) {}
 
 	dispose(): void {
