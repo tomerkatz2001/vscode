@@ -1,6 +1,9 @@
 import { IRTVLogger } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
 export class RTVLogger implements IRTVLogger {
+	constructor(private readonly _editor: ICodeEditor) {}
+
 	dispose(): void {
 		// TODO
 	}
