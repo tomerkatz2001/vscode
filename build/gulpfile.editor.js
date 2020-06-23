@@ -63,17 +63,18 @@ const extractEditorSrcTask = task.define('extract-editor-src', () => {
 	const extrausages = fs.readFileSync(path.join(root, 'build', 'monaco', 'monaco.usage.recipe')).toString();
 
 	// Copy the RTVUtil file for front-end to the src dir
-	const utils = 'RTVUtils.ts';
-	const logger = 'RTVLogger.ts';
-	const orgPath = 'local/';
-	const srcPath = 'remote/';
-	const dstPath = 'src/vs/editor/contrib/rtv/';
+	const rtv = 'src/vs/editor/contrib/rtv/';
 
-	// Return the original utils
-	fs.unlinkSync(dstPath + utils);
-	fs.symlinkSync(srcPath + utils, dstPath + utils);
-	fs.unlinkSync(dstPath + logger);
-	fs.symlinkSync(srcPath + logger, dstPath + logger);
+	// Backup the local files
+	fs.mkdirSync(rtv + 'local');
+	fs.copyFileSync(rtv + 'RTVUtils.ts', rtv + 'local/RTVUtils.ts');
+	fs.copyFileSync(rtv + 'RTVLogger.ts', rtv + 'local/RTVLogger.ts');
+
+	// Move the remote files
+	fs.unlinkSync(rtv + 'RTVUtils.ts');
+	fs.unlinkSync(rtv + 'RTVLogger.ts');
+	fs.copyFileSync(rtv + 'remote/RTVUtils.ts', rtv + 'RTVUtils.ts');
+	fs.copyFileSync(rtv + 'remote/RTVLogger.ts', rtv + 'RTVLogger.ts');
 
 	standalone.extractEditor({
 		sourcesRoot: path.join(root, 'src'),
@@ -93,10 +94,13 @@ const extractEditorSrcTask = task.define('extract-editor-src', () => {
 	});
 
 	// Return the original utils
-	fs.unlinkSync(dstPath + utils);
-	fs.symlinkSync(orgPath + utils, dstPath + utils);
-	fs.unlinkSync(dstPath + logger);
-	fs.symlinkSync(orgPath + logger, dstPath + logger);
+	fs.unlinkSync(rtv + 'RTVUtils.ts');
+	fs.unlinkSync(rtv + 'RTVLogger.ts');
+	fs.copyFileSync(rtv + 'local/RTVUtils.ts', rtv + 'RTVUtils.ts');
+	fs.copyFileSync(rtv + 'local/RTVLogger.ts', rtv + 'RTVLogger.ts');
+	fs.unlinkSync(rtv + 'local/RTVUtils.ts');
+	fs.unlinkSync(rtv + 'local/RTVLogger.ts');
+	fs.rmdirSync(rtv + 'local');
 });
 
 const compileEditorAMDTask = task.define('compile-editor-amd', compilation.compileTask('out-editor-src', 'out-editor-build', true));
