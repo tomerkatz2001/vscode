@@ -1,12 +1,6 @@
+import { Process } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
-
-export interface Process {
-	onExit(fn: (exitCode: any, result?: string) => void): void;
-	onStdout(fn: (data: any) => void): void;
-	onStderr(fn: (data: any) => void): void;
-	kill(): void;
-}
 
 class RunpyProcess implements Process {
 	constructor(private request: Promise<Response>,
