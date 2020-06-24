@@ -135,7 +135,7 @@ class Logger(bdb.Bdb):
 
 	def record_env(self, frame, lineno):
 		if self.time >= 100:
-			#self.set_quit()
+			self.set_quit()
 			return
 		env = {}
 		env["time"] = self.time
