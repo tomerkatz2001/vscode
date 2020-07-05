@@ -48,6 +48,7 @@ class SynthProcess implements Process {
 }
 
 export function runProgram(program: string): Process {
+	// TODO Rewrite this using Websockets!
 	// We need this for CSRF protection on the server
 	const csrfInput = document.getElementById('csrf-parameter') as HTMLInputElement;
 	const csrfToken = csrfInput.value;

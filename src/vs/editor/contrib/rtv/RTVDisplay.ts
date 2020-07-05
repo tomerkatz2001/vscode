@@ -2402,6 +2402,7 @@ class RTVController implements IEditorContribution {
 				this._pythonProcess.kill();
 			}
 
+			this.logger.projectionBoxUpdateStart();
 			let c = utils.runProgram(program);
 			this._pythonProcess = c;
 
@@ -2409,6 +2410,7 @@ class RTVController implements IEditorContribution {
 			c.onStderr((msg) => errorMsg += msg);
 
 			c.onExit((exitCode, result) => {
+				this.logger.projectionBoxUpdateEnd();
 				// When exitCode === null, it means the process was killed,
 				// so there is nothing else to do
 				if (exitCode !== null) {

@@ -86,6 +86,14 @@ export class RTVLogger implements IRTVLogger {
 		}
 	}
 
+	public projectionBoxUpdateStart(): void {
+		this.log('projectionBox.update.start');
+	}
+
+	public projectionBoxUpdateEnd(): void {
+		this.log('projectionBox.update.end');
+	}
+
 	public projectionBoxExit() {
 		this.log('focus.projectionBox.exit');
 	}
