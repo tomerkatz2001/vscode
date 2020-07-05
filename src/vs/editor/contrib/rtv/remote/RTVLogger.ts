@@ -2,59 +2,115 @@ import { IRTVLogger } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
 export class RTVLogger implements IRTVLogger {
-	// TODO Actually use the editor, so we can remove the following:
-	// @ts-ignore
+	// States for various things we need to log
+	private synthRequestCounter: number = 0;
+	private currentFileName: string = 'unknown';
+
+	private now(): number {
+		return new Date().getTime();
+	}
+
+	private getCurrentFileName() {
+		let rs = this._editor.getModel()?.uri.toString();
+
+		if (rs) {
+			if (!rs.includes(this.currentFileName)) {
+				let start = rs.lastIndexOf('/') + 1;
+				let end = rs.length - start - 3;
+				this.currentFileName = rs.substr(start, end);
+			}
+		} else {
+			this.currentFileName = 'unknown';
+		}
+
+		return this.currentFileName;
+	}
+
+	private log(code: string, msg?: string): void {
+		let str: string;
+
+		if (msg) {
+			msg = msg.replace(/\n/g, '\\n');
+			str = `${this.now()},${this.getCurrentFileName()},${code},${msg}`;
+		} else {
+			str = `${this.now()},${this.getCurrentFileName()},${code}`;
+		}
+
+		console.log(str);
+	}
+
 	constructor(private readonly _editor: ICodeEditor) {}
 
-	dispose(): void {
-		// TODO
+	public dispose() {
+		this.log('log.end');
 	}
 
-	synthStart(problem: any, examples: number, lineno: number): void {
-		// TODO
+	public synthStart(problem: any, examples: number, lineno: number) {
+		this.log(`synth.start.${this.synthRequestCounter}.${lineno}.${examples}`);
+
+		console.log(JSON.stringify(problem, null, 2));
+		console.log(this._editor.getModel()?.getLinesContent().join('\n'));
+
+		this.synthRequestCounter++;
 	}
 
-	synthOut(msg: string): void {
-		// TODO
+	public synthOut(msg: string) {
+		if (msg.endsWith('\n')) {
+			msg = msg.substr(0, msg.length - 1);
+		}
+
+		this.log('synth.stdout', msg);
 	}
 
-	synthErr(msg: string): void {
-		// TODO
+	public synthErr(msg: string) {
+		if (msg.endsWith('\n')) {
+			msg = msg.substr(0, msg.length - 1);
+		}
+
+		this.log('synth.sterr', msg);
 	}
 
-	synthEnd(exitCode: number, result?: string): void {
-		// TODO
+	public synthEnd(exitCode: number, result?: string) {
+		if (exitCode === 0) {
+			this.log(`synth.end.${this.synthRequestCounter - 1}.${exitCode}`, result);
+		} else {
+			this.log(`synth.end.${this.synthRequestCounter - 1}.${exitCode}`);
+		}
 	}
 
-	projectionBoxFocus(line: string, custom?: boolean): void {
-		// TODO
+	public projectionBoxFocus(line: string, custom?: boolean) {
+		if (custom) {
+			this.log('focus.projectionBox.focus.custom', line);
+		} else {
+			this.log('focus.projectionBox.focus.default', line);
+		}
 	}
 
-	projectionBoxExit(): void {
-		// TODO
+	public projectionBoxExit() {
+		this.log('focus.projectionBox.exit');
 	}
 
-	exampleBlur(idx: number, content: string): void {
-		// TODO
+	public exampleBlur(idx: number, content: string) {
+		this.log(`focus.example.${idx}.blur`, content);
 	}
 
-	exampleFocus(idx: number, content: string): void {
-		// TODO
+	public exampleFocus(idx: number, content: string) {
+		this.log(`focus.example.${idx}.focus`, content);
 	}
 
-	exampleChanged(idx: number, was: string, is: string): void {
-		// TODO
+	public exampleChanged(idx: number, was: string, is: string) {
+		this.log(`example.${idx}.change`, `${was},${is}`);
 	}
 
-	exampleInclude(idx: number, content: string): void {
-		// TODO
+	public exampleInclude(idx: number, content: string) {
+		this.log(`example.${idx}.include`, content);
 	}
 
-	exampleExclude(idx: number, content: string): void {
-		// TODO
+	public exampleExclude(idx: number, content: string) {
+		this.log(`example.${idx}.exclude`, content);
 	}
 
-	exampleReset(): void {
-		// TODO
+	public exampleReset() {
+		this.log('example.all.reset');
 	}
 }
