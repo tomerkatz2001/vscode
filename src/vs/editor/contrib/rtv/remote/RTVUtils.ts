@@ -2,15 +2,35 @@ import { Process } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
+class RunpyResponseData {
+	public success: boolean = false;
+	public stderr?: string = undefined;
+	public stdout?: string = undefined;
+	public result?: string = undefined;
+}
+
 class RunpyProcess implements Process {
 	constructor(private request: Promise<Response>,
 		private abortController: AbortController) { }
 
 	onStdout(fn: (data: any) => void): void {
-		// TODO (How) could we use this?
+		this.request.then(
+			async (response: Response) => {
+				const result = await response.clone().text();
+				let data: RunpyResponseData = JSON.parse(result);
+				fn(data.stdout);
+			}
+		);
 	}
 
 	onStderr(fn: (data: any) => void): void {
+		this.request.then(
+			async (response: Response) => {
+				const result = await response.clone().text();
+				let data: RunpyResponseData = JSON.parse(result);
+				fn(data.stderr);
+			}
+		);
 		this.request.catch(fn);
 	}
 
@@ -20,10 +40,11 @@ class RunpyProcess implements Process {
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {
 		this.request.then(
-			async (response: Response) => {
-				const success = (await response.status) === 200;
+			async (origResponse: Response) => {
+				const response = origResponse.clone();
 				const result = await response.text();
-				fn(success ? 0 : 1, result);
+				let data: RunpyResponseData = JSON.parse(result);
+				fn(data.success ? 0 : 1, data.result);
 			}
 		);
 	}
