@@ -110,7 +110,7 @@ function regExpMatchEntireString(s: string, regExp: string) {
 	return res !== null && res.index === 0 && res[0] === s;
 }
 
-class DelayedRunAtMostOne {
+export class DelayedRunAtMostOne {
 	private _timer: ReturnType<typeof setTimeout> | null = null;
 
 	public run(delay: number, c: () => void) {
@@ -125,6 +125,13 @@ class DelayedRunAtMostOne {
 				this._timer = null;
 				c();
 			}, delay);
+		}
+	}
+
+	public cancel() {
+		if (this._timer !== null) {
+			clearTimeout(this._timer);
+			this._timer = null;
 		}
 	}
 }
@@ -1595,7 +1602,7 @@ class RTVController implements IEditorContribution {
 	set loopFocusController(lc: LoopFocusController | null) {
 		this._loopFocusController?.destroyDecorations();
 		this._loopFocusController = lc;
-		this.runProgram();
+		this.updateContentAndLayout();
 	}
 
 	public changeToCompactView() {
@@ -2407,6 +2414,7 @@ class RTVController implements IEditorContribution {
 
 			let errorMsg: string = '';
 			c.onStderr((msg) => errorMsg += msg);
+			//c.onStdout((msg) => console.log(String(msg)));
 
 			c.onExit((exitCode, result) => {
 				// When exitCode === null, it means the process was killed,
@@ -2420,6 +2428,7 @@ class RTVController implements IEditorContribution {
 						this.updateContentAndLayout();
 					}
 					else {
+						//console.log(errorMsg);
 						this.showErrorWithDelay(errorMsg);
 						this.updateContentAndLayout();
 					}
