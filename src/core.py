@@ -1,4 +1,10 @@
 import re
+import io
+import base64
+import numpy as np
+from PIL import Image
+
+# Code manipulation
 
 magic_var_name = "__run_py__"
 
@@ -48,3 +54,52 @@ def load_code_lines(file_name):
 	strip_comments(lines)
 	replace_empty_lines_with_noop(lines)
 	return lines
+
+# Image Processing
+
+def is_ndarray_img(v):
+	return isinstance(v, np.ndarray) and v.dtype.name == 'uint8' and len(v.shape) == 3 and v.shape[2] == 3
+
+def is_list_img(v):
+	return isinstance(v, list) and len(v) > 0 and isinstance(v[0], list) and len(v[0]) > 0 and (isinstance(v[0][0], list) or isinstance(v[0][0], tuple)) and len(v[0][0]) == 3
+
+def if_img_convert_to_html(v):
+	if is_list_img(v):
+		return list_to_html(v, format='png')
+	elif is_ndarray_img(v):
+		return ndarray_to_html(v, format='png')
+	else:
+		return None
+
+# Convert PIL.Image to html
+def pil_to_html(img, **kwargs):
+	file_buffer = io.BytesIO()
+	img.save(file_buffer, **kwargs)
+	encoded = base64.b64encode(file_buffer.getvalue())
+	encoded_str = str(encoded)[2:-1]
+	img_format = kwargs["format"]
+	return f"<img src='data:image/{img_format};base64,{encoded_str}'>"
+
+# Convert ndarray to PIL.Image
+def ndarray_to_pil(arr, min_width = None, max_width = None):
+	img = Image.fromarray(arr)
+	h = img.height
+	w = img.width
+	new_width = None
+	if w > max_width:
+		new_width = max_width
+	if w < min_width:
+		new_width = min_width
+	if new_width != None:
+		img = img.resize((new_width, int(h*(new_width / w))), resample = Image.BOX)
+	return img
+
+# Convert list of lists to ndarray
+def list_to_ndarray(arr):
+	return np.asarray(arr, dtype=np.uint8)
+
+def ndarray_to_html(arr, **kwargs):
+	return pil_to_html(ndarray_to_pil(arr, 60, 150), **kwargs)
+
+def list_to_html(arr, **kwargs):
+	return ndarray_to_html(list_to_ndarray(arr), **kwargs)
