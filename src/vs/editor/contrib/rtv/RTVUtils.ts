@@ -18,6 +18,7 @@ function getOSEnvVariable(v: string): string {
 
 let PY3 = getOSEnvVariable('PYTHON3');
 let RUNPY = getOSEnvVariable('RUNPY');
+let IMGSUM = getOSEnvVariable('IMGSUM');
 let SYNTH = getOSEnvVariable('SYNTH');
 let SCALA = getOSEnvVariable('SCALA');
 
@@ -92,6 +93,13 @@ export function synthesizeSnippet(problem: string): Process {
 	fs.writeFileSync(example_fname, problem);
 	let c = child_process.spawn(SCALA, [SYNTH, example_fname]);
 	return new SynthProcess(example_fname, c);
+}
+
+export function runImgSummary(program: string, line: number, varname: string) {
+	const file: string = os.tmpdir() + path.sep + 'tmp.py';
+	fs.writeFileSync(file, program);
+	const local_process = child_process.spawn(PY3, [IMGSUM, file, line.toString(), varname]);
+	return new RunpyProcess(file, local_process);
 }
 
 export function getLogger(editor: ICodeEditor): RTVLogger {

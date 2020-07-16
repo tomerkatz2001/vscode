@@ -10,8 +10,6 @@ import json
 import re
 import core
 import time
-import base64
-import io
 import time
 import numpy as np
 from PIL import Image
@@ -144,14 +142,13 @@ class Logger(bdb.Bdb):
 		for k in frame.f_locals:
 			if k != core.magic_var_name:
 				v = frame.f_locals[k]
-				if isinstance(v, np.ndarray):
-					# r = "```html\n<i><b>h</b></i>```"
-					html = ndarray_to_html(v, format='png')
-					r = f"```html\n{html}\n```"
-				else:
+				html = core.if_img_convert_to_html(v)
+				if html == None:
 					r = repr(v)
+				else:
+					r = f"```html\n{html}\n```"
+
 				env[k] = r
-				#env[k] = "```html\n<i><b>h</b></i>```"
 		env["lineno"] = lineno
 
 		self.data_at(lineno).append(env)
@@ -302,22 +299,6 @@ def adjust_to_next_time_step(data):
 					next_envs.append(envs_by_time[next_time])
 		new_data[lineno] = next_envs
 	return new_data
-
-def pil_to_html(img, **kwargs):
-	file_buffer = io.BytesIO()
-	img.save(file_buffer, **kwargs)
-	encoded = base64.b64encode(file_buffer.getvalue())
-	encoded_str = str(encoded)[2:-1]
-	img_format = kwargs["format"]
-	return f"<img src='data:image/{img_format};base64,{encoded_str}'>"
-
-def ndarray_to_html(arr, **kwargs):
-	img = Image.fromarray(arr)
-	h = img.height
-	w = img.width
-	new_width = 60
-	img = img.resize((new_width, int(h*(new_width / w))), resample = Image.BOX)
-	return pil_to_html(img, **kwargs)
 
 def main():
 
