@@ -292,7 +292,9 @@ class RTVDisplayBox {
 		this._box.style.position = 'absolute';
 		this._box.style.top = '100px';
 		this._box.style.left = '800px';
-		this._box.style.maxWidth = '1366px';
+		this._box.style.maxWidth = '1400px';
+		this._box.style.maxHeight = '400px';
+		this._box.style.overflow = 'auto';
 		this._box.style.transitionProperty = 'all';
 		this._box.style.transitionDuration = '0.3s';
 		this._box.style.transitionDelay = '0s';
@@ -1240,6 +1242,9 @@ class RTVDisplayBox {
 		this._box.style.left = zoom_adjusted_left.toString() + 'px';
 		this._box.style.transform = 'scale(' + this._zoom.toString() + ')';
 		this._box.style.opacity = this._opacity.toString();
+
+		let maxWidth = this._editor.getScrollWidth()-left-10;
+		this._box.style.maxWidth = maxWidth.toString() + 'px';
 
 		// update the line
 		let midPointTop = pixelPosAtLine.top + (pixelPosAtLine.height / 2);
