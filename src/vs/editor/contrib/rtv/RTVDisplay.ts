@@ -6,7 +6,7 @@ import * as path from 'path';
 import 'vs/css!./rtv';
 import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
-import { IEditorContribution, IScrollEvent } from 'vs/editor/common/editorCommon';
+import { IEditorContribution, IScrollEvent, IModelChangedEvent } from 'vs/editor/common/editorCommon';
 import {
 	EditorAction,
 	registerEditorAction,
@@ -292,7 +292,9 @@ class RTVDisplayBox {
 		this._box.style.position = 'absolute';
 		this._box.style.top = '100px';
 		this._box.style.left = '800px';
-		this._box.style.maxWidth = '1366px';
+		this._box.style.maxWidth = '1400px';
+		this._box.style.maxHeight = '400px';
+		this._box.style.overflow = 'auto';
 		this._box.style.transitionProperty = 'all';
 		this._box.style.transitionDuration = '0.3s';
 		this._box.style.transitionDelay = '0s';
@@ -1241,6 +1243,9 @@ class RTVDisplayBox {
 		this._box.style.transform = 'scale(' + this._zoom.toString() + ')';
 		this._box.style.opacity = this._opacity.toString();
 
+		let maxWidth = this._editor.getScrollWidth()-left-10;
+		this._box.style.maxWidth = maxWidth.toString() + 'px';
+
 		// update the line
 		let midPointTop = pixelPosAtLine.top + (pixelPosAtLine.height / 2);
 
@@ -1450,15 +1455,8 @@ class RTVController implements IEditorContribution {
 		this._editor.onDidChangeCursorPosition((e) => { this.onDidChangeCursorPosition(e); });
 		this._editor.onDidScrollChange((e) => { this.onDidScrollChange(e); });
 		this._editor.onDidLayoutChange((e) => { this.onDidLayoutChange(e); });
+		this._editor.onDidChangeModel((e) => { this.onDidChangeModel(e); });
 		this._editor.onDidChangeModelContent((e) => { this.onDidChangeModelContent(e); });
-		this._editor.onDidChangeModel((e) => {
-			if (this._editor.getModel() !== null) {
-				this._boxes = [];
-				this.envs = {};
-				this.writes = {};
-				this.runProgram();
-			}
-		});
 		this._editor.onDidChangeModelLanguage((e) => { this.runProgram(); });
 		this._editor.onMouseWheel((e) => { this.onMouseWheel(e); });
 		this._editor.onKeyUp((e) => { this.onKeyUp(e); });
@@ -1862,6 +1860,15 @@ class RTVController implements IEditorContribution {
 	private onDidLayoutChange(e: EditorLayoutInfo) {
 		this.updateMaxPixelCol();
 		this.updateLayout();
+	}
+
+	private onDidChangeModel(e: IModelChangedEvent) {
+		if (this._editor.getModel() !== null) {
+			this._boxes = [];
+			this.envs = {};
+			this.writes = {};
+			this.runProgram();
+		}
 	}
 
 	private onDidChangeModelContent(e: IModelContentChangedEvent) {
@@ -2587,6 +2594,10 @@ class RTVController implements IEditorContribution {
 		this._visibilityPolicy = visibilityCursorAndReturn;
 	}
 
+	public setVisibilityRange(startLineNumber: number, endLineNumber: number) {
+		this._visibilityPolicy = (b: RTVDisplayBox, cursorLineNumber: number) => (b.lineNumber >= startLineNumber && b.lineNumber <= endLineNumber);
+	}
+
 	public flipThroughViewModes() {
 		function computeNextViewMode(v: ViewMode) {
 			let rs: ViewMode;
@@ -2885,6 +2896,17 @@ class RTVController implements IEditorContribution {
 		}
 
 	}
+
+	public focusOnSelection() {
+		let selection = this._editor.getSelection();
+		if (selection === null) {
+			return;
+		}
+
+		this.setVisibilityRange(selection.startLineNumber, selection.endLineNumber);
+		this.updateLayout();
+	}
+
 	private onMouseWheel(e: IMouseWheelEvent) {
 		if (this.loopFocusController !== null) {
 			e.stopImmediatePropagation();
@@ -2893,7 +2915,6 @@ class RTVController implements IEditorContribution {
 	}
 
 	private onKeyUp(e: IKeyboardEvent) {
-		// console.log('In controller Up:' + e.code);
 		if (e.keyCode === KeyCode.Escape) {
 			if (this.loopFocusController !== null) {
 				e.stopPropagation();
@@ -2914,7 +2935,14 @@ class RTVController implements IEditorContribution {
 	}
 
 	private onKeyDown(e: IKeyboardEvent) {
-		// console.log('In controller Down:' + e.code);
+		if (e.keyCode === KeyCode.Escape) {
+			if (this._editor.getSelection()?.isEmpty() === true) {
+				this.changeViewMode(this.viewMode);
+			} else {
+				this.focusOnSelection();
+			}
+		}
+
 		if (e.keyCode === KeyCode.Ctrl) {
 			this._peekCounter = this._peekCounter + 1;
 			if (this._peekCounter > 1) {
