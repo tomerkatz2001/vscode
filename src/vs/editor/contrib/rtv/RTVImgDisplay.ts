@@ -44,7 +44,6 @@ class RTVImgController implements IEditorContribution {
 	constructor(
 		private readonly _editor: ICodeEditor,
 	) {
-		console.log("Hello world");
 		this._editor.onMouseMove((e) => { this.onMouseMove(e) });
 	}
 
