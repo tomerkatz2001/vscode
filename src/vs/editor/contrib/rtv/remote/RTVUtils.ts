@@ -44,6 +44,24 @@ class RunpyProcess implements Process {
 				const response = origResponse.clone();
 				const result = await response.text();
 				let data: RunpyResponseData = JSON.parse(result);
+
+				// Write program output to browser
+				const output = document.getElementById('output') as HTMLInputElement;
+
+				if (data.stdout) {
+					output.innerHTML = data.stdout;
+
+					if (data.stderr) {
+						output.innerHTML += '\n---\n' + data.stderr;
+					}
+				}
+				else if (data.stderr) {
+					output.innerHTML = data.stderr;
+				}
+				else {
+					output.innerHTML = 'No Output';
+				}
+
 				fn(data.success ? 0 : 1, data.result);
 			}
 		);
@@ -81,7 +99,7 @@ export function runProgram(program: string): Process {
 
 	const abortController = new AbortController();
 	const promise = fetch(
-		'/editor/runProgram',
+		'/editor/runProgram?name=tmp.py',
 		{
 			method: 'POST',
 			body: program,
@@ -94,6 +112,11 @@ export function runProgram(program: string): Process {
 }
 
 export function synthesizeSnippet(problem: string): Process {
+	return new SynthProcess();
+}
+
+export function runImgSummary(program: string, line: number, varname: string) {
+	// TODO Implement!
 	return new SynthProcess();
 }
 
