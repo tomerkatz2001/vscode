@@ -2,22 +2,48 @@ import { Process } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
-class RunpyResponseData {
-	public success: boolean = false;
-	public stderr?: string = undefined;
-	public stdout?: string = undefined;
-	public result?: string = undefined;
+/**
+ * Declared interface to Pyodide. This only exists in the frontend, not here.
+ * This interface allows some typechecking, and supresses error messages.
+ */
+interface Pyodide {
+	loadPackage(names: [string], messageCallback?: (msg: string) => void, errorCallback?: (msg: string) => void): Promise<any>;
+	loadPackages: {[packageName: string]: any};
+	globals: any,
+	repr(obj: any): string;
+	runPython(code: string): any;
+	runPythonAsync(code: string , messageCallback?: (msg: string) => void, errorCallback?: (msg: string) => void): Promise<any>;
+	version(): string;
 }
 
+declare const pyodide: Pyodide;
+declare const languagePluginLoader: Promise<any>;
+
+let pyodideLoaded = false;
+languagePluginLoader.then(() => {
+	// pyodide is now ready to use...
+	pyodideLoaded = true;
+});
+
+
+/**
+ * interface for the output of the
+ */
+interface RunpyResponseData {
+	success: boolean;
+	stderr?: string;
+	stdout?: string;
+	result?: string;
+}
+
+
 class RunpyProcess implements Process {
-	constructor(private request: Promise<Response>,
-		private abortController: AbortController) { }
+	constructor(private request: Promise<string>) { }
 
 	onStdout(fn: (data: any) => void): void {
 		this.request.then(
-			async (response: Response) => {
-				const result = await response.clone().text();
-				let data: RunpyResponseData = JSON.parse(result);
+			async (json: string) => {
+				const data: RunpyResponseData = JSON.parse(json);
 				fn(data.stdout);
 			}
 		);
@@ -25,9 +51,8 @@ class RunpyProcess implements Process {
 
 	onStderr(fn: (data: any) => void): void {
 		this.request.then(
-			async (response: Response) => {
-				const result = await response.clone().text();
-				let data: RunpyResponseData = JSON.parse(result);
+			async (json: string) => {
+				const data: RunpyResponseData = JSON.parse(json);
 				fn(data.stderr);
 			}
 		);
@@ -35,35 +60,15 @@ class RunpyProcess implements Process {
 	}
 
 	kill() {
-		this.abortController.abort();
+		console.error('RunpyProcess.kill() called, but can\'t kill a Promise...');
 	}
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {
 		this.request.then(
-			async (origResponse: Response) => {
-				const response = origResponse.clone();
-				const result = await response.text();
-				let data: RunpyResponseData = JSON.parse(result);
-
-				// Write program output to browser
-				const output = document.getElementById('output') as HTMLInputElement;
-
-				if (data.stdout) {
-					output.innerHTML = data.stdout;
-
-					if (data.stderr) {
-						output.innerHTML += '\n---\n' + data.stderr;
-					}
-				}
-				else if (data.stderr) {
-					output.innerHTML = data.stderr;
-				}
-				else {
-					output.innerHTML = 'No Output';
-				}
-
-				fn(data.success ? 0 : 1, data.result);
-			}
+		    async (json: string) => {
+			const data: RunpyResponseData = JSON.parse(json);
+			fn(data.success ? 0 : 1, data.result);
+		    }
 		);
 	}
 }
@@ -86,29 +91,40 @@ class SynthProcess implements Process {
 	}
 }
 
+
 export function runProgram(program: string): Process {
-	// TODO Rewrite this using Websockets!
-	// We need this for CSRF protection on the server
+	while (!pyodideLoaded) {}
+
 	const csrfInput = document.getElementById('csrf-parameter') as HTMLInputElement;
-	const csrfToken = csrfInput.value;
 	const csrfHeaderName = csrfInput.name;
+	const csrfToken = csrfInput.value;
 
 	const headers = new Headers();
 	headers.append('Content-Type', 'text/plain;charset=UTF-8');
 	headers.append(csrfHeaderName, csrfToken);
 
-	const abortController = new AbortController();
-	const promise = fetch(
-		'/editor/runProgram?name=tmp.py',
+	// Get the 'run.py' file.
+	// TODO Should we just bake it in?
+	let runpy: string = '';
+	fetch(
+		'/editor/runpy',
 		{
-			method: 'POST',
-			body: program,
+			method: 'GET',
 			mode: 'same-origin',
 			headers: headers,
-			signal: abortController.signal
+		}).
+		then(async (respo: Response) => {
+			runpy = await respo.text();
 		});
 
-	return new RunpyProcess(promise, abortController);
+	while(runpy === '') {
+		// TODO Busy loop
+	}
+
+	const pythonProgram = pyodide.repr(program);
+	const finalProgram = `${runpy}\nmain(${pythonProgram})\n`;
+
+	return new RunpyProcess(pyodide.runPythonAsync(finalProgram));
 }
 
 export function synthesizeSnippet(problem: string): Process {

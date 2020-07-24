@@ -300,25 +300,7 @@ def adjust_to_next_time_step(data):
 		new_data[lineno] = next_envs
 	return new_data
 
-def main():
-
-	start = time.time()
-	if len(sys.argv) != 2:
-		print("Usage: run <file-name>")
-		exit(-1)
-
-	lines = core.load_code_lines(sys.argv[1])
-
-	code = "".join(lines)
-	#print(code)
-
+def main(program) -> str:
 	writes = compute_writes(lines)
 	run_time_data = compute_runtime_data(lines)
-
-	with open(sys.argv[1] + ".out", "w") as out:
-		out.write(json.dumps((writes, run_time_data)))
-
-	end = time.time()
-	print("Time: " + str(end - start))
-
-main()
+	return json.dumps((writes, run_time_data))

@@ -196,7 +196,12 @@
 			"port": 9222,
 			"timeout": 20000,
 			"env": {
-				"VSCODE_EXTHOST_WILL_SEND_SOCKET": null
+				"VSCODE_EXTHOST_WILL_SEND_SOCKET": null,
+				"PYTHON3": "/usr/local/bin/python3",
+				"SCALA": "",
+				"RUNPY": "/Users/kferdowsifard/projects/ProjectionBoxes/vscode/src/run.py",
+				"SYNTH": "",
+				"IMGSUM": "/Users/kferdowsifard/projects/ProjectionBoxes/vscode/src/img-summary.py"
 			},
 			"breakOnLoad": false,
 			"urlFilter": "*workbench.html*",

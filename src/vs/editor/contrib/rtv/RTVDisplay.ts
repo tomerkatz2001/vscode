@@ -299,6 +299,8 @@ class RTVDisplayBox {
 		this._box.style.transitionDuration = '0.3s';
 		this._box.style.transitionDelay = '0s';
 		this._box.style.transitionTimingFunction = 'ease-in';
+		this._box.style.maxHeight = '500px';
+		this._box.style.overflow = 'auto';
 		this._box.className = 'monaco-hover';
 		if (!this._controller.supportSynthesis) {
 			this._box.onauxclick = (e) => {
