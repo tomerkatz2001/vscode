@@ -65,10 +65,10 @@ class RunpyProcess implements Process {
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {
 		this.request.then(
-		    async (json: string) => {
-			const data: RunpyResponseData = JSON.parse(json);
-			fn(data.success ? 0 : 1, data.result);
-		    }
+			async (json: string) => {
+				const data: RunpyResponseData = JSON.parse(json);
+				fn(data.success ? 0 : 1, data.result);
+			}
 		);
 	}
 }
