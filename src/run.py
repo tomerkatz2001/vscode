@@ -11,6 +11,7 @@ import re
 import core
 import time
 import time
+import types
 import numpy as np
 from PIL import Image
 
@@ -29,6 +30,7 @@ class Logger(bdb.Bdb):
 		self.prev_env = None
 		self.data = {}
 		self.active_loops = []
+		self.preexisting_locals = None
 		# self.exception = False
 
 	def data_at(self, l):
@@ -51,7 +53,10 @@ class Logger(bdb.Bdb):
 		# print("locals")
 		# print(frame.f_locals)
 
-		if frame.f_code.co_name == "<module>" or frame.f_code.co_name == "<listcomp>" or frame.f_code.co_name == "<dictcomp>" or frame.f_code.co_filename != "<string>":
+		if frame.f_code.co_name == "<module>" and self.preexisting_locals == None:
+			self.preexisting_locals = set(frame.f_locals.keys())
+
+		if frame.f_code.co_name == "<listcomp>" or frame.f_code.co_name == "<dictcomp>" or frame.f_code.co_filename != "<string>":
 			return
 
 		# self.exception = False
@@ -131,6 +136,17 @@ class Logger(bdb.Bdb):
 		self.add_loop_info(env)
 		return env
 
+	def compute_repr(self, v):
+		if isinstance(v, types.FunctionType):
+			return None
+		if isinstance(v, types.ModuleType):
+			return None
+		html = core.if_img_convert_to_html(v)
+		if html == None:
+			return repr(v)
+		else:
+			return f"```html\n{html}\n```"
+
 	def record_env(self, frame, lineno):
 		if self.time >= 100:
 			self.set_quit()
@@ -140,15 +156,10 @@ class Logger(bdb.Bdb):
 		self.add_loop_info(env)
 		self.time = self.time + 1
 		for k in frame.f_locals:
-			if k != core.magic_var_name:
-				v = frame.f_locals[k]
-				html = core.if_img_convert_to_html(v)
-				if html == None:
-					r = repr(v)
-				else:
-					r = f"```html\n{html}\n```"
-
-				env[k] = r
+			if k != core.magic_var_name and (frame.f_code.co_name != "<module>" or not k in self.preexisting_locals):
+				r = self.compute_repr(frame.f_locals[k])
+				if (r != None):
+					env[k] = self.compute_repr(frame.f_locals[k])
 		env["lineno"] = lineno
 
 		self.data_at(lineno).append(env)
@@ -173,7 +184,7 @@ class Logger(bdb.Bdb):
 		# print("locals")
 		# print(frame.f_locals)
 
-		if frame.f_code.co_name == "<module>" or frame.f_code.co_name == "<listcomp>" or frame.f_code.co_name == "<dictcomp>" or frame.f_code.co_filename != "<string>":
+		if frame.f_code.co_name == "<listcomp>" or frame.f_code.co_name == "<dictcomp>" or frame.f_code.co_filename != "<string>":
 			return
 
 		# if self.exception:
@@ -188,7 +199,9 @@ class Logger(bdb.Bdb):
 
 		self.record_env(frame, "R" + str(adjusted_lineno))
 		#self.data_at("R" + str(adjusted_lineno))[-1]["rv"] = rv_str
-		#self.data_at("R" + str(adjusted_lineno))[-1]["rv"] = repr(rv)
+		r = self.compute_repr(rv)
+		if r != None:
+			self.data_at("R" + str(adjusted_lineno))[-1]["rv"] = r
 		self.record_loop_end(frame, adjusted_lineno)
 		#self.record_loop_begin(frame, adjusted_lineno)
 
