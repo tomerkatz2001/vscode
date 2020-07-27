@@ -2407,6 +2407,7 @@ class RTVController implements IEditorContribution {
 
 			let errorMsg: string = '';
 			c.onStderr((msg) => errorMsg += msg);
+			//c.onStderr((msg) => console.log(String(msg)));
 
 			c.onExit((exitCode, result) => {
 				// When exitCode === null, it means the process was killed,
@@ -2420,9 +2421,11 @@ class RTVController implements IEditorContribution {
 						this.updateContentAndLayout();
 					}
 					else {
+						//console.log(errorMsg)
 						this.showErrorWithDelay(errorMsg);
 						this.updateContentAndLayout();
 					}
+					//TODO: update display (output + err)
 				}
 			});
 		});

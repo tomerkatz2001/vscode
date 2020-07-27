@@ -197,10 +197,10 @@
 			"timeout": 20000,
 			"env": {
 				"VSCODE_EXTHOST_WILL_SEND_SOCKET": null,
-				"PYTHON3": "/usr/bin/python3",
-				"RUNPY": "/home/kas/projects/ProjectionBoxes/vscode/src/run.py",
-				"SCALA": "/usr/bin/scala",
-				"SYNTH": "/home/kas/projects/PythonSynthesizer/target/scala-2.13/PythonSynthesizer-assembly-0.1.jar"
+				"PYTHON3": "/Library/Frameworks/Python.framework/Versions/3.6/bin/python3",
+				"RUNPY": "/Users/lisa/Desktop/ucsd-pl/vscode/src/run.py",
+				"SCALA": "",
+				"SYNTH": ""
 			},
 			"breakOnLoad": false,
 			"urlFilter": "*workbench.html*",

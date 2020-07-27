@@ -14,7 +14,7 @@ import base64
 import io
 import time
 import numpy as np
-from PIL import Image
+# from PIL import Image
 
 class LoopInfo:
 	def __init__(self, frame, lineno, indent):
@@ -326,18 +326,25 @@ def main():
 		print("Usage: run <file-name>")
 		exit(-1)
 
-	lines = core.load_code_lines(sys.argv[1])
+	f = open(sys.argv[1]+".stdout.out", 'a')
+	sys.stdout = f
 
+	lines = core.load_code_lines(sys.argv[1])
 	code = "".join(lines)
-	#print(code)
+	# print(code)
 
 	writes = compute_writes(lines)
 	run_time_data = compute_runtime_data(lines)
+	print(writes)
+	print()
+	print(run_time_data)
 
 	with open(sys.argv[1] + ".out", "w") as out:
 		out.write(json.dumps((writes, run_time_data)))
 
 	end = time.time()
 	print("Time: " + str(end - start))
+
+	f.close()
 
 main()

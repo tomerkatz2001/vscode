@@ -10,4 +10,4 @@ def try_if(l):
 	return ret
 
 
-try_if([0, 1, 0, 1, 2, 3])
+print(try_if([0, 1, 0, 1, 2, 3]))
