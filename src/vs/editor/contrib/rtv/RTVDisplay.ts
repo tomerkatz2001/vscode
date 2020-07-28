@@ -1421,7 +1421,7 @@ function visibilityCursorAndReturn(b: RTVDisplayBox, cursorLineNumber: number) {
 // 	Haskell = 2
 // }
 
-class RTVController implements IEditorContribution {
+export class RTVController implements IEditorContribution {
 	public envs: { [k: string]: any[]; } = {};
 	public writes: { [k: string]: string[]; } = {};
 	private _boxes: RTVDisplayBox[] = [];
