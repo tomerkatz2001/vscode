@@ -196,11 +196,7 @@
 			"port": 9222,
 			"timeout": 20000,
 			"env": {
-				"VSCODE_EXTHOST_WILL_SEND_SOCKET": null,
-				"PYTHON3": "/Library/Frameworks/Python.framework/Versions/3.6/bin/python3",
-				"RUNPY": "/Users/lisa/Desktop/ucsd-pl/vscode/src/run.py",
-				"SCALA": "",
-				"SYNTH": ""
+				"VSCODE_EXTHOST_WILL_SEND_SOCKET": null
 			},
 			"breakOnLoad": false,
 			"urlFilter": "*workbench.html*",
