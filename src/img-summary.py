@@ -38,6 +38,9 @@ class ImgRecorder:
 		self.all_count = self.all_count + 1
 
 	def finish(self, filename):
+		if (len(self.images) == 0):
+			raise ValueError()
+
 		print("All count:" + str(self.all_count))
 		print("Visualized count: " + str(self.visualized_count))
 		print("Converting to html")

@@ -257,6 +257,76 @@ class TableElement {
 
 type MapLoopsToCells = { [k: string]: HTMLTableDataCellElement[]; };
 
+class RTVOutputDisplayBox {
+	private _box: HTMLDivElement;
+	private _html: string = '<b>Output:</b><br><br><b>Errors:</b><br>';
+	// private _isOnDiv: boolean = false;
+	constructor(
+		private readonly _editor: ICodeEditor,
+		bottom: number,
+		left: number,
+		height: number,
+	) {
+
+		let editor_div = this._editor.getDomNode();
+		if (editor_div === null) {
+			throw new Error('Cannot find Monaco Editor');
+		}
+
+
+		this._box = document.createElement('div');
+		this._box.style.position = 'absolute';
+		this._box.style.bottom = bottom + 'px';
+		this._box.style.left = left + 'px';
+		this._box.style.right = '14px';
+		this._box.style.height = height + 'px';
+		this._box.style.width = 'auto';//'100vh auto';
+		// this._box.style.maxWidth = '140000px';//(editor_div.clientWidth - 14)+ 'px'; // 14 is the width of the scroll bar (separate from the editor div)
+		this._box.innerHTML = this._html;
+		this._box.style.overflow = 'scroll';
+		this._box.className = 'monaco-hover';
+		// this._box.onmouseenter = (e) => {
+		// 	this.onMouseEnter(e);
+		// };
+		// this._box.onmouseleave = (e) => {
+		// 	this.onMouseLeave(e);
+		// }
+		editor_div.appendChild(this._box);
+	}
+
+	public destroy(): void {
+		this._box.remove();
+	}
+
+	public setContent(s: string): void {
+		this._box.innerHTML = s;
+	}
+
+	public getContent(): string {
+		return this._box.innerHTML;
+	}
+
+	public clearContent(): void {
+		this._box.innerHTML = this._html;
+	}
+
+
+	// private onMouseEnter(e): void {
+	// 	this._isOnDiv = true;
+	// 	// console.log('Enter!');
+	// }
+
+	// private onMouseLeave(e): void {
+	// 	this._isOnDiv = false;
+	// 	// console.log('Leave!');
+	// }
+
+	// public mouseOnDiv(): boolean {
+	// 	return this._isOnDiv;
+	// }
+
+}
+
 class RTVDisplayBox {
 	private _box: HTMLDivElement;
 	private _line: RTVLine;
@@ -1440,6 +1510,7 @@ class RTVController implements IEditorContribution {
 	private _globalDeltaVarSet: DeltaVarSet = new DeltaVarSet();
 	private _pythonProcess?: Process = undefined;
 	private _runProgramDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
+	private _outputBox: RTVOutputDisplayBox| null = null;
 
 	public static readonly ID = 'editor.contrib.rtv';
 
@@ -1465,9 +1536,6 @@ class RTVController implements IEditorContribution {
 
 		this.logger = utils.getLogger(this._editor);
 
-		for (let i = 0; i < this.getLineCount(); i++) {
-			this._boxes.push(new RTVDisplayBox(this, _editor, _modeService, _openerService, i + 1, this._globalDeltaVarSet));
-		}
 
 		this.updateMaxPixelCol();
 
@@ -1809,6 +1877,10 @@ class RTVController implements IEditorContribution {
 			this._changedLinesWhenOutOfDate = new Set();
 		}
 		let s = this._changedLinesWhenOutOfDate;
+		// [lisa 8/3/2020] added the following lines
+		if (e.changes === undefined) {
+			return;
+		}
 		e.changes.forEach((change) => {
 			for (let i = change.range.startLineNumber; i <= change.range.endLineNumber; i++) {
 				s.add(i);
@@ -1824,6 +1896,13 @@ class RTVController implements IEditorContribution {
 			}
 		}
 		return this._boxes[i];
+	}
+
+	private getOutputBox() {
+		if (this._outputBox === null) {
+			this._outputBox = new RTVOutputDisplayBox(this._editor, 0, 0, 200);
+		}
+		return this._outputBox;
 	}
 
 	public getBoxAtCurrLine() {
@@ -1844,6 +1923,7 @@ class RTVController implements IEditorContribution {
 		}
 	}
 
+
 	private onDidChangeCursorPosition(e: ICursorPositionChangedEvent) {
 		this.updateLayout();
 	}
@@ -1853,18 +1933,28 @@ class RTVController implements IEditorContribution {
 			// this means the content also changed, so we will let the onChangeModelContent event handle it
 			return;
 		}
+		// if (this.getOutputBox().mouseOnDiv()) {
+		// 	// this means the cursor is within the output box; let onScroll handle it
+		// 	// console.log('scroll in outputbox');
+		// 	return;
+		// }
+		// console.log(e);
 		this.updateMaxPixelCol();
 		this.updateLayout();
+		// console.log('scrolling');
 	}
 
 	private onDidLayoutChange(e: EditorLayoutInfo) {
 		this.updateMaxPixelCol();
 		this.updateLayout();
+		// console.log('changing layout');
 	}
 
 	private onDidChangeModel(e: IModelChangedEvent) {
 		if (this._editor.getModel() !== null) {
 			this._boxes = [];
+			this._outputBox?.destroy();
+			this._outputBox = null;
 			this.envs = {};
 			this.writes = {};
 			this.runProgram();
@@ -2078,6 +2168,14 @@ class RTVController implements IEditorContribution {
 		this.updateLayoutHelper(b => b.hasContent(), 0);
 		this.updateLayoutHelper(b => b.hasContent() && this._visibilityPolicy(b, curr), 1);
 	}
+
+	// private setOutputContent(s: string) {
+	// 	this._outputBox.setContent(s);
+	// }
+
+	// private getOutputContent(): string {
+	// 	return this._outputBox.getContent();
+	// }
 
 	public getLinePixelPos(line: number): { top: number; left: number; height: number; } {
 		// let result = this._editor.getScrolledVisiblePosition(new Position(line, 1));
@@ -2412,6 +2510,10 @@ class RTVController implements IEditorContribution {
 			this.removeSeeds(lines);
 			const program = lines.join('\n');
 
+			// if (program.length === 0) {
+			// 	return;
+			// }
+
 			if (this._pythonProcess !== undefined) {
 				this._pythonProcess.kill();
 			}
@@ -2420,10 +2522,20 @@ class RTVController implements IEditorContribution {
 			this._pythonProcess = c;
 
 			let errorMsg: string = '';
-			c.onStderr((msg) => errorMsg += msg);
-			//c.onStdout((msg) => console.log(String(msg)));
+			c.onStderr((msg) => {
+				errorMsg += msg;
+			});
+
+			let outputMsg: string = '';
+			c.onStdout((msg) => {
+				outputMsg += msg;
+			});
+
+			let e = this._editor;
 
 			c.onExit((exitCode, result) => {
+				let outputBox = this.getOutputBox();
+
 				// When exitCode === null, it means the process was killed,
 				// so there is nothing else to do
 				if (exitCode !== null) {
@@ -2435,11 +2547,16 @@ class RTVController implements IEditorContribution {
 						this.updateContentAndLayout();
 					}
 					else {
-						//console.log(errorMsg);
 						this.showErrorWithDelay(errorMsg);
 						this.updateContentAndLayout();
 					}
-					//TODO: update display (output + err)
+
+					setTimeout(() => {
+						outputBox.clearContent();
+						outputBox.setContent(`<b>Output:</b><br><pre>${outputMsg}</pre><b>Errors:</b><br>${errorMsg}`);
+					}, 0);
+
+
 				}
 			});
 		});

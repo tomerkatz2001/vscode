@@ -286,6 +286,8 @@ def compute_writes(lines):
 	return write_collector.data
 
 def compute_runtime_data(lines):
+	if len(lines) == 0:
+		return {}
 	code = "".join(lines)
 	l = Logger(lines)
 	l.run(code)
@@ -320,25 +322,22 @@ def main():
 		print("Usage: run <file-name>")
 		exit(-1)
 
-	f = open(sys.argv[1]+".stdout.out", 'a')
-	sys.stdout = f
-
 	lines = core.load_code_lines(sys.argv[1])
 	code = "".join(lines)
-	# print(code)
+	# print("(" + code + ")")
 
 	writes = compute_writes(lines)
 	run_time_data = compute_runtime_data(lines)
-	print(writes)
-	print()
-	print(run_time_data)
+
+	# print(writes)
+	# print()
+	# print(run_time_data)
 
 	with open(sys.argv[1] + ".out", "w") as out:
 		out.write(json.dumps((writes, run_time_data)))
 
 	end = time.time()
-	print("Time: " + str(end - start))
+	# print("Time: " + str(end - start))
 
-	f.close()
 
 main()

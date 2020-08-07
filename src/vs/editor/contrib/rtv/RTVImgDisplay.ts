@@ -88,8 +88,6 @@ class RTVImgController implements IEditorContribution {
 			let c = utils.runImgSummary(program, lineNumber, varname);
 			this._pythonProcess = c;
 
-			c.onStderr((msg) => console.log(String(msg)));
-			c.onStdout((msg) => console.log(String(msg)));
 
 			c.onExit((exitCode, result) => {
 				// When exitCode === null, it means the process was killed,
