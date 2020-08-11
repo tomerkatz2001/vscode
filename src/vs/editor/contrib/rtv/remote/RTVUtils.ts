@@ -1,6 +1,7 @@
 import { Process } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
+import { IEditorContribution } from 'vs/editor/common/editorCommon';
 
 /**
  * Declared interface to Pyodide. This only exists in the frontend, not here.
@@ -16,6 +17,13 @@ interface Pyodide {
 	version(): string;
 }
 
+abstract class RTVController implements IEditorContribution {
+	static ID: string = 'editor.contrib.rtv';
+
+	abstract runProgram(): void;
+	abstract dispose(): void;
+}
+
 declare const pyodide: Pyodide;
 declare const languagePluginLoader: Promise<any>;
 declare const window: { 'editor': ICodeEditor };
@@ -24,10 +32,18 @@ let pyodideLoaded = false;
 languagePluginLoader.then(() => {
 	// pyodide is now ready to use...
 
-	// TODO This loads the package from Pyodide servers, not ours.
-	pyodide.loadPackage('numpy');
-	pyodideLoaded = true;
-	// RTVController.get(window.editor).runProgram();
+	pyodide.loadPackage('numpy')
+		.then(() => {
+			pyodide.runPython(
+				'import pyodide\n' +
+				'runpy = open("run.py", "w")\n' +
+				'runpy.write(pyodide.open_url("/editor/runpy").getvalue())\n' +
+				'runpy.close()');
+		})
+		.then(() => {
+			pyodideLoaded = true;
+			(window.editor.getContribution(RTVController.ID) as RTVController).runProgram();
+		});
 });
 
 
@@ -127,6 +143,8 @@ class SynthProcess implements Process {
 
 
 export function runProgram(program: string): Process {
+	// TODO Use the webworker
+
 	if (!pyodideLoaded) {
 		// @Hack: We want to ignore this call until pyodide has loaded.
 		return new SynthProcess();
@@ -136,20 +154,15 @@ export function runProgram(program: string): Process {
 		program = program.replace('"""', '\\"\\"\\"');
 	}
 
-	// TODO Cache run.py
-
-	const saveFiles = 'import pyodide\n' +
-		'runpy = open("run.py", "w")\n' +
-		'runpy.write(pyodide.open_url("/editor/runpy").getvalue())\n' +
-		'runpy.close()\n' +
+	const saveFiles =
 		'program = """' + program + '"""\n' +
 		'code = open("program.py", "w")\n' +
 		'code.write(program)\n' +
 		'code.close()\n';
-	const runPy = 'run = open("run.py", "r")\npyodide.eval_code(run.read() + "\\nmain(\'program.py\')\\n", {})\n';
-
+	const runPy =
+		'run = open("run.py", "r")\n' +
+		'pyodide.eval_code(run.read() + "\\nmain(\'program.py\')\\n", {})\n';
 	pyodide.runPython(saveFiles);
-
 	return new RunpyProcess(runPy);
 }
 
