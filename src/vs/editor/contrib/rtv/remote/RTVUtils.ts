@@ -36,6 +36,7 @@ languagePluginLoader.then(() => {
 		.then(() => {
 			pyodide.runPython(
 				'import pyodide\n' +
+				'import os\n' +
 				'runpy = open("run.py", "w")\n' +
 				'runpy.write(pyodide.open_url("/editor/runpy").getvalue())\n' +
 				'runpy.close()');
@@ -108,7 +109,6 @@ class RunpyProcess implements Process {
 		this.request.then(
 			() => {
 				const out = pyodide.runPython(
-					'import os\n' +
 					'if os.path.exists("program.py.out"):\n' +
 					'\tfile = open("program.py.out")\n' +
 					'\trs = file.read()\n' +
