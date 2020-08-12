@@ -1,125 +1,113 @@
-import { Process } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { Process, IRTVController } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
-import { IEditorContribution } from 'vs/editor/common/editorCommon';
 
-/**
- * Declared interface to Pyodide. This only exists in the frontend, not here.
- * This interface allows some typechecking, and supresses error messages.
- */
-interface Pyodide {
-	loadPackage(names: string|[string], messageCallback?: (msg: string) => void, errorCallback?: (msg: string) => void): Promise<any>;
-	loadPackages: {[packageName: string]: any};
-	globals: any,
-	repr(obj: any): string;
-	runPython(code: string): any;
-	runPythonAsync(code: string , messageCallback?: (msg: string) => void, errorCallback?: (msg: string) => void): Promise<any>;
-	version(): string;
+declare const window: {
+	editor: ICodeEditor
+};
+
+enum ResponseType {
+	// Responses related to the running program
+	STDOUT = 1,
+	STDERR = 2,
+	RESULT = 3,
+	EXCEPTION = 4,
+
+	// Responses related to the web worker itself
+	ERROR = 5,
+	LOADED = 6
 }
 
-abstract class RTVController implements IEditorContribution {
-	static ID: string = 'editor.contrib.rtv';
-
-	abstract runProgram(): void;
-	abstract dispose(): void;
+class PyodideWorkerResponse {
+	constructor(
+		public type: ResponseType,
+		public msg: string) {}
 }
 
-declare const pyodide: Pyodide;
-declare const languagePluginLoader: Promise<any>;
-declare const window: { 'editor': ICodeEditor };
-
-let pyodideLoaded = false;
-languagePluginLoader.then(() => {
-	// pyodide is now ready to use...
-
-	pyodide.loadPackage('numpy')
-		.then(() => {
-			pyodide.runPython(
-				'import pyodide\n' +
-				'import os\n' +
-				'runpy = open("run.py", "w")\n' +
-				'runpy.write(pyodide.open_url("/editor/runpy").getvalue())\n' +
-				'runpy.close()');
-		})
-		.then(() => {
-			pyodideLoaded = true;
-			(window.editor.getContribution(RTVController.ID) as RTVController).runProgram();
-		});
-});
-
-
-/**
- * interface for the output of the
- */
-/* interface RunpyResponseData {
-	success: boolean;
-	stderr?: string;
-	stdout?: string;
-	result?: string;
-} */
-
+class PyodideWorkerRequest {
+	constructor(
+		public name: string,
+		public content: string) {}
+}
 
 class RunpyProcess implements Process {
-	private request: Promise<string | void>;
-	private progress: string = '';
+	private onResult?: ((exitCode: any, result?: string) => void) = undefined;
+	private onOutput?: ((data: any) => void) = undefined;
+	private onError?: ((data: any) => void) = undefined;
+
+	private result?: string = undefined;
 	private error: string = '';
-	private onProgress: undefined | ((data: any) => void) = undefined;
-	private onError: undefined | ((data: any) => void) = undefined;
+	private output: string = '';
+
+	private eventListener: (this: Worker, event: MessageEvent) => void;
 
 	constructor(program: string) {
-		this.request = pyodide.runPythonAsync(
-			program,
-			(message: string) => {
-				this.progress += `${message}\n`;
-			},
-			(error: string) => {
-				this.error += `${error}\n`;
-			})
-		.then(() => {
-			if (this.onError && this.error) {
-				this.onError(this.error);
+		this.eventListener = (event: MessageEvent) =>
+		{
+			let msg: PyodideWorkerResponse = event.data;
+			switch (msg.type)
+			{
+				case ResponseType.RESULT:
+					this.result = msg.msg;
+					if (this.onResult) {
+						this.onResult(this.result);
+					}
+					break;
+				case ResponseType.STDOUT:
+					this.output += msg.msg;
+					if (this.onOutput) {
+						this.onOutput(msg.msg);
+					}
+					break;
+				case ResponseType.STDERR:
+				case ResponseType.EXCEPTION:
+					this.error += msg.msg;
+					if (this.onError) {
+						this.onError(msg.msg);
+					}
+					break;
+				default:
+					break;
 			}
+		};
 
-			if (this.onProgress && this.progress) {
-				this.onProgress(this.progress);
-			}
-		})
-		.catch((error) => {
-			this.error = error;
-			if (this.onError) {
-				this.onError(this.error);
-			}
-		});
+		pyodideWorker.addEventListener('message', this.eventListener);
+		pyodideWorker.postMessage(new PyodideWorkerRequest('program.py', program));
 	}
 
 	onStdout(fn: (data: any) => void): void {
-		this.onProgress = fn;
+		this.onOutput = fn;
+
+		if (this.output) {
+			this.onOutput(this.output);
+		}
 	}
 
 	onStderr(fn: (data: any) => void): void {
 		this.onError = fn;
-		this.request.catch(fn);
+
+		if (this.error) {
+			this.onError(this.error);
+		}
 	}
 
 	kill() {
-		// console.error('RunpyProcess.kill() called, but can\'t kill a Promise...');
+		pyodideWorker.removeEventListener('message', this.eventListener);
 	}
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {
-		this.request.then(
-			() => {
-				const out = pyodide.runPython(
-					'if os.path.exists("program.py.out"):\n' +
-					'\tfile = open("program.py.out")\n' +
-					'\trs = file.read()\n' +
-					'\tos.remove("program.py.out")\n' +
-					'else:\n' +
-					'\t rs = ""\n' +
-					'rs');
-				const code: Number = (out === '') ? 1 : 0;
-				fn(code, out);
+		this.onResult = (result) => {
+			if (this.output)
+			{
+				(document.getElementById('output') as HTMLInputElement).value = this.output;
 			}
-		);
+
+			fn((result && result !== '') ? 0 : 1, result);
+		};
+
+		if (this.result) {
+			this.onResult(this.result);
+		}
 	}
 }
 
@@ -141,6 +129,31 @@ class SynthProcess implements Process {
 	}
 }
 
+// Start the web worker
+const pyodideWorker = new Worker('/pyodide/webworker.js');
+let pyodideLoaded = false;
+
+const pyodideWorkerInitListener = (event: MessageEvent) =>
+{
+	let msg = event.data as PyodideWorkerResponse;
+
+	if (msg.type === ResponseType.LOADED)
+	{
+		console.log('Pyodide loaded!');
+		pyodideLoaded = true;
+		pyodideWorker.removeEventListener('message', pyodideWorkerInitListener);
+		(window.editor.getContribution('editor.contrib.rtv') as IRTVController).runProgram();
+	}
+	else
+	{
+		console.error('First message from pyodide worker was not a load message!');
+		console.error(msg.type);
+		console.error(ResponseType.LOADED);
+	}
+};
+
+pyodideWorker.onerror = console.error;
+pyodideWorker.addEventListener('message', pyodideWorkerInitListener);
 
 export function runProgram(program: string): Process {
 	// TODO Use the webworker
@@ -150,20 +163,7 @@ export function runProgram(program: string): Process {
 		return new SynthProcess();
 	}
 
-	while (program.includes('"""')) {
-		program = program.replace('"""', '\\"\\"\\"');
-	}
-
-	const saveFiles =
-		'program = """' + program + '"""\n' +
-		'code = open("program.py", "w")\n' +
-		'code.write(program)\n' +
-		'code.close()\n';
-	const runPy =
-		'run = open("run.py", "r")\n' +
-		'pyodide.eval_code(run.read() + "\\nmain(\'program.py\')\\n", {})\n';
-	pyodide.runPython(saveFiles);
-	return new RunpyProcess(runPy);
+	return new RunpyProcess(program);
 }
 
 export function synthesizeSnippet(problem: string): Process {

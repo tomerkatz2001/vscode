@@ -1,3 +1,9 @@
+import { IEditorContribution } from 'vs/editor/common/editorCommon';
+
+export interface IRTVController extends IEditorContribution {
+	runProgram(): void;
+}
+
 /**
  * The Logging interface for RTVDisplay.
  */

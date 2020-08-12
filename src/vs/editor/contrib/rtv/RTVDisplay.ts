@@ -6,7 +6,7 @@ import * as path from 'path';
 import 'vs/css!./rtv';
 import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
-import { IEditorContribution, IScrollEvent, IModelChangedEvent } from 'vs/editor/common/editorCommon';
+import { IScrollEvent, IModelChangedEvent } from 'vs/editor/common/editorCommon';
 import {
 	EditorAction,
 	registerEditorAction,
@@ -46,7 +46,7 @@ import {
 import { IIdentifiedSingleEditOperation, IModelDecorationOptions, ITextModel } from 'vs/editor/common/model';
 import { Selection } from 'vs/editor/common/core/selection';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
-import { Process } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { Process, IRTVController } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
 
 function indent(s: string): number {
@@ -1421,7 +1421,7 @@ function visibilityCursorAndReturn(b: RTVDisplayBox, cursorLineNumber: number) {
 // 	Haskell = 2
 // }
 
-export class RTVController implements IEditorContribution {
+export class RTVController implements IRTVController {
 	public envs: { [k: string]: any[]; } = {};
 	public writes: { [k: string]: string[]; } = {};
 	private _boxes: RTVDisplayBox[] = [];
