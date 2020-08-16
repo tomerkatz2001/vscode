@@ -13,7 +13,7 @@ import types
 import io
 import base64
 import numpy as np
-from PIL import Image
+# from PIL import Image
 
 # Code manipulation
 
@@ -386,6 +386,8 @@ def compute_writes(lines):
 	return write_collector.data
 
 def compute_runtime_data(lines):
+	if len(lines) == 0:
+		return {}
 	code = "".join(lines)
 	l = Logger(lines)
 	l.run(code)
@@ -412,6 +414,7 @@ def adjust_to_next_time_step(data):
 					next_envs.append(envs_by_time[next_time])
 		new_data[lineno] = next_envs
 	return new_data
+
 
 def main(file):
 	lines = load_code_lines(file)
