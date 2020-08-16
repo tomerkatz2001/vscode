@@ -3,15 +3,19 @@
 #  Licensed under the MIT License. See License.txt in the project root for license information.
 # ---------------------------------------------------------------------------------------------
 
-import sys
 import ast
 import bdb
 import json
 import re
-import time
+import sys
 import time
 import types
+import io
+import base64
 import numpy as np
+from PIL import Image
+
+# Code manipulation
 
 magic_var_name = "__run_py__"
 
@@ -78,7 +82,7 @@ def if_img_convert_to_html(v):
 	else:
 		return None
 
-# Convert .Image to html
+# Convert PIL.Image to html
 def pil_to_html(img, **kwargs):
 	file_buffer = io.BytesIO()
 	img.save(file_buffer, **kwargs)
@@ -86,6 +90,20 @@ def pil_to_html(img, **kwargs):
 	encoded_str = str(encoded)[2:-1]
 	img_format = kwargs["format"]
 	return f"<img src='data:image/{img_format};base64,{encoded_str}'>"
+
+# Convert ndarray to PIL.Image
+def ndarray_to_pil(arr, min_width = None, max_width = None):
+	img = Image.fromarray(arr)
+	h = img.height
+	w = img.width
+	new_width = None
+	if w > max_width:
+		new_width = max_width
+	if w < min_width:
+		new_width = min_width
+	if new_width != None:
+		img = img.resize((new_width, int(h*(new_width / w))), resample = Image.BOX)
+	return img
 
 # Convert list of lists to ndarray
 def list_to_ndarray(arr):
@@ -96,7 +114,6 @@ def ndarray_to_html(arr, **kwargs):
 
 def list_to_html(arr, **kwargs):
 	return ndarray_to_html(list_to_ndarray(arr), **kwargs)
-
 
 class LoopInfo:
 	def __init__(self, frame, lineno, indent):
@@ -397,7 +414,6 @@ def adjust_to_next_time_step(data):
 	return new_data
 
 def main(file):
-
 	lines = load_code_lines(file)
 	code = "".join(lines)
 	writes = compute_writes(lines)
