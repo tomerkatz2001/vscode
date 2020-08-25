@@ -48,6 +48,8 @@ import { Selection } from 'vs/editor/common/core/selection';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { Process } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
+import { Button } from 'vs/base/browser/ui/button/button';
+import { attachButtonStyler } from 'vs/platform/theme/common/styler';
 
 function indent(s: string): number {
 	return s.length - s.trimLeft().length;
@@ -260,12 +262,10 @@ type MapLoopsToCells = { [k: string]: HTMLTableDataCellElement[]; };
 class RTVOutputDisplayBox {
 	private _box: HTMLDivElement;
 	private _html: string = '<b>Output:</b><br><br><b>Errors:</b><br>';
-	// private _isOnDiv: boolean = false;
+	private _isOnDiv: boolean = false;
 	constructor(
 		private readonly _editor: ICodeEditor,
-		bottom: number,
 		left: number,
-		height: number,
 	) {
 
 		let editor_div = this._editor.getDomNode();
@@ -273,25 +273,23 @@ class RTVOutputDisplayBox {
 			throw new Error('Cannot find Monaco Editor');
 		}
 
-
 		this._box = document.createElement('div');
 		this._box.style.position = 'absolute';
-		this._box.style.bottom = bottom + 'px';
-		this._box.style.left = left + 'px';
+		this._box.style.top = '30px'; // offset from the run button + border + padding
+		this._box.style.bottom = '14px'; // offset from the horizontal scroll bar (if any)
 		this._box.style.right = '14px';
-		this._box.style.height = height + 'px';
-		this._box.style.width = 'auto';//'100vh auto';
-		// this._box.style.maxWidth = '140000px';//(editor_div.clientWidth - 14)+ 'px'; // 14 is the width of the scroll bar (separate from the editor div)
+		this._box.style.height = 'auto';
+		this._box.style.width = '500px';
 		this._box.innerHTML = this._html;
 		this._box.style.overflow = 'scroll';
+		this._box.style.opacity = '0';
 		this._box.className = 'monaco-hover';
-		// this._box.onmouseenter = (e) => {
-		// 	this.onMouseEnter(e);
-		// };
-		// this._box.onmouseleave = (e) => {
-		// 	this.onMouseLeave(e);
-		// }
-		editor_div.appendChild(this._box);
+		this._box.onmouseenter = (e) => {
+			this.onMouseEnter(e);
+		};
+		this._box.onmouseleave = (e) => {
+			this.onMouseLeave(e);
+		}
 	}
 
 	public destroy(): void {
@@ -310,20 +308,105 @@ class RTVOutputDisplayBox {
 		this._box.innerHTML = this._html;
 	}
 
+	public show(): void {
+		let editor_div = this._editor.getDomNode();
+		if (editor_div === null) {
+			throw new Error('Cannot find Monaco Editor');
+		}
+		this._box.style.transitionProperty = 'all';
+		this._box.style.transitionDuration = '0.05s';
+		this._box.style.transitionDelay = '0s';
+		this._box.style.transitionTimingFunction = 'ease-in';
+		this._box.style.opacity = '1';
+		editor_div.appendChild(this._box);
+	}
 
-	// private onMouseEnter(e): void {
-	// 	this._isOnDiv = true;
-	// 	// console.log('Enter!');
-	// }
+	public hide(): void {
+		this._box.style.transitionDuration = '0s';
+		this._box.style.opacity = '0';
+	}
 
-	// private onMouseLeave(e): void {
-	// 	this._isOnDiv = false;
-	// 	// console.log('Leave!');
-	// }
+	public isHidden() : boolean {
+		return this._box.style.opacity == '0';
+	}
 
-	// public mouseOnDiv(): boolean {
-	// 	return this._isOnDiv;
-	// }
+	private onMouseEnter(e): void {
+		this._isOnDiv = true;
+	}
+
+	private onMouseLeave(e): void {
+		this._isOnDiv = false;
+	}
+
+	public mouseOnDiv(): boolean {
+		return this._isOnDiv;
+	}
+
+}
+
+class RTVRunButton {
+	private _box: HTMLDivElement;
+	private _button: Button;
+	constructor(
+		private readonly _editor: ICodeEditor,
+		private readonly _controller: RTVController
+	) {
+
+		let editor_div = this._editor.getDomNode();
+		if (editor_div === null) {
+			throw new Error('Cannot find Monaco Editor');
+		}
+		this._box = document.createElement('div');
+		this._box.style.position = 'absolute';
+		this._box.style.top = '0px';
+		this._box.style.right = '18px'; // not covering the navigation bar (14px) + padding (4px); assuming the minimap is disabled
+		this._box.style.height = '20px';
+		this._box.style.width = '60px';
+		this._button = new Button(this._box);
+		// TODO: localize
+		this._button.label = 'Run';
+		attachButtonStyler(this._button, this._controller._themeService);
+		this._button.onDidClick(e => {
+			this.onClick();
+		});
+	}
+
+	public destroy(): void {
+		this._box.remove();
+	}
+
+	public reset(): void {
+		this._button.label = 'Run';
+	}
+
+	public show(): void {
+		let editor_div = this._editor.getDomNode();
+		if (editor_div === null) {
+			throw new Error('Cannot find Monaco Editor');
+		}
+		this._box.style.opacity = '1';
+		editor_div.appendChild(this._box);
+	}
+
+	public hide(): void {
+		this._box.style.transitionDuration = '0s';
+		this._box.style.opacity = '0';
+	}
+
+	public isHidden() : boolean {
+		return this._box.style.opacity == '0';
+	}
+
+	private onClick(): void {
+		if (this._controller.getOutputBox().isHidden()) {
+			this._button.label = 'Hide';
+			this._controller.getOutputBox().show();
+		}
+		else {
+			this._button.label = 'Run';
+			this._controller.getOutputBox().hide();
+		}
+	}
 
 }
 
@@ -1516,6 +1599,7 @@ class RTVController implements IEditorContribution {
 	private _pythonProcess?: Process = undefined;
 	private _runProgramDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 	private _outputBox: RTVOutputDisplayBox| null = null;
+	private _runButton: RTVRunButton | null = null;
 
 	public static readonly ID = 'editor.contrib.rtv';
 
@@ -1903,11 +1987,18 @@ class RTVController implements IEditorContribution {
 		return this._boxes[i];
 	}
 
-	private getOutputBox() {
+	public getOutputBox() {
 		if (this._outputBox === null) {
-			this._outputBox = new RTVOutputDisplayBox(this._editor, 0, 0, 200);
+			this._outputBox = new RTVOutputDisplayBox(this._editor, 0);
 		}
 		return this._outputBox;
+	}
+
+	private getRunButton() {
+		if (this._runButton === null) {
+			this._runButton = new RTVRunButton(this._editor, this);
+		}
+		return this._runButton;
 	}
 
 	public getBoxAtCurrLine() {
@@ -1938,12 +2029,6 @@ class RTVController implements IEditorContribution {
 			// this means the content also changed, so we will let the onChangeModelContent event handle it
 			return;
 		}
-		// if (this.getOutputBox().mouseOnDiv()) {
-		// 	// this means the cursor is within the output box; let onScroll handle it
-		// 	// console.log('scroll in outputbox');
-		// 	return;
-		// }
-		// console.log(e);
 		this.updateMaxPixelCol();
 		this.updateLayout();
 		// console.log('scrolling');
@@ -1960,6 +2045,8 @@ class RTVController implements IEditorContribution {
 			this._boxes = [];
 			this._outputBox?.destroy();
 			this._outputBox = null;
+			this._runButton?.destroy();
+			this._runButton = null;
 			this.envs = {};
 			this.writes = {};
 			this.runProgram();
@@ -2174,13 +2261,6 @@ class RTVController implements IEditorContribution {
 		this.updateLayoutHelper(b => b.hasContent() && this._visibilityPolicy(b, curr), 1);
 	}
 
-	// private setOutputContent(s: string) {
-	// 	this._outputBox.setContent(s);
-	// }
-
-	// private getOutputContent(): string {
-	// 	return this._outputBox.getContent();
-	// }
 
 	public getLinePixelPos(line: number): { top: number; left: number; height: number; } {
 		// let result = this._editor.getScrolledVisiblePosition(new Position(line, 1));
@@ -2504,6 +2584,10 @@ class RTVController implements IEditorContribution {
 
 		this.padBoxArray();
 		this.addRemoveBoxes(e);
+		this.getOutputBox().hide();
+		this.getRunButton().reset(); // reset the text to 'Run'
+		this.getRunButton().show(); // always show the "run" button
+
 		this.updateMaxPixelCol();
 		let delay = 500;
 		if (runImmediately(e)) {
@@ -2514,10 +2598,6 @@ class RTVController implements IEditorContribution {
 			let lines = this.getModelForce().getLinesContent();
 			this.removeSeeds(lines);
 			const program = lines.join('\n');
-
-			// if (program.length === 0) {
-			// 	return;
-			// }
 
 			if (this._pythonProcess !== undefined) {
 				this._pythonProcess.kill();
@@ -2555,9 +2635,15 @@ class RTVController implements IEditorContribution {
 					}
 
 					setTimeout(() => {
+						let errors = errorMsg.split('\n');
+						let err = `<div style='color:red;'>${errors[errors.length - 2]}</div>`;
+						errors[errors.length-2] = err;
+						let errorMsgStyled = errors.join('\n');
+
 						outputBox.clearContent();
-						outputBox.setContent(`<b>Output:</b><br><pre>${outputMsg}</pre><b>Errors:</b><br>${errorMsg}`);
-					}, 0);
+						outputBox.setContent(`<b>Output:</b><pre>${outputMsg}</pre><b>Errors:</b><pre>${errorMsgStyled}</pre>`);
+
+					}, 50);
 
 
 				}
@@ -2747,6 +2833,12 @@ class RTVController implements IEditorContribution {
 
 	public changeViewMode(m: ViewMode) {
 		this.viewMode = m;
+		let editor_div = this._editor.getDomNode();
+		if (editor_div) {
+			this.getOutputBox().hide();
+			this.getRunButton().reset();
+			this.getRunButton().show();
+		}
 		switch (m) {
 			case ViewMode.Full:
 				this.setVisibilityAll();
@@ -3027,6 +3119,11 @@ class RTVController implements IEditorContribution {
 	}
 
 	private onMouseWheel(e: IMouseWheelEvent) {
+		let outputBox = this.getOutputBox();
+		if (!(outputBox.isHidden()) && outputBox.mouseOnDiv()) {
+			e.stopImmediatePropagation();
+			return;
+		}
 		if (this.loopFocusController !== null) {
 			e.stopImmediatePropagation();
 			this.scrollLoopFocusIter(e.deltaY);
@@ -3041,7 +3138,7 @@ class RTVController implements IEditorContribution {
 				this.changeViewMode(ViewMode.Full);
 			}
 		}
-		if (e.keyCode === KeyCode.Ctrl) {
+		if (e.keyCode === KeyCode.KEY_A) {
 			this._peekCounter = 0;
 			if (this._peekTimer !== null) {
 				clearTimeout(this._peekTimer);
@@ -3062,7 +3159,7 @@ class RTVController implements IEditorContribution {
 			}
 		}
 
-		if (e.keyCode === KeyCode.Ctrl) {
+		if (e.keyCode === KeyCode.KEY_A && e.ctrlKey) {
 			this._peekCounter = this._peekCounter + 1;
 			if (this._peekCounter > 1) {
 				if (this._peekTimer !== null) {
