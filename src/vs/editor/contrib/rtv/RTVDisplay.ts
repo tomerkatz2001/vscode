@@ -330,11 +330,11 @@ class RTVOutputDisplayBox {
 		return this._box.style.opacity == '0';
 	}
 
-	private onMouseEnter(e): void {
+	private onMouseEnter(e: MouseEvent): void {
 		this._isOnDiv = true;
 	}
 
-	private onMouseLeave(e): void {
+	private onMouseLeave(e: MouseEvent): void {
 		this._isOnDiv = false;
 	}
 
@@ -1967,9 +1967,9 @@ class RTVController implements IEditorContribution {
 		}
 		let s = this._changedLinesWhenOutOfDate;
 		// [lisa 8/3/2020] added the following lines
-		if (e.changes === undefined) {
-			return;
-		}
+		// if (e.changes === undefined) {
+		// 	return;
+		// }
 		e.changes.forEach((change) => {
 			for (let i = change.range.startLineNumber; i <= change.range.endLineNumber; i++) {
 				s.add(i);
@@ -2834,7 +2834,7 @@ class RTVController implements IEditorContribution {
 	public changeViewMode(m: ViewMode) {
 		this.viewMode = m;
 		let editor_div = this._editor.getDomNode();
-		if (editor_div) {
+		if (editor_div !== null) {
 			this.getOutputBox().hide();
 			this.getRunButton().reset();
 			this.getRunButton().show();
@@ -3138,7 +3138,7 @@ class RTVController implements IEditorContribution {
 				this.changeViewMode(ViewMode.Full);
 			}
 		}
-		if (e.keyCode === KeyCode.KEY_A) {
+		if (e.keyCode === KeyCode.KEY_P) {
 			this._peekCounter = 0;
 			if (this._peekTimer !== null) {
 				clearTimeout(this._peekTimer);
@@ -3159,7 +3159,7 @@ class RTVController implements IEditorContribution {
 			}
 		}
 
-		if (e.keyCode === KeyCode.KEY_A && e.ctrlKey) {
+		if (e.keyCode === KeyCode.KEY_P && e.altKey) {
 			this._peekCounter = this._peekCounter + 1;
 			if (this._peekCounter > 1) {
 				if (this._peekTimer !== null) {
