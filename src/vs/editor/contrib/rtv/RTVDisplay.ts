@@ -923,7 +923,7 @@ class RTVDisplayBox {
 
 		this.setContentTrue();
 
-		envs = this.adjustToNextTimeStep(envs);
+		//envs = this.adjustToNextTimeStep(envs);
 		envs = this.addMissingLines(envs);
 
 		this._allEnvs = envs;
@@ -951,7 +951,7 @@ class RTVDisplayBox {
 
 		this.setContentTrue();
 
-		envs = this.adjustToNextTimeStep(envs);
+		//envs = this.adjustToNextTimeStep(envs);
 		envs = this.addMissingLines(envs);
 
 		this._allEnvs = envs;
@@ -960,7 +960,12 @@ class RTVDisplayBox {
 		this._allVars = new Set<string>();
 		envs.forEach((env) => {
 			for (let key in env) {
-				if (key !== 'prev_lineno' && key !== 'next_lineno' && key !== 'lineno' && key !== 'time' && key !== '$') {
+				if (key !== 'prev_lineno' &&
+					key !== 'next_lineno' &&
+					key !== 'lineno' &&
+					key !== 'time' &&
+					key !== '$' &&
+					(key !== '#' || env[key] !== "")) {
 					this._allVars.add(key);
 				}
 			}
@@ -2530,8 +2535,6 @@ class RTVController implements IEditorContribution {
 			c.onStdout((msg) => {
 				outputMsg += msg;
 			});
-
-			let e = this._editor;
 
 			c.onExit((exitCode, result) => {
 				let outputBox = this.getOutputBox();
