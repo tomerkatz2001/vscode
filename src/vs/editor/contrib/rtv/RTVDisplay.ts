@@ -1867,7 +1867,7 @@ export class RTVController implements IRTVController {
 		this._configBox = div;
 	}
 
-	private updateLinesWhenOutOfDate(exitCode: number | null, e?: IModelContentChangedEvent) {
+	/* private updateLinesWhenOutOfDate(exitCode: number | null, e?: IModelContentChangedEvent) {
 		if (e === undefined) {
 			return;
 		}
@@ -1888,7 +1888,7 @@ export class RTVController implements IRTVController {
 				s.add(i);
 			}
 		});
-	}
+	} */
 
 	private getBox(lineNumber: number) {
 		let i = lineNumber - 1;
@@ -2534,8 +2534,6 @@ export class RTVController implements IRTVController {
 				outputMsg += msg;
 			});
 
-			let e = this._editor;
-
 			c.onExit((exitCode, result) => {
 				this.logger.projectionBoxUpdateEnd();
 				let outputBox = this.getOutputBox();
@@ -2543,7 +2541,8 @@ export class RTVController implements IRTVController {
 				// When exitCode === null, it means the process was killed,
 				// so there is nothing else to do
 				if (exitCode !== null) {
-					this.updateLinesWhenOutOfDate(exitCode, e);
+					// TODO This causes a type error and does not compile
+					// this.updateLinesWhenOutOfDate(exitCode, e);
 					this._pythonProcess = undefined;
 					if (exitCode === 0) {
 						this.clearError();
