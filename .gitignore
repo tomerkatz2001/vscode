@@ -33,3 +33,4 @@ test-results/
 yarn-error.log
 src/__pycache__
 .idea
+*.out
