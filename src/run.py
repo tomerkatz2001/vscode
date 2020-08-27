@@ -391,7 +391,7 @@ def compute_runtime_data(lines):
 	code = "".join(lines)
 	l = Logger(lines)
 	l.run(code)
-	#data = adjust_to_next_time_step(l.data)
+	l.data = adjust_to_next_time_step(l.data)
 	return l.data
 
 def adjust_to_next_time_step(data):
