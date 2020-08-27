@@ -371,6 +371,7 @@ class RTVDisplayBox {
 		this._box.style.transitionTimingFunction = 'ease-in';
 		this._box.style.maxHeight = '500px';
 		this._box.style.overflow = 'auto';
+		this._box.style.zIndex = '1'; // Prevents it from covering the error dialog.
 		this._box.className = 'monaco-hover';
 		if (!this._controller.supportSynthesis) {
 			this._box.onauxclick = (e) => {
