@@ -139,7 +139,7 @@ class ImgRecorder:
 	def finish(self, filename):
 		if (len(self.images) == 0):
 			raise ValueError()
-		s = core.pil_to_html(self.images[0], format='png',
+		s = pil_to_html(self.images[0], format='png',
 					save_all=True, append_images=self.images[1:], optimize=False, duration=100, loop=0)
 		# self.images[0].save("out.gif", format='GIF',
 		#			 save_all=True, append_images=self.images[1:], optimize=False, duration=40, loop=0)
