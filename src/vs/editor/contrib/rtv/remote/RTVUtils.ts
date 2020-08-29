@@ -290,6 +290,7 @@ const pyodideWorkerInitListener = (event: MessageEvent) =>
 		pyodideLoaded = true;
 		pyodideWorker.removeEventListener('message', pyodideWorkerInitListener);
 		(window.editor.getContribution('editor.contrib.rtv') as IRTVController).runProgram();
+		(document.getElementById('spinner') as HTMLInputElement).style.display = 'none';
 	}
 	else
 	{
@@ -303,8 +304,6 @@ pyodideWorker.onerror = console.error;
 pyodideWorker.addEventListener('message', pyodideWorkerInitListener);
 
 export function runProgram(program: string): Process {
-	// TODO Use the webworker
-
 	if (!pyodideLoaded) {
 		// @Hack: We want to ignore this call until pyodide has loaded.
 		return new SynthProcess();
