@@ -293,11 +293,33 @@ const pyodideWorkerInitListener = (event: MessageEvent) =>
 pyodideWorker.onerror = console.error;
 pyodideWorker.addEventListener('message', pyodideWorkerInitListener);
 
+function saveProgram(program: string) {
+	// We need this for CSRF protection on the server
+	const csrfInput = document.getElementById('csrf-parameter') as HTMLInputElement;
+	const csrfToken = csrfInput.value;
+	const csrfHeaderName = csrfInput.name;
+
+	const headers = new Headers();
+	headers.append('Content-Type', 'text/plain;charset=UTF-8');
+	headers.append(csrfHeaderName, csrfToken);
+
+	fetch(
+		'/save',
+		{
+			method: 'POST',
+			body: program,
+			mode: 'same-origin',
+			headers: headers
+		});
+}
+
 export function runProgram(program: string): Process {
 	if (!pyodideLoaded) {
 		// @Hack: We want to ignore this call until pyodide has loaded.
 		return new SynthProcess();
 	}
+
+	saveProgram(program);
 
 	return new RunpyProcess(program);
 }

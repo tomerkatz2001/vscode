@@ -36,6 +36,23 @@ export class RTVLogger implements IRTVLogger {
 			str = `${this.now()},${this.getCurrentFileName()},${code}`;
 		}
 
+		// We need this for CSRF protection on the server
+		const csrfInput = document.getElementById('csrf-parameter') as HTMLInputElement;
+		const csrfToken = csrfInput.value;
+		const csrfHeaderName = csrfInput.name;
+
+		const headers = new Headers();
+		headers.append('Content-Type', 'text/plain;charset=UTF-8');
+		headers.append(csrfHeaderName, csrfToken);
+
+		fetch(
+			'/log',
+			{
+				method: 'POST',
+				body: str,
+				mode: 'same-origin',
+				headers: headers
+			});
 		console.log(str);
 	}
 
