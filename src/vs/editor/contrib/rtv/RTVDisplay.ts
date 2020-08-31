@@ -284,6 +284,7 @@ class RTVOutputDisplayBox {
 		this._box.style.overflow = 'scroll';
 		this._box.style.opacity = '0';
 		this._box.className = 'monaco-hover';
+		this._box.id = 'rtv-output-display-box';
 		this._box.onmouseenter = (e) => {
 			this.onMouseEnter(e);
 		};
@@ -318,16 +319,16 @@ class RTVOutputDisplayBox {
 		this._box.style.transitionDelay = '0s';
 		this._box.style.transitionTimingFunction = 'ease-in';
 		this._box.style.opacity = '1';
+		this._box.style.display = '';
 		editor_div.appendChild(this._box);
 	}
 
 	public hide(): void {
-		this._box.style.transitionDuration = '0s';
-		this._box.style.opacity = '0';
+		this._box.style.display = 'none';
 	}
 
 	public isHidden() : boolean {
-		return this._box.style.opacity == '0';
+		return this._box.style.display === 'none';
 	}
 
 	private onMouseEnter(e: MouseEvent): void {
@@ -385,16 +386,18 @@ class RTVRunButton {
 			throw new Error('Cannot find Monaco Editor');
 		}
 		this._box.style.opacity = '1';
+		this._box.style.display = '';
 		editor_div.appendChild(this._box);
 	}
 
 	public hide(): void {
 		this._box.style.transitionDuration = '0s';
 		this._box.style.opacity = '0';
+		this._box.style.display = 'none';
 	}
 
 	public isHidden() : boolean {
-		return this._box.style.opacity == '0';
+		return this._box.style.display === 'none';
 	}
 
 	private onClick(): void {
@@ -456,6 +459,7 @@ class RTVDisplayBox {
 		this._box.style.overflow = 'auto';
 		this._box.style.zIndex = '1'; // Prevents it from covering the error dialog.
 		this._box.className = 'monaco-hover';
+		this._box.id = 'rtv-display-box';
 		if (!this._controller.supportSynthesis) {
 			this._box.onauxclick = (e) => {
 				this.onClick(e);
@@ -1893,6 +1897,7 @@ export class RTVController implements IRTVController {
 		div.style.boxShadow = '0px 2px 8px black';
 		div.className = 'monaco-hover';
 		div.style.display = 'block';
+		div.id = 'rtv-config-dialog-box';
 
 		/*Creates the row selector
 		let row = document.createElement('div');
