@@ -102,16 +102,9 @@ class RunpyProcess implements Process {
 					break;
 				case ResponseType.STDOUT:
 					this.output += msg.msg;
-					if (this.onOutput) {
-						this.onOutput(msg.msg);
-					}
 					break;
 				case ResponseType.STDERR:
-					// There was error output
 					this.error += msg.msg;
-					if (this.onError) {
-						this.onError(msg.msg);
-					}
 					break;
 				case ResponseType.EXCEPTION:
 					// The process crashed
@@ -134,18 +127,10 @@ class RunpyProcess implements Process {
 
 	onStdout(fn: (data: any) => void): void {
 		this.onOutput = fn;
-
-		if (this.output) {
-			this.onOutput(this.output);
-		}
 	}
 
 	onStderr(fn: (data: any) => void): void {
 		this.onError = fn;
-
-		if (this.error) {
-			this.onError(this.error);
-		}
 	}
 
 	kill() {
@@ -154,9 +139,14 @@ class RunpyProcess implements Process {
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {
 		this.onResult = (result) => {
-			if (this.output)
-			{
-				(document.getElementById('output') as HTMLInputElement).value = this.output;
+			(document.getElementById('output') as HTMLInputElement).value = this.output;
+
+			if (this.onOutput) {
+				this.onOutput(this.output);
+			}
+
+			if (this.onError) {
+				this.onError(this.error);
 			}
 
 			fn((result && result !== '') ? 0 : 1, result);
