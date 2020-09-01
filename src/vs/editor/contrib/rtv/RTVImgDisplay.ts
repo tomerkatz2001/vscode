@@ -6,6 +6,7 @@ import { ITextModel } from 'vs/editor/common/model';
 import { Process } from 'vs/editor/contrib/rtv/RTVInterfaces';
 
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
+import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 
 class RTVImgDisplayBox {
 	private _box: HTMLDivElement;
@@ -31,7 +32,6 @@ class RTVImgDisplayBox {
 	public destroy() {
 		this._box.remove();
 	}
-
 }
 
 class RTVImgController implements IEditorContribution {
@@ -39,16 +39,18 @@ class RTVImgController implements IEditorContribution {
 	public static readonly ID = 'editor.contrib.rtvImgDisplay';
 	private _displayImg: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 	private _pythonProcess?: Process = undefined;
-	private _imgDisplayBox: RTVImgDisplayBox | null = null;
+	private _imgDisplayBox: RTVImgDisplayBox | undefined;
+	public logger: RTVLogger;
 
 	constructor(
 		private readonly _editor: ICodeEditor,
 	) {
-		this._editor.onMouseMove((e) => { this.onMouseMove(e) });
+		this._editor.onMouseMove(e => this.onMouseMove(e));
+		this.logger = utils.getLogger(_editor);
 	}
 
 	private onMouseMove(e: IEditorMouseEvent): void {
-		if (this._imgDisplayBox !== null) {
+		if (this._imgDisplayBox) {
 			this._imgDisplayBox.destroy();
 		}
 		this._displayImg.cancel();
@@ -75,7 +77,7 @@ class RTVImgController implements IEditorContribution {
 
 		let varname = word.word;
 		this._displayImg.run(500, () => {
-			console.log("(" + e.event.posx + "," + e.event.posy + ")");
+			console.log(`(${e.event.posx},${e.event.posy})`);
 
 			let lines = this.getModelForce().getLinesContent();
 
@@ -85,16 +87,21 @@ class RTVImgController implements IEditorContribution {
 				this._pythonProcess.kill();
 			}
 
+			this.logger.imgSummaryStart();
 			let c = utils.runImgSummary(program, lineNumber, varname);
 			this._pythonProcess = c;
 
 
 			c.onExit((exitCode, result) => {
+				this.logger.imgSummaryEnd();
 				// When exitCode === null, it means the process was killed,
 				// so there is nothing else to do
 				if (exitCode !== null) {
 					this._pythonProcess = undefined;
 					if (exitCode === 0 && result !== undefined) {
+						if (this._imgDisplayBox) {
+							this._imgDisplayBox.destroy();
+						}
 						this._imgDisplayBox = new RTVImgDisplayBox(this._editor, result,  top, left);
 					}
 					else {
@@ -102,7 +109,7 @@ class RTVImgController implements IEditorContribution {
 				}
 			});
 
-		})
+		});
 	}
 
 	public getModelForce(): ITextModel {

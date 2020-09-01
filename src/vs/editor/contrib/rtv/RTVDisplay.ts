@@ -2621,7 +2621,7 @@ export class RTVController implements IRTVController {
 				this._pythonProcess.kill();
 			}
 
-			this.logger.projectionBoxUpdateStart();
+			this.logger.projectionBoxUpdateStart(program);
 			let c = utils.runProgram(program);
 			this._pythonProcess = c;
 
@@ -2636,7 +2636,7 @@ export class RTVController implements IRTVController {
 			});
 
 			c.onExit((exitCode, result) => {
-				this.logger.projectionBoxUpdateEnd();
+				this.logger.projectionBoxUpdateEnd(result);
 				let outputBox = this.getOutputBox();
 
 				// When exitCode === null, it means the process was killed,

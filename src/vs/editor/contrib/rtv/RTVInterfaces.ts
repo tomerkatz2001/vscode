@@ -14,8 +14,8 @@ export interface IRTVLogger {
 	synthErr(msg: string): void;
 	synthEnd(exitCode: number, result?: string): void;
 	projectionBoxFocus(line: string, custom?: boolean): void;
-	projectionBoxUpdateStart(): void;
-	projectionBoxUpdateEnd(): void;
+	projectionBoxUpdateStart(program: string): void;
+	projectionBoxUpdateEnd(result: string | undefined): void;
 	projectionBoxExit(): void;
 	exampleBlur(idx: number, content: string): void;
 	exampleFocus(idx: number, content: string): void;
@@ -23,6 +23,8 @@ export interface IRTVLogger {
 	exampleInclude(idx: number, content: string): void;
 	exampleExclude(idx: number, content: string): void;
 	exampleReset(): void;
+	imgSummaryStart(): void;
+	imgSummaryEnd(): void;
 }
 
 /**

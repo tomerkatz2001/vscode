@@ -148,11 +148,11 @@ export class RTVLogger implements IRTVLogger {
 		}
 	}
 
-	public projectionBoxUpdateStart(): void {
+	public projectionBoxUpdateStart(program: string): void {
 		this.log('projectionBox.update.start');
 	}
 
-	public projectionBoxUpdateEnd(): void {
+	public projectionBoxUpdateEnd(result: string | undefined): void {
 		this.log('projectionBox.update.end');
 	}
 
@@ -182,5 +182,13 @@ export class RTVLogger implements IRTVLogger {
 
 	public exampleReset() {
 		this.log('example.all.reset');
+	}
+
+	public imgSummaryStart() {
+		this.log('img.start');
+	}
+
+	public imgSummaryEnd() {
+		this.log('img.end');
 	}
 }
