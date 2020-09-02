@@ -264,8 +264,7 @@ class RTVOutputDisplayBox {
 	private _html: string = '<b>Output:</b><br><br><b>Errors:</b><br>';
 	private _isOnDiv: boolean = false;
 	constructor(
-		private readonly _editor: ICodeEditor,
-		left: number,
+		private readonly _editor: ICodeEditor
 	) {
 
 		let editor_div = this._editor.getDomNode();
@@ -284,6 +283,12 @@ class RTVOutputDisplayBox {
 		this._box.style.overflow = 'scroll';
 		this._box.style.opacity = '0';
 		this._box.className = 'monaco-hover';
+		this._box.style.transitionProperty = 'all';
+		this._box.style.transitionDuration = '0.3s';
+		this._box.style.transitionDelay = '0s';
+		this._box.style.transitionTimingFunction = 'ease-in';
+
+		editor_div.appendChild(this._box);
 		this._box.onmouseenter = (e) => {
 			this.onMouseEnter(e);
 		};
@@ -309,20 +314,10 @@ class RTVOutputDisplayBox {
 	}
 
 	public show(): void {
-		let editor_div = this._editor.getDomNode();
-		if (editor_div === null) {
-			throw new Error('Cannot find Monaco Editor');
-		}
-		this._box.style.transitionProperty = 'all';
-		this._box.style.transitionDuration = '0.05s';
-		this._box.style.transitionDelay = '0s';
-		this._box.style.transitionTimingFunction = 'ease-in';
 		this._box.style.opacity = '1';
-		editor_div.appendChild(this._box);
 	}
 
 	public hide(): void {
-		this._box.style.transitionDuration = '0s';
 		this._box.style.opacity = '0';
 	}
 
@@ -366,6 +361,7 @@ class RTVRunButton {
 		// TODO: localize
 		this._button.label = 'Run';
 		attachButtonStyler(this._button, this._controller._themeService);
+		editor_div.appendChild(this._box);
 		this._button.onDidClick(e => {
 			this.onClick();
 		});
@@ -375,21 +371,19 @@ class RTVRunButton {
 		this._box.remove();
 	}
 
-	public reset(): void {
+	public setButtonToRun(): void {
 		this._button.label = 'Run';
 	}
 
+	public setButtonToHide(): void {
+		this._button.label = 'Hide';
+	}
+
 	public show(): void {
-		let editor_div = this._editor.getDomNode();
-		if (editor_div === null) {
-			throw new Error('Cannot find Monaco Editor');
-		}
 		this._box.style.opacity = '1';
-		editor_div.appendChild(this._box);
 	}
 
 	public hide(): void {
-		this._box.style.transitionDuration = '0s';
 		this._box.style.opacity = '0';
 	}
 
@@ -398,14 +392,7 @@ class RTVRunButton {
 	}
 
 	private onClick(): void {
-		if (this._controller.getOutputBox().isHidden()) {
-			this._button.label = 'Hide';
-			this._controller.getOutputBox().show();
-		}
-		else {
-			this._button.label = 'Run';
-			this._controller.getOutputBox().hide();
-		}
+		this._controller.flipOutputBoxVisibility();
 	}
 
 }
@@ -1987,9 +1974,9 @@ class RTVController implements IEditorContribution {
 		return this._boxes[i];
 	}
 
-	public getOutputBox() {
+	private getOutputBox() {
 		if (this._outputBox === null) {
-			this._outputBox = new RTVOutputDisplayBox(this._editor, 0);
+			this._outputBox = new RTVOutputDisplayBox(this._editor);
 		}
 		return this._outputBox;
 	}
@@ -1999,6 +1986,24 @@ class RTVController implements IEditorContribution {
 			this._runButton = new RTVRunButton(this._editor, this);
 		}
 		return this._runButton;
+	}
+
+	public showOutputBox() {
+		this.getRunButton().setButtonToHide();
+		this.getOutputBox().show();
+	}
+
+	public hideOutputBox() {
+		this.getRunButton().setButtonToRun();
+		this.getOutputBox().hide();
+	}
+
+	public flipOutputBoxVisibility() {
+		if (this.getOutputBox().isHidden()) {
+			this.showOutputBox();
+		} else {
+			this.hideOutputBox();
+		}
 	}
 
 	public getBoxAtCurrLine() {
@@ -2584,9 +2589,7 @@ class RTVController implements IEditorContribution {
 
 		this.padBoxArray();
 		this.addRemoveBoxes(e);
-		this.getOutputBox().hide();
-		this.getRunButton().reset(); // reset the text to 'Run'
-		this.getRunButton().show(); // always show the "run" button
+		this.hideOutputBox();
 
 		this.updateMaxPixelCol();
 		let delay = 500;
@@ -2631,6 +2634,7 @@ class RTVController implements IEditorContribution {
 					}
 					else {
 						this.showErrorWithDelay(errorMsg);
+						this.updateData(result);
 						this.updateContentAndLayout();
 					}
 
@@ -2640,7 +2644,6 @@ class RTVController implements IEditorContribution {
 						errors[errors.length-2] = err;
 						let errorMsgStyled = errors.join('\n');
 
-						outputBox.clearContent();
 						outputBox.setContent(`<b>Output:</b><pre>${outputMsg}</pre><b>Errors:</b><pre>${errorMsgStyled}</pre>`);
 
 					}, 50);
@@ -2835,9 +2838,7 @@ class RTVController implements IEditorContribution {
 		this.viewMode = m;
 		let editor_div = this._editor.getDomNode();
 		if (editor_div !== null) {
-			this.getOutputBox().hide();
-			this.getRunButton().reset();
-			this.getRunButton().show();
+			this.hideOutputBox();
 		}
 		switch (m) {
 			case ViewMode.Full:

@@ -31,7 +31,7 @@ class Logger(bdb.Bdb):
 		self.data = {}
 		self.active_loops = []
 		self.preexisting_locals = None
-		# self.exception = False
+		self.exception = None
 
 	def data_at(self, l):
 		if not(l in self.data):
@@ -59,7 +59,7 @@ class Logger(bdb.Bdb):
 		if frame.f_code.co_name == "<listcomp>" or frame.f_code.co_name == "<dictcomp>" or frame.f_code.co_filename != "<string>":
 			return
 
-		# self.exception = False
+		self.exception = None
 
 		adjusted_lineno = frame.f_lineno-1
 		self.record_loop_end(frame, adjusted_lineno)
@@ -171,8 +171,8 @@ class Logger(bdb.Bdb):
 
 		self.prev_env = env
 
-	# def user_exception(self, frame, e):
-	#	 self.exception = True
+	def user_exception(self, frame, e):
+		self.exception = e[1]
 
 	def user_return(self, frame, rv):
 		# print("user_return ============================================")
@@ -188,23 +188,16 @@ class Logger(bdb.Bdb):
 		if frame.f_code.co_name == "<listcomp>" or frame.f_code.co_name == "<dictcomp>" or frame.f_code.co_filename != "<string>":
 			return
 
-		# if self.exception:
-		#	 if rv == None:
-		#		 rv_str = "Exception"
-		#	 else:
-		#		 rv_str = "Exception(" + repr(rv) + ")"
-		# else:
-		#	 rv_str = repr(rv)
 		adjusted_lineno = frame.f_lineno-1
-		# print("About to return: " + self.lines[adjusted_lineno].strip())
 
 		self.record_env(frame, "R" + str(adjusted_lineno))
-		#self.data_at("R" + str(adjusted_lineno))[-1]["rv"] = rv_str
-		r = self.compute_repr(rv)
+		if self.exception == None:
+			r = self.compute_repr(rv)
+		else:
+			r = str(self.exception)
 		if r != None:
 			self.data_at("R" + str(adjusted_lineno))[-1]["rv"] = r
 		self.record_loop_end(frame, adjusted_lineno)
-		#self.record_loop_begin(frame, adjusted_lineno)
 
 	def pretty_print_data(self):
 		for k in self.data:
@@ -287,13 +280,17 @@ def compute_writes(lines):
 	return write_collector.data
 
 def compute_runtime_data(lines):
+	exception = None
 	if len(lines) == 0:
-		return {}
+		return ({}, exception)
 	code = "".join(lines)
 	l = Logger(lines)
-	l.run(code)
+	try:
+		l.run(code)
+	except Exception as e:
+		exception = e
 	l.data = adjust_to_next_time_step(l.data)
-	return l.data
+	return (l.data, exception)
 
 def adjust_to_next_time_step(data):
 	envs_by_time = {}
@@ -339,7 +336,8 @@ def main():
 	# print("(" + code + ")")
 
 	writes = compute_writes(lines)
-	run_time_data = compute_runtime_data(lines)
+
+	(run_time_data, exception) = compute_runtime_data(lines)
 
 	# print(writes)
 	# print()
@@ -351,5 +349,7 @@ def main():
 	end = time.time()
 	# print("Time: " + str(end - start))
 
+	if exception != None:
+		raise exception
 
 main()
