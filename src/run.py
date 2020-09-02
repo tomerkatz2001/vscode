@@ -152,6 +152,7 @@ class Logger(bdb.Bdb):
 			self.set_quit()
 			return
 		env = {}
+		env["frame"] = frame
 		env["time"] = self.time
 		self.add_loop_info(env)
 		self.time = self.time + 1
@@ -310,9 +311,20 @@ def adjust_to_next_time_step(data):
 				next_envs.append(env)
 			elif "time" in env:
 				next_time = env["time"]+1
-				if next_time in envs_by_time:
-					next_envs.append(envs_by_time[next_time])
+				while next_time in envs_by_time:
+					next_env = envs_by_time[next_time]
+					if ("frame" in env and "frame" in next_env and env["frame"] is next_env["frame"]):
+						next_envs.append(next_env)
+						break
+					next_time = next_time + 1
+				# next_time = env["time"]+1
+				# if next_time in envs_by_time:
+				# 	next_envs.append(envs_by_time[next_time])
 		new_data[lineno] = next_envs
+	for lineno in new_data:
+		for env in new_data[lineno]:
+			if "frame" in env:
+				del env["frame"]
 	return new_data
 
 def main():
