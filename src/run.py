@@ -15,6 +15,12 @@ import types
 import numpy as np
 # from PIL import Image
 
+def add_html_escape(html):
+	return f"```html\n{html}\n```"
+
+def add_red_format(html):
+	return f"<div style='color:red;'>{html}</div>"
+
 class LoopInfo:
 	def __init__(self, frame, lineno, indent):
 		self.frame = frame
@@ -145,7 +151,7 @@ class Logger(bdb.Bdb):
 		if html == None:
 			return repr(v)
 		else:
-			return f"```html\n{html}\n```"
+			return add_html_escape(html)
 
 	def record_env(self, frame, lineno):
 		if self.time >= 100:
@@ -194,7 +200,8 @@ class Logger(bdb.Bdb):
 		if self.exception == None:
 			r = self.compute_repr(rv)
 		else:
-			r = str(self.exception)
+			html = add_red_format(self.exception.__class__ .__name__ + ": " + str(self.exception))
+			r = add_html_escape(html)
 		if r != None:
 			self.data_at("R" + str(adjusted_lineno))[-1]["rv"] = r
 		self.record_loop_end(frame, adjusted_lineno)
