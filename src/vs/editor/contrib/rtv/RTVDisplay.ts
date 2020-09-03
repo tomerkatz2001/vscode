@@ -356,6 +356,7 @@ class RTVRunButton {
 		if (editor_div === null) {
 			throw new Error('Cannot find Monaco Editor');
 		}
+		let options = this._editor.getRawOptions();
 		this._box = document.createElement('div');
 		this._box.style.position = 'absolute';
 		this._box.style.top = '0px';
@@ -1612,6 +1613,9 @@ class RTVController implements IEditorContribution {
 		@IThemeService readonly _themeService: IThemeService,
 		//@IModelService private readonly _modelService: IModelService,
 	) {
+		// let isReadOnly=undefined;
+		// setTimeout(()=>{isReadOnly = this._editor.getRawOptions().readOnly;}, 500);
+		// setTimeout(() => {console.log(this._editor.getRawOptions().readOnly);}, 500);
 		this._editor.onDidChangeCursorPosition((e) => { this.onDidChangeCursorPosition(e); });
 		this._editor.onDidScrollChange((e) => { this.onDidScrollChange(e); });
 		this._editor.onDidLayoutChange((e) => { this.onDidLayoutChange(e); });
@@ -1999,6 +2003,11 @@ class RTVController implements IEditorContribution {
 			this._runButton = new RTVRunButton(this._editor, this);
 		}
 		return this._runButton;
+	}
+
+	private isTextEditor() {
+		let editorMode = this._editor.getModel()?.getModeId();
+		return editorMode && editorMode !== 'Log'; //'Log' is the language identifier for the output editor
 	}
 
 	public getBoxAtCurrLine() {
@@ -2582,73 +2591,74 @@ class RTVController implements IEditorContribution {
 			return false;
 		}
 
-		this.padBoxArray();
-		this.addRemoveBoxes(e);
-		this.getOutputBox().hide();
-		this.getRunButton().reset(); // reset the text to 'Run'
-		this.getRunButton().show(); // always show the "run" button
+		if (this.isTextEditor()) { // avoid creating projection boxes/panels for the built-in output panel
+			this.padBoxArray();
+			this.addRemoveBoxes(e);
 
-		this.updateMaxPixelCol();
-		let delay = 500;
-		if (runImmediately(e)) {
-			delay = 0;
-		}
+			this.getOutputBox().hide();
+			this.getRunButton().reset(); // reset the text to 'Run'
+			this.getRunButton().show(); // always show the "run" button
 
-		this._runProgramDelay.run(delay, () => {
-			let lines = this.getModelForce().getLinesContent();
-			this.removeSeeds(lines);
-			const program = lines.join('\n');
-
-			if (this._pythonProcess !== undefined) {
-				this._pythonProcess.kill();
+			this.updateMaxPixelCol();
+			let delay = 500;
+			if (runImmediately(e)) {
+				delay = 0;
 			}
 
-			let c = utils.runProgram(program);
-			this._pythonProcess = c;
+			this._runProgramDelay.run(delay, () => {
+				let lines = this.getModelForce().getLinesContent();
+				this.removeSeeds(lines);
+				const program = lines.join('\n');
 
-			let errorMsg: string = '';
-			c.onStderr((msg) => {
-				errorMsg += msg;
-			});
-
-			let outputMsg: string = '';
-			c.onStdout((msg) => {
-				outputMsg += msg;
-			});
-
-			c.onExit((exitCode, result) => {
-				let outputBox = this.getOutputBox();
-
-				// When exitCode === null, it means the process was killed,
-				// so there is nothing else to do
-				if (exitCode !== null) {
-					this.updateLinesWhenOutOfDate(exitCode, e);
-					this._pythonProcess = undefined;
-					if (exitCode === 0) {
-						this.clearError();
-						this.updateData(result);
-						this.updateContentAndLayout();
-					}
-					else {
-						this.showErrorWithDelay(errorMsg);
-						this.updateContentAndLayout();
-					}
-
-					setTimeout(() => {
-						let errors = errorMsg.split('\n');
-						let err = `<div style='color:red;'>${errors[errors.length - 2]}</div>`;
-						errors[errors.length-2] = err;
-						let errorMsgStyled = errors.join('\n');
-
-						outputBox.clearContent();
-						outputBox.setContent(`<b>Output:</b><pre>${outputMsg}</pre><b>Errors:</b><pre>${errorMsgStyled}</pre>`);
-
-					}, 50);
-
-
+				if (this._pythonProcess !== undefined) {
+					this._pythonProcess.kill();
 				}
+
+				let c = utils.runProgram(program);
+				this._pythonProcess = c;
+
+				let errorMsg: string = '';
+				c.onStderr((msg) => {
+					errorMsg += msg;
+				});
+
+				let outputMsg: string = '';
+				c.onStdout((msg) => {
+					outputMsg += msg;
+				});
+
+				c.onExit((exitCode, result) => {
+					let outputBox = this.getOutputBox();
+
+					// When exitCode === null, it means the process was killed,
+					// so there is nothing else to do
+					if (exitCode !== null) {
+						this.updateLinesWhenOutOfDate(exitCode, e);
+						this._pythonProcess = undefined;
+						if (exitCode === 0) {
+							this.clearError();
+							this.updateData(result);
+							this.updateContentAndLayout();
+						}
+						else {
+							this.showErrorWithDelay(errorMsg);
+							this.updateContentAndLayout();
+						}
+
+						setTimeout(() => {
+							let errors = errorMsg.split('\n');
+							let err = `<div style='color:red;'>${errors[errors.length - 2]}</div>`;
+							errors[errors.length-2] = err;
+							let errorMsgStyled = errors.join('\n');
+
+							outputBox.clearContent();
+							outputBox.setContent(`<b>Output:</b><pre>${outputMsg}</pre><b>Errors:</b><pre>${errorMsgStyled}</pre>`);
+
+						}, 50);
+					}
+				});
 			});
-		});
+		}
 	}
 
 	private updateData(str?: string) {
@@ -2834,7 +2844,7 @@ class RTVController implements IEditorContribution {
 	public changeViewMode(m: ViewMode) {
 		this.viewMode = m;
 		let editor_div = this._editor.getDomNode();
-		if (editor_div !== null) {
+		if (editor_div !== null && this.isTextEditor()) {
 			this.getOutputBox().hide();
 			this.getRunButton().reset();
 			this.getRunButton().show();
