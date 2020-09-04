@@ -263,13 +263,13 @@ class RTVOutputDisplayBox {
 	private _box: HTMLDivElement;
 	private _html: string = '<b>Output:</b><br><br><b>Errors:</b><br>';
 	private _isOnDiv: boolean = false;
+	private _editor_div: HTMLElement | null;
 	constructor(
-		private readonly _editor: ICodeEditor,
-		left: number,
+		private readonly _editor: ICodeEditor
 	) {
 
-		let editor_div = this._editor.getDomNode();
-		if (editor_div === null) {
+		this._editor_div = this._editor.getDomNode();
+		if (this._editor_div === null) {
 			throw new Error('Cannot find Monaco Editor');
 		}
 
@@ -284,6 +284,11 @@ class RTVOutputDisplayBox {
 		this._box.style.overflow = 'scroll';
 		this._box.style.opacity = '0';
 		this._box.className = 'monaco-hover';
+		this._box.style.transitionProperty = 'all';
+		this._box.style.transitionDuration = '0.3s';
+		this._box.style.transitionDelay = '0s';
+		this._box.style.transitionTimingFunction = 'ease-in';
+
 		this._box.onmouseenter = (e) => {
 			this.onMouseEnter(e);
 		};
@@ -309,20 +314,14 @@ class RTVOutputDisplayBox {
 	}
 
 	public show(): void {
-		let editor_div = this._editor.getDomNode();
-		if (editor_div === null) {
+		if (this._editor_div === null) {
 			throw new Error('Cannot find Monaco Editor');
 		}
-		this._box.style.transitionProperty = 'all';
-		this._box.style.transitionDuration = '0.05s';
-		this._box.style.transitionDelay = '0s';
-		this._box.style.transitionTimingFunction = 'ease-in';
 		this._box.style.opacity = '1';
-		editor_div.appendChild(this._box);
+		this._editor_div.appendChild(this._box);
 	}
 
 	public hide(): void {
-		this._box.style.transitionDuration = '0s';
 		this._box.style.opacity = '0';
 	}
 
@@ -356,7 +355,6 @@ class RTVRunButton {
 		if (editor_div === null) {
 			throw new Error('Cannot find Monaco Editor');
 		}
-		let options = this._editor.getRawOptions();
 		this._box = document.createElement('div');
 		this._box.style.position = 'absolute';
 		this._box.style.top = '0px';
@@ -367,6 +365,7 @@ class RTVRunButton {
 		// TODO: localize
 		this._button.label = 'Run';
 		attachButtonStyler(this._button, this._controller._themeService);
+		editor_div.appendChild(this._box);
 		this._button.onDidClick(e => {
 			this.onClick();
 		});
@@ -376,21 +375,19 @@ class RTVRunButton {
 		this._box.remove();
 	}
 
-	public reset(): void {
+	public setButtonToRun(): void {
 		this._button.label = 'Run';
 	}
 
+	public setButtonToHide(): void {
+		this._button.label = 'Hide';
+	}
+
 	public show(): void {
-		let editor_div = this._editor.getDomNode();
-		if (editor_div === null) {
-			throw new Error('Cannot find Monaco Editor');
-		}
 		this._box.style.opacity = '1';
-		editor_div.appendChild(this._box);
 	}
 
 	public hide(): void {
-		this._box.style.transitionDuration = '0s';
 		this._box.style.opacity = '0';
 	}
 
@@ -399,14 +396,7 @@ class RTVRunButton {
 	}
 
 	private onClick(): void {
-		if (this._controller.getOutputBox().isHidden()) {
-			this._button.label = 'Hide';
-			this._controller.getOutputBox().show();
-		}
-		else {
-			this._button.label = 'Run';
-			this._controller.getOutputBox().hide();
-		}
+		this._controller.flipOutputBoxVisibility();
 	}
 
 }
@@ -1991,9 +1981,9 @@ class RTVController implements IEditorContribution {
 		return this._boxes[i];
 	}
 
-	public getOutputBox() {
+	private getOutputBox() {
 		if (this._outputBox === null) {
-			this._outputBox = new RTVOutputDisplayBox(this._editor, 0);
+			this._outputBox = new RTVOutputDisplayBox(this._editor);
 		}
 		return this._outputBox;
 	}
@@ -2008,6 +1998,25 @@ class RTVController implements IEditorContribution {
 	private isTextEditor() {
 		let editorMode = this._editor.getModel()?.getModeId();
 		return editorMode && editorMode !== 'Log'; //'Log' is the language identifier for the output editor
+	}
+
+	public showOutputBox() {
+		this.getRunButton().setButtonToHide();
+		this.getOutputBox().show();
+	}
+
+	public hideOutputBox() {
+		this.getOutputBox().hide();
+		this.getRunButton().setButtonToRun();
+		this.getRunButton().show(); // always show RunButton by default
+	}
+
+	public flipOutputBoxVisibility() {
+		if (this.getOutputBox().isHidden()) {
+			this.showOutputBox();
+		} else {
+			this.hideOutputBox();
+		}
 	}
 
 	public getBoxAtCurrLine() {
@@ -2594,10 +2603,7 @@ class RTVController implements IEditorContribution {
 		if (this.isTextEditor()) { // avoid creating projection boxes/panels for the built-in output panel
 			this.padBoxArray();
 			this.addRemoveBoxes(e);
-
-			this.getOutputBox().hide();
-			this.getRunButton().reset(); // reset the text to 'Run'
-			this.getRunButton().show(); // always show the "run" button
+			this.hideOutputBox();
 
 			this.updateMaxPixelCol();
 			let delay = 500;
@@ -2642,6 +2648,7 @@ class RTVController implements IEditorContribution {
 						}
 						else {
 							this.showErrorWithDelay(errorMsg);
+							this.updateData(result);
 							this.updateContentAndLayout();
 						}
 
@@ -2845,9 +2852,8 @@ class RTVController implements IEditorContribution {
 		this.viewMode = m;
 		let editor_div = this._editor.getDomNode();
 		if (editor_div !== null && this.isTextEditor()) {
-			this.getOutputBox().hide();
-			this.getRunButton().reset();
-			this.getRunButton().show();
+			this.hideOutputBox();
+			this.getRunButton().setButtonToRun();
 		}
 		switch (m) {
 			case ViewMode.Full:
@@ -3169,7 +3175,7 @@ class RTVController implements IEditorContribution {
 			}
 		}
 
-		if (e.keyCode === KeyCode.KEY_P && e.altKey) {
+		if (e.keyCode === KeyCode.KEY_P && e.altKey && e.ctrlKey) { // test this out
 			this._peekCounter = this._peekCounter + 1;
 			if (this._peekCounter > 1) {
 				if (this._peekTimer !== null) {
