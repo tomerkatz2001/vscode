@@ -202,7 +202,7 @@ class Logger(bdb.Bdb):
 		else:
 			html = add_red_format(self.exception.__class__ .__name__ + ": " + str(self.exception))
 			r = add_html_escape(html)
-		if r != None:
+		if r != None and (frame.f_code.co_name != "<module>" or self.exception != None):
 			self.data_at("R" + str(adjusted_lineno))[-1]["rv"] = r
 		self.record_loop_end(frame, adjusted_lineno)
 
