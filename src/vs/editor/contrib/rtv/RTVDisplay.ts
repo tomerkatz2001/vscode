@@ -1993,7 +1993,7 @@ class RTVController implements IEditorContribution {
 
 	private isTextEditor() {
 		let editorMode = this._editor.getModel()?.getModeId();
-		return editorMode && editorMode !== 'Log'; //'Log' is the language identifier for the output editor
+		return editorMode !== undefined && editorMode !== 'Log'; //'Log' is the language identifier for the output editor
 	}
 
 	public showOutputBox() {
