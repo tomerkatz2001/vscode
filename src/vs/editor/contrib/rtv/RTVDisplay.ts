@@ -281,7 +281,9 @@ class RTVOutputDisplayBox {
 		this._box.style.height = 'auto';
 		this._box.style.width = '500px';
 		this._box.innerHTML = this._html;
-		this._box.style.overflow = 'scroll';
+		this._box.style.display = 'inline-block';
+		this._box.style.overflowY = 'scroll';
+		this._box.style.overflowX = 'auto';
 		this._box.style.opacity = '0';
 		this._box.className = 'monaco-hover';
 		this._box.style.transitionProperty = 'all';
@@ -2659,7 +2661,7 @@ class RTVController implements IEditorContribution {
 							let errorMsgStyled = errors.join('\n');
 
 							outputBox.clearContent();
-							outputBox.setContent(`<b>Output:</b><pre>${outputMsg}</pre><b>Errors:</b><pre>${errorMsgStyled}</pre>`);
+							outputBox.setContent(`<b>Output:</b><pre>${outputMsg}</pre><b>Errors:</b><pre style='display: inline-block'>${errorMsgStyled}</pre>`);
 
 						}, 50);
 					}
