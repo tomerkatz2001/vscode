@@ -262,29 +262,30 @@ def indent(str):
 	return len(str) - len(str.lstrip())
 
 def compute_writes(lines):
-	done = False
-	i = 0
-	while not done:
-		try:
-			code = "".join(lines)
-			# print("Try number " + str(i))
-			# print("BEGIN CODE")
-			# print(code)
-			# print("END CODE")
-			i = i + 1
-			root = ast.parse(code)
-			done = True
-		except IndentationError as e:
-			lineno = e.lineno-1
-			# print(lines[lineno])
-			if (lines[lineno].find(core.magic_var_name) == -1):
-				raise
-			else:
-				lines[lineno] = "\n"
-	#print(ast.dump(root))
-	write_collector = WriteCollector()
-	write_collector.visit(root)
-	return write_collector.data
+	exception = None
+	try:
+		done = False
+		while not done:
+			try:
+				code = "".join(lines)
+				root = ast.parse(code)
+				done = True
+			except IndentationError as e:
+				lineno = e.lineno-1
+				if (lines[lineno].find(core.magic_var_name) == -1):
+					raise
+				else:
+					lines[lineno] = "\n"
+	except Exception as e:
+		exception = e
+
+	writes = {}
+	if exception == None:
+		#print(ast.dump(root))
+		write_collector = WriteCollector()
+		write_collector.visit(root)
+		writes = write_collector.data
+	return (writes, exception)
 
 def compute_runtime_data(lines):
 	exception = None
@@ -342,16 +343,25 @@ def main():
 	code = "".join(lines)
 	# print("(" + code + ")")
 
-	writes = compute_writes(lines)
+	return_code = 0
+	run_time_data = {}
+	writes = {}
 
-	(run_time_data, exception) = compute_runtime_data(lines)
+	(writes, exception) = compute_writes(lines)
+
+	if exception != None:
+		return_code = 1
+	else:
+		(run_time_data, exception) = compute_runtime_data(lines)
+		if (exception != None):
+			return_code = 2
 
 	# print(writes)
 	# print()
 	# print(run_time_data)
 
 	with open(sys.argv[1] + ".out", "w") as out:
-		out.write(json.dumps((writes, run_time_data)))
+		out.write(json.dumps((return_code, writes, run_time_data)))
 
 	end = time.time()
 	# print("Time: " + str(end - start))

@@ -41,7 +41,12 @@ class RunpyProcess implements Process {
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {
 		this.p.on('exit', (exitCode, _) => {
-			let result = fs.readFileSync(this.file + '.out').toString();
+			let result = undefined;
+
+			if (exitCode !== null) {
+				result = fs.readFileSync(this.file + '.out').toString();
+			}
+
 			fn(exitCode, result);
 		});
 	}

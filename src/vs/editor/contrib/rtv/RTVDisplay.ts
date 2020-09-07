@@ -2671,8 +2671,9 @@ class RTVController implements IEditorContribution {
 		try {
 			// TODO better error handling instead of !!
 			let data = JSON.parse(str!!);
-			this.envs = data[1];
-			this.writes = data[0];
+			console.log(data[0]);
+			this.writes = data[1];
+			this.envs = data[2];
 		}
 		catch (e) {
 			console.log(str);
