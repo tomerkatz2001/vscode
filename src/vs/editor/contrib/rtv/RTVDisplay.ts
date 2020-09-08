@@ -263,13 +263,12 @@ class RTVOutputDisplayBox {
 	private _box: HTMLDivElement;
 	private _html: string = '<b>Output:</b><br><br><b>Errors:</b><br>';
 	private _isOnDiv: boolean = false;
-	private _editor_div: HTMLElement | null;
 	constructor(
 		private readonly _editor: ICodeEditor
 	) {
 
-		this._editor_div = this._editor.getDomNode();
-		if (this._editor_div === null) {
+		let editor_div = this._editor.getDomNode();
+		if (editor_div === null) {
 			throw new Error('Cannot find Monaco Editor');
 		}
 
@@ -297,6 +296,8 @@ class RTVOutputDisplayBox {
 		this._box.onmouseleave = (e) => {
 			this.onMouseLeave(e);
 		}
+		this.hide();
+		// editor_div.appendChild(this._box);
 	}
 
 	public destroy(): void {
@@ -316,11 +317,14 @@ class RTVOutputDisplayBox {
 	}
 
 	public show(): void {
-		if (this._editor_div === null) {
+		let editor_div = this._editor.getDomNode();
+		if (editor_div === null) {
 			throw new Error('Cannot find Monaco Editor');
 		}
+
 		this._box.style.opacity = '1';
-		this._editor_div.appendChild(this._box);
+		editor_div.appendChild(this._box);
+
 	}
 
 	public hide(): void {
@@ -1621,7 +1625,6 @@ class RTVController implements IEditorContribution {
 
 		this.logger = utils.getLogger(this._editor);
 
-
 		this.updateMaxPixelCol();
 
 		this._config = new ConfigurationServiceCache(configurationService);
@@ -1999,7 +2002,7 @@ class RTVController implements IEditorContribution {
 
 	private isTextEditor() {
 		let editorMode = this._editor.getModel()?.getModeId();
-		return editorMode && editorMode !== 'Log'; //'Log' is the language identifier for the output editor
+		return editorMode !== undefined && editorMode !== 'Log'; //'Log' is the language identifier for the output editor
 	}
 
 	public showOutputBox() {
@@ -2602,72 +2605,77 @@ class RTVController implements IEditorContribution {
 			return false;
 		}
 
-		if (this.isTextEditor()) { // avoid creating projection boxes/panels for the built-in output panel
-			this.padBoxArray();
-			this.addRemoveBoxes(e);
-			this.hideOutputBox();
+		// avoid creating projection boxes/panels for the built-in output panel
+		if (!this.isTextEditor()) {
+			return
+		}
 
-			this.updateMaxPixelCol();
-			let delay = 500;
-			if (runImmediately(e)) {
-				delay = 0;
+		this.padBoxArray();
+		this.addRemoveBoxes(e);
+		this.hideOutputBox();
+
+		this.updateMaxPixelCol();
+		let delay = 500;
+		if (runImmediately(e)) {
+			delay = 0;
+		}
+
+		this._runProgramDelay.run(delay, () => {
+			let lines = this.getModelForce().getLinesContent();
+			this.removeSeeds(lines);
+			const program = lines.join('\n');
+
+			if (this._pythonProcess !== undefined) {
+				this._pythonProcess.kill();
 			}
 
-			this._runProgramDelay.run(delay, () => {
-				let lines = this.getModelForce().getLinesContent();
-				this.removeSeeds(lines);
-				const program = lines.join('\n');
+			let c = utils.runProgram(program);
+			this._pythonProcess = c;
 
-				if (this._pythonProcess !== undefined) {
-					this._pythonProcess.kill();
-				}
-
-				let c = utils.runProgram(program);
-				this._pythonProcess = c;
-
-				let errorMsg: string = '';
-				c.onStderr((msg) => {
-					errorMsg += msg;
-				});
-
-				let outputMsg: string = '';
-				c.onStdout((msg) => {
-					outputMsg += msg;
-				});
-
-				c.onExit((exitCode, result) => {
-					let outputBox = this.getOutputBox();
-
-					// When exitCode === null, it means the process was killed,
-					// so there is nothing else to do
-					if (exitCode !== null) {
-						this.updateLinesWhenOutOfDate(exitCode, e);
-						this._pythonProcess = undefined;
-						if (exitCode === 0) {
-							this.clearError();
-							this.updateData(result);
-							this.updateContentAndLayout();
-						}
-						else {
-							this.showErrorWithDelay(errorMsg);
-							this.updateData(result);
-							this.updateContentAndLayout();
-						}
-
-						setTimeout(() => {
-							let errors = errorMsg.split('\n');
-							let err = `<div style='color:red;'>${errors[errors.length - 2]}</div>`;
-							errors[errors.length-2] = err;
-							let errorMsgStyled = errors.join('\n');
-
-							outputBox.clearContent();
-							outputBox.setContent(`<b>Output:</b><pre>${outputMsg}</pre><b>Errors:</b><pre style='display: inline-block'>${errorMsgStyled}</pre>`);
-
-						}, 50);
-					}
-				});
+			let errorMsg: string = '';
+			c.onStderr((msg) => {
+				errorMsg += msg;
 			});
-		}
+
+			let outputMsg: string = '';
+			c.onStdout((msg) => {
+				outputMsg += msg;
+			});
+
+			c.onExit((exitCode, result) => {
+				let outputBox = this.getOutputBox();
+
+				// When exitCode === null, it means the process was killed,
+				// so there is nothing else to do
+				if (exitCode !== null) {
+					this.updateLinesWhenOutOfDate(exitCode, e);
+					this._pythonProcess = undefined;
+					if (exitCode === 0) {
+						this.clearError();
+						this.updateData(result);
+						this.updateContentAndLayout();
+					}
+					else {
+						this.showErrorWithDelay(errorMsg);
+						this.updateData(result);
+						this.updateContentAndLayout();
+					}
+
+					setTimeout(() => {
+						let errors = errorMsg.split('\n');
+						let err = `<div style='color:red;'>${errors[errors.length - 2]}</div>`;
+						errors[errors.length-2] = err;
+						let errorMsgStyled = errors.join('\n');
+
+						outputBox.clearContent();
+													// outputBox.setContent(`<b>Output:</b><pre>${outputMsg}</pre><b>Errors:</b><pre style='display: inline-block'>${errorMsgStyled}</pre>`);
+
+						outputBox.setContent(`<b>Output:</b><pre>${outputMsg}</pre><b>Errors:</b><pre>${errorMsgStyled}</pre>`);
+
+					}, 50);
+				}
+			});
+		});
 	}
 
 	private updateData(str?: string) {
