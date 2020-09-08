@@ -2661,16 +2661,35 @@ class RTVController implements IEditorContribution {
 						this.updateContentAndLayout();
 					}
 
+					function escapeHTML(unsafe: string) : string{
+						return unsafe
+							.replace(/&/g, "&amp;")
+							.replace(/</g, "&lt;")
+							.replace(/>/g, "&gt;")
+							.replace(/"/g, "&quot;")
+							.replace(/'/g, "&#039;");
+						}
+
 					setTimeout(() => {
-						let errors = errorMsg.split('\n');
-						let err = `<div style='color:red;'>${errors[errors.length - 2]}</div>`;
-						errors[errors.length-2] = err;
-						let errorMsgStyled = errors.join('\n');
+						let errorMsgStyled = "";
+						if (errorMsg !== "") {
+							let errors = escapeHTML(errorMsg).split('\n'); // errorMsg can be null
+							// console.log(errors);
+							let errorStartIndex = 0;
+							for (var i = errors.length-1; i >= 0; i--) {
+								let line = errors[i];
+								if (line.match(/line \d+/g) !== null) { // returns an Array object
+									errorStartIndex = i;
+									break;
+								}
+							}
+							let err = `<div style='color:red;'>${errors[errors.length - 2]}</div>`;
+							errors[errors.length-2] = err;
+							errorMsgStyled = errors.slice(errorStartIndex, -1).join('\n'); // related error starts from the fifth to the last substring
+						}
 
 						outputBox.clearContent();
-													// outputBox.setContent(`<b>Output:</b><pre>${outputMsg}</pre><b>Errors:</b><pre style='display: inline-block'>${errorMsgStyled}</pre>`);
-
-						outputBox.setContent(`<b>Output:</b><pre>${outputMsg}</pre><b>Errors:</b><pre>${errorMsgStyled}</pre>`);
+						outputBox.setContent(`<b>Output:</b><pre>${escapeHTML(outputMsg)}</pre><b>Errors:</b><pre>${errorMsgStyled}</pre>`);
 
 					}, 50);
 				}
