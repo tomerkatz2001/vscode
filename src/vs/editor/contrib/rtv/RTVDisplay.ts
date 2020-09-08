@@ -347,6 +347,39 @@ class RTVOutputDisplayBox {
 		return this._isOnDiv;
 	}
 
+	public setOutAndErrMsg(outputMsg: string, errorMsg: string) {
+
+		function escapeHTML(unsafe: string) : string {
+			return unsafe
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;")
+				.replace(/"/g, "&quot;")
+				.replace(/'/g, "&#039;");
+		}
+
+		setTimeout(() => {
+			let errorMsgStyled = "";
+			if (errorMsg !== "") {
+				let errors = escapeHTML(errorMsg).split('\n'); // errorMsg can be null
+				let errorStartIndex = 0;
+				for (var i = errors.length-1; i >= 0; i--) {
+					let line = errors[i];
+					if (line.match(/line \d+/g) !== null) { // returns an Array object
+						errorStartIndex = i;
+						break;
+					}
+				}
+				let err = `<div style='color:red;'>${errors[errors.length - 2]}</div>`;
+				errors[errors.length-2] = err;
+				errorMsgStyled = errors.slice(errorStartIndex, -1).join('\n'); // related error starts from the fifth to the last substring
+			}
+
+			this.setContent(`<b>Output:</b><pre>${escapeHTML(outputMsg)}</pre><b>Errors:</b><pre>${errorMsgStyled}</pre>`);
+
+		}, 50);
+
+	}
 }
 
 class RTVRunButton {
@@ -1588,13 +1621,13 @@ class RTVController implements IEditorContribution {
 	private _makeNewBoxesVisible: boolean = true;
 	private _loopFocusController: LoopFocusController | null = null;
 	private _errorDecorationID: string | null = null;
-	private _errorDisplayTimer: ReturnType<typeof setTimeout> | null = null;
 	private _visibilityPolicy: VisibilityPolicy = visibilityAll;
 	private _peekCounter: number = 0;
 	private _peekTimer: ReturnType<typeof setTimeout> | null = null;
 	private _globalDeltaVarSet: DeltaVarSet = new DeltaVarSet();
 	private _pythonProcess?: Process = undefined;
 	private _runProgramDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
+	private _showErrorDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 	private _outputBox: RTVOutputDisplayBox| null = null;
 	private _runButton: RTVRunButton | null = null;
 
@@ -2402,15 +2435,14 @@ class RTVController implements IEditorContribution {
 		});
 	}
 
-	private showErrorWithDelay(errorMsg: string) {
-		if (this._errorDisplayTimer !== null) {
-			clearTimeout(this._errorDisplayTimer);
-		}
-		this._errorDisplayTimer = setTimeout(() => {
-			this._errorDisplayTimer = null;
+	private showErrorWithDelay(returnCode: number, errorMsg: string) {
+		this._showErrorDelay.run(1500, () => {
 			this.clearError();
 			this.showError(errorMsg);
-		}, 600);
+			if (returnCode === 1) {
+				this.showOutputBox();
+			}
+		});
 	}
 
 	private showError(errorMsg: string) {
@@ -2500,10 +2532,7 @@ class RTVController implements IEditorContribution {
 	}
 
 	private clearError() {
-		if (this._errorDisplayTimer !== null) {
-			clearTimeout(this._errorDisplayTimer);
-			this._errorDisplayTimer = null;
-		}
+		this._showErrorDelay.cancel();
 		if (this._errorDecorationID !== null) {
 			this.removeDecoration(this._errorDecorationID);
 			this._errorDecorationID = null;
@@ -2612,7 +2641,6 @@ class RTVController implements IEditorContribution {
 
 		this.padBoxArray();
 		this.addRemoveBoxes(e);
-		this.hideOutputBox();
 
 		this.updateMaxPixelCol();
 		let delay = 500;
@@ -2643,71 +2671,39 @@ class RTVController implements IEditorContribution {
 			});
 
 			c.onExit((exitCode, result) => {
-				let outputBox = this.getOutputBox();
-
 				// When exitCode === null, it means the process was killed,
 				// so there is nothing else to do
-				if (exitCode !== null) {
-					this.updateLinesWhenOutOfDate(exitCode, e);
-					this._pythonProcess = undefined;
-					if (exitCode === 0) {
-						this.clearError();
-						this.updateData(result);
-						this.updateContentAndLayout();
-					}
-					else {
-						this.showErrorWithDelay(errorMsg);
-						this.updateData(result);
-						this.updateContentAndLayout();
-					}
-
-					function escapeHTML(unsafe: string) : string{
-						return unsafe
-							.replace(/&/g, "&amp;")
-							.replace(/</g, "&lt;")
-							.replace(/>/g, "&gt;")
-							.replace(/"/g, "&quot;")
-							.replace(/'/g, "&#039;");
-						}
-
-					setTimeout(() => {
-						let errorMsgStyled = "";
-						if (errorMsg !== "") {
-							let errors = escapeHTML(errorMsg).split('\n'); // errorMsg can be null
-							// console.log(errors);
-							let errorStartIndex = 0;
-							for (var i = errors.length-1; i >= 0; i--) {
-								let line = errors[i];
-								if (line.match(/line \d+/g) !== null) { // returns an Array object
-									errorStartIndex = i;
-									break;
-								}
-							}
-							let err = `<div style='color:red;'>${errors[errors.length - 2]}</div>`;
-							errors[errors.length-2] = err;
-							errorMsgStyled = errors.slice(errorStartIndex, -1).join('\n'); // related error starts from the fifth to the last substring
-						}
-
-						outputBox.clearContent();
-						outputBox.setContent(`<b>Output:</b><pre>${escapeHTML(outputMsg)}</pre><b>Errors:</b><pre>${errorMsgStyled}</pre>`);
-
-					}, 50);
+				if (exitCode === null) {
+					return
 				}
+
+				this.updateLinesWhenOutOfDate(exitCode, e);
+				this._pythonProcess = undefined;
+
+				let parsedResult = JSON.parse(result!);
+				this.updateData(parsedResult);
+
+				let returnCode = parsedResult[0];
+				if (returnCode === 0 || returnCode === 2) {
+					this.hideOutputBox();
+				}
+
+				if (returnCode === 0 || returnCode == 2) {
+					this.clearError();
+				} else {
+					this.showErrorWithDelay(returnCode, errorMsg);
+				}
+
+				this.updateContentAndLayout();
+
+				this.getOutputBox().setOutAndErrMsg(outputMsg, errorMsg);
 			});
 		});
 	}
 
-	private updateData(str?: string) {
-		try {
-			// TODO better error handling instead of !!
-			let data = JSON.parse(str!!);
-			this.writes = data[1];
-			this.envs = data[2];
-		}
-		catch (e) {
-			console.log(str);
-			console.log(e);
-		}
+	private updateData(parsedResult: any) {
+		this.writes = parsedResult[1];
+		this.envs = parsedResult[2];
 	}
 
 	public getEnvAtNextTimeStep(env: any): any | null {
