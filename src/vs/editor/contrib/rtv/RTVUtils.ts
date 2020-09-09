@@ -43,7 +43,7 @@ class RunpyProcess implements Process {
 		this.p.on('exit', (exitCode, _) => {
 			let result = undefined;
 
-			if (exitCode === 0) {
+			if (exitCode !== null) {
 				result = fs.readFileSync(this.file + '.out').toString();
 			}
 

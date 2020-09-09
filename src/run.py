@@ -15,6 +15,12 @@ import types
 import numpy as np
 # from PIL import Image
 
+def add_html_escape(html):
+	return f"```html\n{html}\n```"
+
+def add_red_format(html):
+	return f"<div style='color:red;'>{html}</div>"
+
 class LoopInfo:
 	def __init__(self, frame, lineno, indent):
 		self.frame = frame
@@ -31,7 +37,7 @@ class Logger(bdb.Bdb):
 		self.data = {}
 		self.active_loops = []
 		self.preexisting_locals = None
-		# self.exception = False
+		self.exception = None
 
 	def data_at(self, l):
 		if not(l in self.data):
@@ -59,7 +65,7 @@ class Logger(bdb.Bdb):
 		if frame.f_code.co_name == "<listcomp>" or frame.f_code.co_name == "<dictcomp>" or frame.f_code.co_filename != "<string>":
 			return
 
-		# self.exception = False
+		self.exception = None
 
 		adjusted_lineno = frame.f_lineno-1
 		self.record_loop_end(frame, adjusted_lineno)
@@ -145,13 +151,14 @@ class Logger(bdb.Bdb):
 		if html == None:
 			return repr(v)
 		else:
-			return f"```html\n{html}\n```"
+			return add_html_escape(html)
 
 	def record_env(self, frame, lineno):
 		if self.time >= 100:
 			self.set_quit()
 			return
 		env = {}
+		env["frame"] = frame
 		env["time"] = self.time
 		self.add_loop_info(env)
 		self.time = self.time + 1
@@ -170,8 +177,8 @@ class Logger(bdb.Bdb):
 
 		self.prev_env = env
 
-	# def user_exception(self, frame, e):
-	#	 self.exception = True
+	def user_exception(self, frame, e):
+		self.exception = e[1]
 
 	def user_return(self, frame, rv):
 		# print("user_return ============================================")
@@ -187,23 +194,17 @@ class Logger(bdb.Bdb):
 		if frame.f_code.co_name == "<listcomp>" or frame.f_code.co_name == "<dictcomp>" or frame.f_code.co_filename != "<string>":
 			return
 
-		# if self.exception:
-		#	 if rv == None:
-		#		 rv_str = "Exception"
-		#	 else:
-		#		 rv_str = "Exception(" + repr(rv) + ")"
-		# else:
-		#	 rv_str = repr(rv)
 		adjusted_lineno = frame.f_lineno-1
-		# print("About to return: " + self.lines[adjusted_lineno].strip())
 
 		self.record_env(frame, "R" + str(adjusted_lineno))
-		#self.data_at("R" + str(adjusted_lineno))[-1]["rv"] = rv_str
-		r = self.compute_repr(rv)
-		if r != None:
+		if self.exception == None:
+			r = self.compute_repr(rv)
+		else:
+			html = add_red_format(self.exception.__class__ .__name__ + ": " + str(self.exception))
+			r = add_html_escape(html)
+		if r != None and (frame.f_code.co_name != "<module>" or self.exception != None):
 			self.data_at("R" + str(adjusted_lineno))[-1]["rv"] = r
 		self.record_loop_end(frame, adjusted_lineno)
-		#self.record_loop_begin(frame, adjusted_lineno)
 
 	def pretty_print_data(self):
 		for k in self.data:
@@ -261,38 +262,43 @@ def indent(str):
 	return len(str) - len(str.lstrip())
 
 def compute_writes(lines):
-	done = False
-	i = 0
-	while not done:
-		try:
-			code = "".join(lines)
-			# print("Try number " + str(i))
-			# print("BEGIN CODE")
-			# print(code)
-			# print("END CODE")
-			i = i + 1
-			root = ast.parse(code)
-			done = True
-		except IndentationError as e:
-			lineno = e.lineno-1
-			# print(lines[lineno])
-			if (lines[lineno].find(core.magic_var_name) == -1):
-				raise
-			else:
-				lines[lineno] = "\n"
-	#print(ast.dump(root))
-	write_collector = WriteCollector()
-	write_collector.visit(root)
-	return write_collector.data
+	exception = None
+	try:
+		done = False
+		while not done:
+			try:
+				code = "".join(lines)
+				root = ast.parse(code)
+				done = True
+			except IndentationError as e:
+				lineno = e.lineno-1
+				if (lines[lineno].find(core.magic_var_name) == -1):
+					raise
+				else:
+					lines[lineno] = "\n"
+	except Exception as e:
+		exception = e
+
+	writes = {}
+	if exception == None:
+		#print(ast.dump(root))
+		write_collector = WriteCollector()
+		write_collector.visit(root)
+		writes = write_collector.data
+	return (writes, exception)
 
 def compute_runtime_data(lines):
+	exception = None
 	if len(lines) == 0:
-		return {}
+		return ({}, exception)
 	code = "".join(lines)
 	l = Logger(lines)
-	l.run(code)
-	#data = adjust_to_next_time_step(l.data)
-	return l.data
+	try:
+		l.run(code)
+	except Exception as e:
+		exception = e
+	l.data = adjust_to_next_time_step(l.data)
+	return (l.data, exception)
 
 def adjust_to_next_time_step(data):
 	envs_by_time = {}
@@ -310,9 +316,20 @@ def adjust_to_next_time_step(data):
 				next_envs.append(env)
 			elif "time" in env:
 				next_time = env["time"]+1
-				if next_time in envs_by_time:
-					next_envs.append(envs_by_time[next_time])
+				while next_time in envs_by_time:
+					next_env = envs_by_time[next_time]
+					if ("frame" in env and "frame" in next_env and env["frame"] is next_env["frame"]):
+						next_envs.append(next_env)
+						break
+					next_time = next_time + 1
+				# next_time = env["time"]+1
+				# if next_time in envs_by_time:
+				# 	next_envs.append(envs_by_time[next_time])
 		new_data[lineno] = next_envs
+	for lineno in new_data:
+		for env in new_data[lineno]:
+			if "frame" in env:
+				del env["frame"]
 	return new_data
 
 def main():
@@ -326,18 +343,30 @@ def main():
 	code = "".join(lines)
 	# print("(" + code + ")")
 
-	writes = compute_writes(lines)
-	run_time_data = compute_runtime_data(lines)
+	return_code = 0
+	run_time_data = {}
+	writes = {}
+
+	(writes, exception) = compute_writes(lines)
+
+	if exception != None:
+		return_code = 1
+	else:
+		(run_time_data, exception) = compute_runtime_data(lines)
+		if (exception != None):
+			return_code = 2
 
 	# print(writes)
 	# print()
 	# print(run_time_data)
 
 	with open(sys.argv[1] + ".out", "w") as out:
-		out.write(json.dumps((writes, run_time_data)))
+		out.write(json.dumps((return_code, writes, run_time_data)))
 
 	end = time.time()
 	# print("Time: " + str(end - start))
 
+	if exception != None:
+		raise exception
 
 main()
