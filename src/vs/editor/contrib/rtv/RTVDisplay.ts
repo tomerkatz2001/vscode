@@ -370,6 +370,8 @@ class RTVOutputDisplayBox {
 						break;
 					}
 				}
+				let errorStartLine = errors[i];
+				errors[i] = errorStartLine.split(',').slice(1,).join(',');
 				let err = `<div style='color:red;'>${errors[errors.length - 2]}</div>`;
 				errors[errors.length-2] = err;
 				errorMsgStyled = errors.slice(errorStartIndex, -1).join('\n'); // related error starts from the fifth to the last substring
