@@ -13,7 +13,7 @@ import {
 	registerEditorContribution,
 	ServicesAccessor
 } from 'vs/editor/browser/editorExtensions';
-import { EditorLayoutInfo, EditorOption } from 'vs/editor/common/config/editorOptions';
+import { EditorLayoutInfo, EditorOption, ConfigurationChangedEvent } from 'vs/editor/common/config/editorOptions';
 import * as strings from 'vs/base/common/strings';
 import { IRange, Range } from 'vs/editor/common/core/range';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
@@ -482,16 +482,34 @@ class RTVDisplayBox {
 		this._box.style.left = '800px';
 		this._box.style.maxWidth = '1400px';
 		this._box.style.maxHeight = '400px';
-		this._box.style.overflow = 'auto';
+		this._box.style.overflowY = 'auto';
 		this._box.style.transitionProperty = 'all';
 		this._box.style.transitionDuration = '0.3s';
 		this._box.style.transitionDelay = '0s';
 		this._box.style.transitionTimingFunction = 'ease-in';
 		this._box.style.maxHeight = '500px';
-		this._box.style.overflow = 'auto';
 		this._box.style.zIndex = '1'; // Prevents it from covering the error dialog.
+		this._box.style.paddingLeft = '13px';
 		this._box.className = 'monaco-hover';
 		this._box.id = 'rtv-display-box';
+
+		// Update the font in case it's changed
+		const fontInfo = this._editor.getOption(EditorOption.fontInfo);
+		this._box.style.fontFamily = fontInfo.fontFamily;
+		this._box.style.fontWeight = fontInfo.fontWeight;
+		this._box.style.fontSize = `${fontInfo.fontSize}px`;
+
+		this._editor.onDidChangeConfiguration((e: ConfigurationChangedEvent) =>
+		{
+			if (e.hasChanged(EditorOption.fontInfo))
+			{
+				const fontInfo = this._editor.getOption(EditorOption.fontInfo);
+				this._box.style.fontFamily = fontInfo.fontFamily;
+				this._box.style.fontWeight = fontInfo.fontWeight;
+				this._box.style.fontSize = `${fontInfo.fontSize}px`;
+			}
+		});
+
 		if (!this._controller.supportSynthesis) {
 			this._box.onauxclick = (e) => {
 				this.onClick(e);
@@ -2697,7 +2715,7 @@ export class RTVController implements IRTVController {
 				// When exitCode === null, it means the process was killed,
 				// so there is nothing else to do
 				if (exitCode === null) {
-					return
+					return;
 				}
 
 				this.updateLinesWhenOutOfDate(exitCode, e);
