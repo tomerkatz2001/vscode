@@ -79,6 +79,8 @@ class RunpyProcess implements Process {
 	private error: string = '';
 	private output: string = '';
 
+	private killed: boolean = false;
+
 	private eventListener: (this: Worker, event: MessageEvent) => void;
 
 	constructor(program: string) {
@@ -104,17 +106,8 @@ class RunpyProcess implements Process {
 					this.output += msg.msg;
 					break;
 				case ResponseType.STDERR:
-					this.error += msg.msg;
-					break;
 				case ResponseType.EXCEPTION:
-					// The process crashed
 					this.error += msg.msg;
-					if (this.onError) {
-						this.onError(msg.msg);
-					}
-					if (this.onResult) {
-						this.onResult('');
-					}
 					break;
 				default:
 					break;
@@ -134,7 +127,12 @@ class RunpyProcess implements Process {
 	}
 
 	kill() {
+		this.killed = true;
 		pyodideWorker.removeEventListener('message', this.eventListener);
+
+		if (this.onResult) {
+			this.onResult('');
+		}
 	}
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {
@@ -149,11 +147,13 @@ class RunpyProcess implements Process {
 				this.onError(this.error);
 			}
 
-			fn((result && result !== '') ? 0 : 1, result);
+			fn((result && result !== '') ? 0 : null, result);
 		};
 
 		if (this.result) {
 			this.onResult(this.result);
+		} else if (this.killed) {
+			this.onResult('');
 		}
 	}
 }
