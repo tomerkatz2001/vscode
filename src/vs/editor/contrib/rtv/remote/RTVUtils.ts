@@ -259,33 +259,6 @@ class SynthProcess implements Process {
 	}
 }
 
-// Start the web worker
-const pyodideWorker = new Worker('/pyodide/webworker.js');
-let pyodideLoaded = false;
-
-const pyodideWorkerInitListener = (event: MessageEvent) =>
-{
-	let msg = event.data as PyodideWorkerResponse;
-
-	if (msg.type === ResponseType.LOADED)
-	{
-		console.log('Pyodide loaded!');
-		pyodideLoaded = true;
-		pyodideWorker.removeEventListener('message', pyodideWorkerInitListener);
-		(window.editor.getContribution('editor.contrib.rtv') as IRTVController).runProgram();
-		(document.getElementById('spinner') as HTMLInputElement).style.display = 'none';
-	}
-	else
-	{
-		console.error('First message from pyodide worker was not a load message!');
-		console.error(msg.type);
-		console.error(ResponseType.LOADED);
-	}
-};
-
-pyodideWorker.onerror = console.error;
-pyodideWorker.addEventListener('message', pyodideWorkerInitListener);
-
 function saveProgram(program: string) {
 	// We need this for CSRF protection on the server
 	const csrfInput = document.getElementById('csrf-parameter') as HTMLInputElement;
@@ -336,3 +309,35 @@ export function getLogger(editor: ICodeEditor): RTVLogger {
 
 // Assuming the server is running on a unix system
 export const EOL: string = '\n';
+
+// Start the web worker
+const pyodideWorker = new Worker('/pyodide/webworker.js');
+let pyodideLoaded = false;
+
+const pyodideWorkerInitListener = (event: MessageEvent) =>
+{
+	let msg = event.data as PyodideWorkerResponse;
+
+	if (msg.type === ResponseType.LOADED)
+	{
+		console.log('Pyodide loaded!');
+		pyodideLoaded = true;
+		pyodideWorker.removeEventListener('message', pyodideWorkerInitListener);
+
+		const program = window.editor.getModel()!!.getLinesContent().join('\n');
+		runProgram(program).onExit((_code, _result) =>
+		{
+			(window.editor.getContribution('editor.contrib.rtv') as IRTVController).runProgram();
+			(document.getElementById('spinner') as HTMLInputElement).style.display = 'none';
+		});
+	}
+	else
+	{
+		console.error('First message from pyodide worker was not a load message!');
+		console.error(msg.type);
+		console.error(ResponseType.LOADED);
+	}
+};
+
+pyodideWorker.onerror = console.error;
+pyodideWorker.addEventListener('message', pyodideWorkerInitListener);
