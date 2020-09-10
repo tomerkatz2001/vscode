@@ -2644,13 +2644,13 @@ class RTVController implements IEditorContribution {
 		this.padBoxArray();
 		this.addRemoveBoxes(e);
 
-		this.updateMaxPixelCol();
 		let delay = 500;
 		if (runImmediately(e)) {
 			delay = 0;
 		}
 
 		this._runProgramDelay.run(delay, () => {
+
 			let lines = this.getModelForce().getLinesContent();
 			this.removeSeeds(lines);
 			const program = lines.join('\n');
@@ -2673,6 +2673,8 @@ class RTVController implements IEditorContribution {
 			});
 
 			c.onExit((exitCode, result) => {
+				// onExit renders enough delay to update the positioning of the boxes
+				this.updateMaxPixelCol();
 				// When exitCode === null, it means the process was killed,
 				// so there is nothing else to do
 				if (exitCode === null) {
