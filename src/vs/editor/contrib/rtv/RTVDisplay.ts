@@ -482,7 +482,7 @@ class RTVDisplayBox {
 		this._box.style.left = '800px';
 		this._box.style.maxWidth = '1400px';
 		this._box.style.maxHeight = '400px';
-		this._box.style.overflowY = 'auto';
+		this._box.style.overflow = 'auto';
 		this._box.style.transitionProperty = 'all';
 		this._box.style.transitionDuration = '0.3s';
 		this._box.style.transitionDelay = '0s';

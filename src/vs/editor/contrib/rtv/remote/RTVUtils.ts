@@ -137,8 +137,6 @@ class RunpyProcess implements Process {
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {
 		this.onResult = (result) => {
-			(document.getElementById('output') as HTMLInputElement).value = this.output;
-
 			if (this.onOutput) {
 				this.onOutput(this.output);
 			}
@@ -234,11 +232,6 @@ class ImgSummaryProcess implements Process {
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {
 		this.onResult = (result) => {
-			if (this.output)
-			{
-				(document.getElementById('output') as HTMLInputElement).value = this.output;
-			}
-
 			fn((result && result !== '') ? 0 : 1, result);
 		};
 
