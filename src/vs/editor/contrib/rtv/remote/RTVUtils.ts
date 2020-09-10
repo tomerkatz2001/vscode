@@ -115,7 +115,7 @@ class RunpyProcess implements Process {
 		};
 
 		pyodideWorker.addEventListener('message', this.eventListener);
-		pyodideWorker.postMessage(new RunpyWorkerRequest(this.id, 'program.py', program));
+		pyodideWorker.postMessage(new RunpyWorkerRequest(this.id, `program_${this.id}.py`, program));
 	}
 
 	onStdout(fn: (data: any) => void): void {
@@ -207,7 +207,7 @@ class ImgSummaryProcess implements Process {
 		};
 
 		pyodideWorker.addEventListener('message', this.eventListener);
-		pyodideWorker.postMessage(new ImgSumWorkerRequest(this.id, 'imgsum.py', program, line, varname));
+		pyodideWorker.postMessage(new ImgSumWorkerRequest(this.id, `imgsum_${this.id}.py`, program, line, varname));
 	}
 
 	onStdout(fn: (data: any) => void): void {
