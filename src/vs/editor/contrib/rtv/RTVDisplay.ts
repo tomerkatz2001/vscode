@@ -372,6 +372,8 @@ class RTVOutputDisplayBox {
 						break;
 					}
 				}
+				let errorStartLine = errors[i];
+				errors[i] = errorStartLine.split(',').slice(1,).join(',');
 				let err = `<div style='color:red;'>${errors[errors.length - 2]}</div>`;
 				errors[errors.length-2] = err;
 				errorMsgStyled = errors.slice(errorStartIndex, -1).join('\n'); // related error starts from the fifth to the last substring
@@ -2676,13 +2678,13 @@ export class RTVController implements IRTVController {
 		this.padBoxArray();
 		this.addRemoveBoxes(e);
 
-		this.updateMaxPixelCol();
 		let delay = 500;
 		if (runImmediately(e)) {
 			delay = 0;
 		}
 
 		this._runProgramDelay.run(delay, () => {
+
 			let lines = this.getModelForce().getLinesContent();
 			this.removeSeeds(lines);
 			const program = lines.join('\n');
@@ -2712,6 +2714,8 @@ export class RTVController implements IRTVController {
 			c.onExit((exitCode, result) => {
 				this.logger.projectionBoxUpdateEnd(result);
 
+				// onExit renders enough delay to update the positioning of the boxes
+				this.updateMaxPixelCol();
 				// When exitCode === null, it means the process was killed,
 				// so there is nothing else to do
 				if (exitCode === null) {
