@@ -485,7 +485,7 @@ class RTVDisplayBox {
 		this._box.style.transitionDelay = '0s';
 		this._box.style.transitionTimingFunction = 'ease-in';
 		this._box.className = 'monaco-hover';
-		if (!this._controller.supportSynthesis) {
+		if (!this._controller.supportSynthesis && this._controller.mouseShortcuts) {
 			this._box.onauxclick = (e) => {
 				this.onClick(e);
 			};
@@ -1267,16 +1267,16 @@ class RTVDisplayBox {
 			c.contextMenuService.showContextMenu({
 				getAnchor: () => elmt,
 				getActions: () => [
-					this.newAction('Remove <strong> ' + varname + ' </strong> in This Box', () => {
+					this.newAction('Remove ' + varname + ' in This Box', () => {
 						c.varRemoveInThisBox(varname, this);
 					}),
-					this.newAction('Remove <strong> ' + varname + ' </strong> in All Boxes', () => {
+					this.newAction('Remove ' + varname + ' in All Boxes', () => {
 						c.varRemoveInAllBoxes(varname);
 					}),
-					this.newAction('Only <strong> ' + varname + ' </strong> in This Box', () => {
+					this.newAction('Only ' + varname + ' in This Box', () => {
 						c.varKeepOnlyInThisBox(varname, this);
 					}),
-					this.newAction('Only <strong> ' + varname + ' </strong> in All Boxes', () => {
+					this.newAction('Only ' + varname + ' in All Boxes', () => {
 						c.varKeepOnlyInAllBoxes(varname);
 					})
 				],
@@ -1344,7 +1344,7 @@ class RTVDisplayBox {
 	private createActionsForPlusMenu(): (IAction | ContextSubMenu)[] {
 		let res: (IAction | ContextSubMenu)[] = [];
 		this.notDisplayedVars().forEach((v) => {
-			res.push(new ContextSubMenu('Add <strong> ' + v, [
+			res.push(new ContextSubMenu('Add ' + v, [
 				this.newAction('to This Box', () => {
 					this._controller.varAddInThisBox(v, this);
 				}),

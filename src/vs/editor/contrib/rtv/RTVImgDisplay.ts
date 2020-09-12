@@ -75,9 +75,14 @@ class RTVImgController implements IEditorContribution {
 
 		let varname = word.word;
 		this._displayImg.run(500, () => {
-			console.log("(" + e.event.posx + "," + e.event.posy + ")");
+			//console.log("(" + e.event.posx + "," + e.event.posy + ")");
 
-			let lines = this.getModelForce().getLinesContent();
+			let model = this._editor.getModel();
+			if (model === null) {
+				return;
+			}
+
+			let lines = model.getLinesContent();
 
 			const program = lines.join('\n');
 
