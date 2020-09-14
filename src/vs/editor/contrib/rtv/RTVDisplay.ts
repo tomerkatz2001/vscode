@@ -664,6 +664,11 @@ class RTVDisplayBox {
 		});
 	}
 
+	private isEmptyLine(): boolean {
+		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
+		return lineContent.trim().length === 0
+	}
+
 	private isConditionalLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
 		return strings.endsWith(lineContent, ':') &&
@@ -1021,19 +1026,24 @@ class RTVDisplayBox {
 
 		if (!this._controller.showBoxAtLoopStmt && this.isLoopLine()) {
 			this.setContentFalse();
-			return;
+			return false;
+		}
+
+		if (this.isEmptyLine()) {
+			this.setContentFalse();
+			return false;
 		}
 
 		if (this.isConditionalLine()) {
 			this.setContentFalse();
-			return;
+			return false;
 		}
 
 		// Get all envs at this line number
 		let envs = this._controller.envs[this.lineNumber - 1];
 		if (envs === undefined) {
 			this.setContentFalse();
-			return;
+			return false;
 		}
 
 		this.setContentTrue();
@@ -1042,34 +1052,20 @@ class RTVDisplayBox {
 		envs = this.addMissingLines(envs);
 
 		this._allEnvs = envs;
+
+		return true;
 
 	}
 
 	public updateContent() {
 
-		if (!this._controller.showBoxAtLoopStmt && this.isLoopLine()) {
-			this.setContentFalse();
+		// if computeEnvs returns false, there is no content to display
+		let isThereContentToDisplay = this.computeEnvs();
+		if (!isThereContentToDisplay) {
 			return;
 		}
 
-		if (this.isConditionalLine()) {
-			this.setContentFalse();
-			return;
-		}
-
-		// Get all envs at this line number
-		let envs = this._controller.envs[this.lineNumber - 1];
-		if (envs === undefined) {
-			this.setContentFalse();
-			return;
-		}
-
-		this.setContentTrue();
-
-		//envs = this.adjustToNextTimeStep(envs);
-		envs = this.addMissingLines(envs);
-
-		this._allEnvs = envs;
+		let envs = this._allEnvs;
 
 		// Compute set of vars in all envs
 		this._allVars = new Set<string>();
