@@ -512,7 +512,7 @@ class RTVDisplayBox {
 			}
 		});
 
-		if (!this._controller.supportSynthesis) {
+		if (!this._controller.supportSynthesis && this._controller.mouseShortcuts) {
 			this._box.onauxclick = (e) => {
 				this.onClick(e);
 			};
@@ -689,6 +689,11 @@ class RTVDisplayBox {
 			onHide: () => { },
 			autoSelectFirstItem: true
 		});
+	}
+
+	private isEmptyLine(): boolean {
+		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
+		return lineContent.trim().length === 0
 	}
 
 	private isConditionalLine(): boolean {
@@ -1048,19 +1053,24 @@ class RTVDisplayBox {
 
 		if (!this._controller.showBoxAtLoopStmt && this.isLoopLine()) {
 			this.setContentFalse();
-			return;
+			return false;
+		}
+
+		if (this.isEmptyLine()) {
+			this.setContentFalse();
+			return false;
 		}
 
 		if (this.isConditionalLine()) {
 			this.setContentFalse();
-			return;
+			return false;
 		}
 
 		// Get all envs at this line number
 		let envs = this._controller.envs[this.lineNumber - 1];
 		if (envs === undefined) {
 			this.setContentFalse();
-			return;
+			return false;
 		}
 
 		this.setContentTrue();
@@ -1069,45 +1079,53 @@ class RTVDisplayBox {
 		envs = this.addMissingLines(envs);
 
 		this._allEnvs = envs;
+
+		return true;
 
 	}
 
 	public updateContent() {
 
-		if (!this._controller.showBoxAtLoopStmt && this.isLoopLine()) {
-			this.setContentFalse();
+		// if computeEnvs returns false, there is no content to display
+		let isThereContentToDisplay = this.computeEnvs();
+		if (!isThereContentToDisplay) {
 			return;
 		}
 
-		if (this.isConditionalLine()) {
-			this.setContentFalse();
-			return;
-		}
-
-		// Get all envs at this line number
-		let envs = this._controller.envs[this.lineNumber - 1];
-		if (envs === undefined) {
-			this.setContentFalse();
-			return;
-		}
-
-		this.setContentTrue();
-
-		//envs = this.adjustToNextTimeStep(envs);
-		envs = this.addMissingLines(envs);
-
-		this._allEnvs = envs;
+		let envs = this._allEnvs;
 
 		// Compute set of vars in all envs
 		this._allVars = new Set<string>();
+		let added_loop_vars = false;
+		let added_loop_iter = false;
 		envs.forEach((env) => {
+			// always add "#" first, if we haven't done it already
+			if (!added_loop_iter && env['#'] !== "") {
+				added_loop_iter = true
+				this._allVars.add('#');
+			}
+
+			// then add active loop variables, if we haven't done it already
+			if (!added_loop_vars && env['$'] !== "") {
+				added_loop_vars = true;
+				// env['$'] is a comma-seperated list of line numbers
+				let loop_ids: string[] = env['$'].split(",");
+				loop_ids.forEach( loop_lineno => {
+					let loop_vars = this._controller.writes[loop_lineno];
+					loop_vars.forEach( v => {
+						this._allVars.add(v);
+					});
+				});
+			}
+
+			// then add everything else
 			for (let key in env) {
 				if (key !== 'prev_lineno' &&
 					key !== 'next_lineno' &&
 					key !== 'lineno' &&
 					key !== 'time' &&
 					key !== '$' &&
-					(key !== '#' || env[key] !== "")) {
+					key !== '#') {
 					this._allVars.add(key);
 				}
 			}
@@ -1294,16 +1312,16 @@ class RTVDisplayBox {
 			c.contextMenuService.showContextMenu({
 				getAnchor: () => elmt,
 				getActions: () => [
-					this.newAction('Remove <strong> ' + varname + ' </strong> in This Box', () => {
+					this.newAction('Remove ' + varname + ' in This Box', () => {
 						c.varRemoveInThisBox(varname, this);
 					}),
-					this.newAction('Remove <strong> ' + varname + ' </strong> in All Boxes', () => {
+					this.newAction('Remove ' + varname + ' in All Boxes', () => {
 						c.varRemoveInAllBoxes(varname);
 					}),
-					this.newAction('Only <strong> ' + varname + ' </strong> in This Box', () => {
+					this.newAction('Only ' + varname + ' in This Box', () => {
 						c.varKeepOnlyInThisBox(varname, this);
 					}),
-					this.newAction('Only <strong> ' + varname + ' </strong> in All Boxes', () => {
+					this.newAction('Only ' + varname + ' in All Boxes', () => {
 						c.varKeepOnlyInAllBoxes(varname);
 					})
 				],
@@ -1371,7 +1389,7 @@ class RTVDisplayBox {
 	private createActionsForPlusMenu(): (IAction | ContextSubMenu)[] {
 		let res: (IAction | ContextSubMenu)[] = [];
 		this.notDisplayedVars().forEach((v) => {
-			res.push(new ContextSubMenu('Add <strong> ' + v, [
+			res.push(new ContextSubMenu('Add ' + v, [
 				this.newAction('to This Box', () => {
 					this._controller.varAddInThisBox(v, this);
 				}),
@@ -2472,7 +2490,7 @@ export class RTVController implements IRTVController {
 	}
 
 	private showErrorWithDelay(returnCode: number, errorMsg: string) {
-		this._showErrorDelay.run(1500, () => {
+		this._showErrorDelay.run(4000, () => {
 			this.clearError();
 			this.showError(errorMsg);
 			if (returnCode === 1) {
@@ -2678,7 +2696,7 @@ export class RTVController implements IRTVController {
 		this.padBoxArray();
 		this.addRemoveBoxes(e);
 
-		let delay = 500;
+		let delay = 1750;
 		if (runImmediately(e)) {
 			delay = 0;
 		}

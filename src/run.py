@@ -21,6 +21,24 @@ def add_html_escape(html):
 def add_red_format(html):
 	return f"<div style='color:red;'>{html}</div>"
 
+def is_loop_str(str):
+	return re.search("(for|while).*:", str.strip()) != None
+
+def is_break_str(str):
+	return re.search("break", str.strip()) != None
+
+def is_return_str(str):
+	return re.search("return", str.strip()) != None
+
+def indent(str):
+	return len(str) - len(str.lstrip())
+
+def remove_R(lineno):
+	if isinstance(lineno, str):
+		return int(lineno[1:])
+	else:
+		return lineno
+
 class LoopInfo:
 	def __init__(self, frame, lineno, indent):
 		self.frame = frame
@@ -75,9 +93,7 @@ class Logger(bdb.Bdb):
 	def record_loop_end(self, frame, lineno):
 		curr_stmt = self.lines[lineno]
 		if self.prev_env != None and len(self.active_loops) > 0 and self.active_loops[-1].frame is frame:
-			prev_lineno = self.prev_env["lineno"]
-			if isinstance(prev_lineno, str):
-				prev_lineno = int(prev_lineno[1:])
+			prev_lineno = remove_R(self.prev_env["lineno"])
 			prev_stmt = self.lines[prev_lineno]
 
 			loop_indent = self.active_loops[-1].indent
@@ -248,19 +264,6 @@ class WriteCollector(ast.NodeVisitor):
 			return self.find_id(node.value)
 		return None
 
-
-def is_loop_str(str):
-	return re.search("(for|while).*:", str.strip()) != None
-
-def is_break_str(str):
-	return re.search("break", str.strip()) != None
-
-def is_return_str(str):
-	return re.search("return", str.strip()) != None
-
-def indent(str):
-	return len(str) - len(str.lstrip())
-
 def compute_writes(lines):
 	exception = None
 	try:
@@ -297,10 +300,11 @@ def compute_runtime_data(lines):
 		l.run(code)
 	except Exception as e:
 		exception = e
-	l.data = adjust_to_next_time_step(l.data)
+	l.data = adjust_to_next_time_step(l.data, l.lines)
+	remove_frame_data(l.data)
 	return (l.data, exception)
 
-def adjust_to_next_time_step(data):
+def adjust_to_next_time_step(data, lines):
 	envs_by_time = {}
 	for lineno in data:
 		for env in data[lineno]:
@@ -319,18 +323,23 @@ def adjust_to_next_time_step(data):
 				while next_time in envs_by_time:
 					next_env = envs_by_time[next_time]
 					if ("frame" in env and "frame" in next_env and env["frame"] is next_env["frame"]):
-						next_envs.append(next_env)
+						curr_stmt = lines[env["lineno"]]
+						next_stmt = lines[remove_R(next_env["lineno"])]
+						if not is_loop_str(curr_stmt) or indent(next_stmt) > indent(curr_stmt):
+							next_envs.append(next_env)
 						break
 					next_time = next_time + 1
 				# next_time = env["time"]+1
 				# if next_time in envs_by_time:
 				# 	next_envs.append(envs_by_time[next_time])
 		new_data[lineno] = next_envs
-	for lineno in new_data:
-		for env in new_data[lineno]:
+	return new_data
+
+def remove_frame_data(data):
+	for lineno in data:
+		for env in data[lineno]:
 			if "frame" in env:
 				del env["frame"]
-	return new_data
 
 def main():
 
