@@ -1069,14 +1069,36 @@ class RTVDisplayBox {
 
 		// Compute set of vars in all envs
 		this._allVars = new Set<string>();
+		let added_loop_vars = false;
+		let added_loop_iter = false;
 		envs.forEach((env) => {
+			// always add "#" first, if we haven't done it already
+			if (!added_loop_iter && env['#'] !== "") {
+				added_loop_iter = true
+				this._allVars.add('#');
+			}
+
+			// then add active loop variables, if we haven't done it already
+			if (!added_loop_vars && env['$'] !== "") {
+				added_loop_vars = true;
+				// env['$'] is a comma-seperated list of line numbers
+				let loop_ids: string[] = env['$'].split(",");
+				loop_ids.forEach( loop_lineno => {
+					let loop_vars = this._controller.writes[loop_lineno];
+					loop_vars.forEach( v => {
+						this._allVars.add(v);
+					});
+				});
+			}
+
+			// then add everything else
 			for (let key in env) {
 				if (key !== 'prev_lineno' &&
 					key !== 'next_lineno' &&
 					key !== 'lineno' &&
 					key !== 'time' &&
 					key !== '$' &&
-					(key !== '#' || env[key] !== "")) {
+					key !== '#') {
 					this._allVars.add(key);
 				}
 			}
@@ -2434,7 +2456,7 @@ class RTVController implements IEditorContribution {
 	}
 
 	private showErrorWithDelay(returnCode: number, errorMsg: string) {
-		this._showErrorDelay.run(1500, () => {
+		this._showErrorDelay.run(4000, () => {
 			this.clearError();
 			this.showError(errorMsg);
 			if (returnCode === 1) {
@@ -2640,7 +2662,7 @@ class RTVController implements IEditorContribution {
 		this.padBoxArray();
 		this.addRemoveBoxes(e);
 
-		let delay = 500;
+		let delay = 1750;
 		if (runImmediately(e)) {
 			delay = 0;
 		}
