@@ -361,17 +361,20 @@ class RTVOutputDisplayBox {
 		}
 
 		setTimeout(() => {
-			let errorMsgStyled = "";
-			if (errorMsg !== "") {
+			let errorMsgStyled = '';
+			if (errorMsg !== '') {
 				let errors = escapeHTML(errorMsg).split('\n'); // errorMsg can be null
 				let errorStartIndex = 0;
-				for (var i = errors.length-1; i >= 0; i--) {
+				let i = 0;
+
+				for (i = errors.length-1; i >= 0; i--) {
 					let line = errors[i];
 					if (line.match(/line \d+/g) !== null) { // returns an Array object
 						errorStartIndex = i;
 						break;
 					}
 				}
+
 				let errorStartLine = errors[i];
 				errors[i] = errorStartLine.split(',').slice(1,).join(',');
 				let err = `<div style='color:red;'>${errors[errors.length - 2]}</div>`;
@@ -524,10 +527,6 @@ class RTVDisplayBox {
 		this._line = new RTVLine(this._editor, 800, 100, 800, 100);
 		this.setContentFalse();
 		this._deltaVarSet = new DeltaVarSet(deltaVarSet);
-	}
-
-	get visible() {
-		return this._hasContent;
 	}
 
 	public getCellContent() {
@@ -1049,46 +1048,81 @@ class RTVDisplayBox {
 		return indent(this._controller.getLineContent(lineno));
 	}
 
+	public setContentForLineNotExecuted() {
+		if (this._controller.showBoxWhenNotExecuted) {
+			this.setContentFalse();
+		} else {
+			this._allEnvs = [];
+			this._hasContent = true;
+			this._box.textContent = "Line not executed";
+			this._box.style.paddingLeft = "8px";
+			this._box.style.paddingRight = "8px";
+			this._box.style.paddingBottom = "0px";
+			this._box.style.paddingTop = "0px";
+		}
+	}
+
 	public computeEnvs() {
+
+		let count = 0;
+		if (this._controller.changedLinesWhenOutOfDate !== null) {
+			count = this._controller.changedLinesWhenOutOfDate.size;
+		}
+
+		if (count > 4) {
+			this.setContentFalse();
+			return true;
+		}
 
 		if (!this._controller.showBoxAtLoopStmt && this.isLoopLine()) {
 			this.setContentFalse();
-			return false;
+			return true;
 		}
 
 		if (this.isEmptyLine()) {
 			this.setContentFalse();
-			return false;
+			return true;
 		}
 
 		if (this.isConditionalLine()) {
 			this.setContentFalse();
-			return false;
+			return true;
 		}
 
 		// Get all envs at this line number
 		let envs = this._controller.envs[this.lineNumber - 1];
 		if (envs === undefined) {
-			this.setContentFalse();
-			return false;
+			this.setContentForLineNotExecuted();
+			return true;
 		}
 
-		this.setContentTrue();
+		let count_countent_envs = 0
+		envs.forEach( env => {
+			if (env.end_loop === undefined && env.begin_loop === undefined) {
+				count_countent_envs++;
+			}
+		});
+
+		if (count_countent_envs === 0) {
+			this.setContentForLineNotExecuted();
+			return true;
+		}
 
 		//envs = this.adjustToNextTimeStep(envs);
 		envs = this.addMissingLines(envs);
 
 		this._allEnvs = envs;
 
-		return true;
+		this.setContentTrue();
 
+		return false;
 	}
 
 	public updateContent() {
 
 		// if computeEnvs returns false, there is no content to display
-		let isThereContentToDisplay = this.computeEnvs();
-		if (!isThereContentToDisplay) {
+		let done = this.computeEnvs();
+		if (done) {
 			return;
 		}
 
@@ -1100,13 +1134,13 @@ class RTVDisplayBox {
 		let added_loop_iter = false;
 		envs.forEach((env) => {
 			// always add "#" first, if we haven't done it already
-			if (!added_loop_iter && env['#'] !== "") {
+			if (!added_loop_iter && env['#'] !== '') {
 				added_loop_iter = true
 				this._allVars.add('#');
 			}
 
 			// then add active loop variables, if we haven't done it already
-			if (!added_loop_vars && env['$'] !== "") {
+			if (!added_loop_vars && env['$'] !== '') {
 				added_loop_vars = true;
 				// env['$'] is a comma-seperated list of line numbers
 				let loop_ids: string[] = env['$'].split(",");
@@ -1221,7 +1255,7 @@ class RTVDisplayBox {
 		stalenessIndicator.style.top = '5px';
 		stalenessIndicator.style.left = '3px';
 		stalenessIndicator.style.borderRadius = '50%';
-		let x = this._controller._changedLinesWhenOutOfDate;
+		let x = this._controller.changedLinesWhenOutOfDate;
 		if (x === null) {
 			stalenessIndicator.style.backgroundColor = 'green';
 		} else {
@@ -1660,7 +1694,7 @@ export class RTVController implements IRTVController {
 	private _boxes: RTVDisplayBox[] = [];
 	private _maxPixelCol = 0;
 	private _prevModel: string[] = [];
-	public _changedLinesWhenOutOfDate: Set<number> | null = null;
+	public changedLinesWhenOutOfDate: Set<number> | null = null;
 	public _configBox: HTMLDivElement | null = null;
 	public tableCellsByLoop: MapLoopsToCells = {};
 	public logger: RTVLogger;
@@ -1786,6 +1820,13 @@ export class RTVController implements IRTVController {
 	}
 	set showBoxAtLoopStmt(v: boolean) {
 		this._config.updateValue(showBoxAtLoopStmtKey, v);
+	}
+
+	get showBoxWhenNotExecuted(): boolean {
+		return this._config.getValue(showBoxWhenNotExecutedKey);
+	}
+	set showBoxWhenNotExecuted(v: boolean) {
+		this._config.updateValue(showBoxWhenNotExecutedKey, v);
 	}
 
 	get spaceBetweenBoxes(): number {
@@ -2034,22 +2075,18 @@ export class RTVController implements IRTVController {
 		this._configBox = div;
 	}
 
-	private updateLinesWhenOutOfDate(exitCode: number | null, e?: IModelContentChangedEvent) {
+	private updateLinesWhenOutOfDate(returnCode: number | null, e?: IModelContentChangedEvent) {
 		if (e === undefined) {
 			return;
 		}
-		if (exitCode === 0) {
-			this._changedLinesWhenOutOfDate = null;
+		if (returnCode === 0 || returnCode === 2) {
+			this.changedLinesWhenOutOfDate = null;
 			return;
 		}
-		if (this._changedLinesWhenOutOfDate === null) {
-			this._changedLinesWhenOutOfDate = new Set();
+		if (this.changedLinesWhenOutOfDate === null) {
+			this.changedLinesWhenOutOfDate = new Set();
 		}
-		let s = this._changedLinesWhenOutOfDate;
-		// [lisa 8/3/2020] added the following lines
-		// if (e.changes === undefined) {
-		// 	return;
-		// }
+		let s = this.changedLinesWhenOutOfDate;
 		e.changes.forEach((change) => {
 			for (let i = change.range.startLineNumber; i <= change.range.endLineNumber; i++) {
 				s.add(i);
@@ -2493,9 +2530,6 @@ export class RTVController implements IRTVController {
 		this._showErrorDelay.run(4000, () => {
 			this.clearError();
 			this.showError(errorMsg);
-			if (returnCode === 1) {
-				this.showOutputBox();
-			}
 		});
 	}
 
@@ -2569,16 +2603,20 @@ export class RTVController implements IRTVController {
 			if (match === null) {
 				// can't figure out the format, give up
 				return;
-			} else {
-				// found a line number here, so this is a runtime error)
-				// match[0] is entire 'line N' match, match[1] is just the number N
-				lineNumber = +match[1];
-				colStart = this.firstNonWhitespaceCol(lineNumber) + caretIndex;
-				if (colStart < 1) {
-					colStart = 1;
-				}
-				colEnd = colStart + 1;
 			}
+			// found a line number here for the syntax error
+			// match[0] is entire 'line N' match, match[1] is just the number N
+			lineNumber = +match[1];
+			colStart = this.firstNonWhitespaceCol(lineNumber) + caretIndex;
+			if (colStart < 1) {
+				colStart = 1;
+			}
+			colEnd = colStart + 1;
+
+			// expand by one on each side to make it easier to see
+			colStart = colStart - 1;
+			colEnd = colEnd + 1;
+
 		}
 		let range = new Range(lineNumber, colStart, lineNumber, colEnd);
 		let options = { className: 'squiggly-error', hoverMessage: new MarkdownString(description) };
@@ -2696,12 +2734,14 @@ export class RTVController implements IRTVController {
 		this.padBoxArray();
 		this.addRemoveBoxes(e);
 
-		let delay = 1750;
+		let delay = 800;
 		if (runImmediately(e)) {
 			delay = 0;
 		}
 
 		this._runProgramDelay.run(delay, () => {
+
+			this.hideOutputBox();
 
 			let lines = this.getModelForce().getLinesContent();
 			this.removeSeeds(lines);
@@ -2740,18 +2780,16 @@ export class RTVController implements IRTVController {
 					return;
 				}
 
-				this.updateLinesWhenOutOfDate(exitCode, e);
 				this._pythonProcess = undefined;
 
 				let parsedResult = JSON.parse(result!);
-				this.updateData(parsedResult);
 
 				let returnCode = parsedResult[0];
-				if (returnCode === 0 || returnCode === 2) {
-					this.hideOutputBox();
-				}
+
+				this.updateLinesWhenOutOfDate(returnCode, e);
 
 				if (returnCode === 0 || returnCode == 2) {
+					this.updateData(parsedResult);
 					this.clearError();
 				} else {
 					this.showErrorWithDelay(returnCode, errorMsg);
@@ -3369,6 +3407,7 @@ const colBorderKey = 'rtv.box.colBorder';
 const displayOnlyModifiedVarsKey = 'rtv.box.displayOnlyModifiedVars';
 const opacityKey = 'rtv.box.opacity';
 const showBoxAtLoopStmtKey = 'rtv.box.showBoxAtLoopStatements';
+const showBoxWhenNotExecutedKey = 'rtv.box.showBoxWhenNotExecuted';
 const spaceBetweenBoxesKey = 'rtv.box.spaceBetweenBoxes';
 const zoomKey = 'rtv.box.zoom';
 const viewModeKey = 'rtv.viewMode';
@@ -3437,6 +3476,11 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 			'type': 'boolean',
 			'default': false,
 			'description': localize('rtv.showboxatloop', 'Controls whether boxes are displayed at loop statements')
+		},
+		[showBoxWhenNotExecutedKey]: {
+			'type': 'boolean',
+			'default': false,
+			'description': localize('rtv.showboxwhennotexecuted', 'Controls whether a box is displayed for statements that are not executed')
 		},
 		[spaceBetweenBoxesKey]: {
 			'type': 'number',
