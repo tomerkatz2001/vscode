@@ -215,11 +215,13 @@ class Logger(bdb.Bdb):
 		self.record_env(frame, "R" + str(adjusted_lineno))
 		if self.exception == None:
 			r = self.compute_repr(rv)
+			rv_name = "rv"
 		else:
 			html = add_red_format(self.exception.__class__ .__name__ + ": " + str(self.exception))
 			r = add_html_escape(html)
+			rv_name = "Exception Thrown"
 		if r != None and (frame.f_code.co_name != "<module>" or self.exception != None):
-			self.data_at("R" + str(adjusted_lineno))[-1]["rv"] = r
+			self.data_at("R" + str(adjusted_lineno))[-1][rv_name] = r
 		self.record_loop_end(frame, adjusted_lineno)
 
 	def pretty_print_data(self):
