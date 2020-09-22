@@ -568,6 +568,9 @@ class RTVDisplayBox {
 		if (this._allVars.has('rv')) {
 			result.add('rv');
 		}
+		if (this._allVars.has('Exception Thrown')) {
+			result.add('Exception Thrown');
+		}
 		return result;
 	}
 
