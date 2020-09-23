@@ -45,8 +45,7 @@ import {
 } from 'vs/platform/theme/common/colorRegistry';
 import { IIdentifiedSingleEditOperation, IModelDecorationOptions, ITextModel } from 'vs/editor/common/model';
 import { Selection } from 'vs/editor/common/core/selection';
-import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
-import { Process, IRTVController } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { Process, IRTVController, IRTVLogger } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
 import { Button } from 'vs/base/browser/ui/button/button';
 import { attachButtonStyler } from 'vs/platform/theme/common/styler';
@@ -1700,7 +1699,7 @@ export class RTVController implements IRTVController {
 	public changedLinesWhenOutOfDate: Set<number> | null = null;
 	public _configBox: HTMLDivElement | null = null;
 	public tableCellsByLoop: MapLoopsToCells = {};
-	public logger: RTVLogger;
+	public logger: IRTVLogger;
 	private _config: ConfigurationServiceCache;
 	private _makeNewBoxesVisible: boolean = true;
 	private _loopFocusController: LoopFocusController | null = null;
@@ -2140,8 +2139,15 @@ export class RTVController implements IRTVController {
 	public flipOutputBoxVisibility() {
 		if (this.getOutputBox().isHidden()) {
 			this.showOutputBox();
+
+			// Log the event!
+			let lines = this.getModelForce().getLinesContent();
+			this.removeSeeds(lines);
+			const program = lines.join('\n');
+			this.logger.showOutputBox(program);
 		} else {
 			this.hideOutputBox();
+			this.logger.hideOutputBox();
 		}
 	}
 
@@ -2978,6 +2984,11 @@ export class RTVController implements IRTVController {
 	}
 
 	public changeViewMode(m: ViewMode) {
+
+		if (m) {
+			this.logger.modeChanged(m.toString());
+		}
+
 		this.viewMode = m;
 		let editor_div = this._editor.getDomNode();
 		if (editor_div !== null && this.isTextEditor()) {

@@ -3,10 +3,9 @@ import { registerEditorContribution } from 'vs/editor/browser/editorExtensions';
 import { ICodeEditor, IEditorMouseEvent } from 'vs/editor/browser/editorBrowser';
 import { DelayedRunAtMostOne } from 'vs/editor/contrib/rtv/RTVDisplay';
 import { ITextModel } from 'vs/editor/common/model';
-import { Process } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { Process, IRTVLogger } from 'vs/editor/contrib/rtv/RTVInterfaces';
 
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
-import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 
 class RTVImgDisplayBox {
 	private _box: HTMLDivElement;
@@ -40,7 +39,7 @@ class RTVImgController implements IEditorContribution {
 	private _displayImg: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 	private _pythonProcess?: Process = undefined;
 	private _imgDisplayBox: RTVImgDisplayBox | undefined;
-	public logger: RTVLogger;
+	public logger: IRTVLogger;
 
 	constructor(
 		private readonly _editor: ICodeEditor,

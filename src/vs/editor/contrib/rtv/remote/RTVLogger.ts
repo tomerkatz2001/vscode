@@ -1,6 +1,13 @@
 import { IRTVLogger } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
+class LogRequestData {
+	constructor(
+		public event: string,
+		public program ?: string,
+		public result ?: string) {}
+}
+
 export class RTVLogger implements IRTVLogger {
 	// States for various things we need to log
 	private synthRequestCounter: number = 0;
@@ -27,14 +34,14 @@ export class RTVLogger implements IRTVLogger {
 		return this.currentFileName;
 	}
 
-	private log(code: string, msg?: string): void {
-		let str: string;
+	private log(code: string, msg?: string, program ?: string, result ?: string): void {
+		let log: string;
 
 		if (msg) {
 			msg = msg.replace(/\n/g, '\\n');
-			str = `${this.now()},${this.getCurrentFileName()},${code},${msg}`;
+			log = `${this.now()},${this.getCurrentFileName()},${code},${msg}`;
 		} else {
-			str = `${this.now()},${this.getCurrentFileName()},${code}`;
+			log = `${this.now()},${this.getCurrentFileName()},${code}`;
 		}
 
 		// We need this for CSRF protection on the server
@@ -43,18 +50,21 @@ export class RTVLogger implements IRTVLogger {
 		const csrfHeaderName = csrfInput.name;
 
 		const headers = new Headers();
-		headers.append('Content-Type', 'text/plain;charset=UTF-8');
+		headers.append('Content-Type', 'application/json;charset=UTF-8');
 		headers.append(csrfHeaderName, csrfToken);
+
+		const body = new LogRequestData(log, program, result);
 
 		fetch(
 			'/log',
 			{
 				method: 'POST',
-				body: str,
+				body: JSON.stringify(body),
 				mode: 'same-origin',
 				headers: headers
 			});
-		console.log(str);
+
+		console.log(log);
 	}
 
 	constructor(private readonly _editor: ICodeEditor) {}
@@ -105,11 +115,11 @@ export class RTVLogger implements IRTVLogger {
 	}
 
 	public projectionBoxUpdateStart(program: string): void {
-		this.log('projectionBox.update.start');
+		this.log('projectionBox.update.start', undefined, program);
 	}
 
 	public projectionBoxUpdateEnd(result: string | undefined): void {
-		this.log('projectionBox.update.end');
+		this.log('projectionBox.update.end', undefined, undefined, result);
 	}
 
 	public projectionBoxExit() {
@@ -146,5 +156,17 @@ export class RTVLogger implements IRTVLogger {
 
 	public imgSummaryEnd() {
 		this.log('img.end');
+	}
+
+	public modeChanged(mode: string): void {
+		this.log(`projectionBox.mode.${mode}`);
+	}
+
+	public showOutputBox(program: string): void {
+		this.log(`outputBox.show`, undefined, program);
+	}
+
+	public hideOutputBox(): void {
+		this.log('outputBox.hide');
 	}
 }

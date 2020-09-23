@@ -3,7 +3,7 @@ import * as child_process from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { Process } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { Process, IRTVLogger } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
@@ -102,7 +102,7 @@ export function runImgSummary(program: string, line: number, varname: string) {
 	return new RunpyProcess(file, local_process);
 }
 
-export function getLogger(editor: ICodeEditor): RTVLogger {
+export function getLogger(editor: ICodeEditor): IRTVLogger {
 	return new RTVLogger(editor);
 }
 

@@ -191,4 +191,16 @@ export class RTVLogger implements IRTVLogger {
 	public imgSummaryEnd() {
 		this.log('img.end');
 	}
+
+	public modeChanged(mode: string): void {
+		this.log(`projectionBox.mode.${mode}`);
+	}
+
+	public showOutputBox(program: string): void {
+		this.log(`outputBox.show`);
+	}
+
+	public hideOutputBox(): void {
+		this.log(`outputBox.hide`);
+	}
 }

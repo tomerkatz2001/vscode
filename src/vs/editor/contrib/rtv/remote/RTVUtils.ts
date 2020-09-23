@@ -1,4 +1,4 @@
-import { Process, IRTVController } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { Process, IRTVController, IRTVLogger } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
@@ -303,7 +303,7 @@ export function runImgSummary(program: string, line: number, varname: string) {
 	return new ImgSummaryProcess(program, line, varname);
 }
 
-export function getLogger(editor: ICodeEditor): RTVLogger {
+export function getLogger(editor: ICodeEditor): IRTVLogger {
 	return new RTVLogger(editor);
 }
 

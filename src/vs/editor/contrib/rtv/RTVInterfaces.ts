@@ -25,6 +25,9 @@ export interface IRTVLogger {
 	exampleReset(): void;
 	imgSummaryStart(): void;
 	imgSummaryEnd(): void;
+	modeChanged(mode: string): void;
+	showOutputBox(program: string): void;
+	hideOutputBox(): void;
 }
 
 /**
