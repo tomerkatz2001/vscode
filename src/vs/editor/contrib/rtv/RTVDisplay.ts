@@ -1052,8 +1052,6 @@ class RTVDisplayBox {
 
 	public setContentForLineNotExecuted() {
 		if (this._controller.showBoxWhenNotExecuted) {
-			this.setContentFalse();
-		} else {
 			this._allEnvs = [];
 			this._hasContent = true;
 			this._box.textContent = "Line not executed";
@@ -1061,6 +1059,8 @@ class RTVDisplayBox {
 			this._box.style.paddingRight = "8px";
 			this._box.style.paddingBottom = "0px";
 			this._box.style.paddingTop = "0px";
+		} else {
+			this.setContentFalse();
 		}
 	}
 
@@ -1081,7 +1081,7 @@ class RTVDisplayBox {
 			return true;
 		}
 
-		if (this.isEmptyLine()) {
+		if (!this._controller.showBoxAtEmptyLine && this.isEmptyLine()) {
 			this.setContentFalse();
 			return true;
 		}
@@ -1822,6 +1822,13 @@ export class RTVController implements IRTVController {
 	}
 	set showBoxAtLoopStmt(v: boolean) {
 		this._config.updateValue(showBoxAtLoopStmtKey, v);
+	}
+
+	get showBoxAtEmptyLine(): boolean {
+		return this._config.getValue(showBoxAtEmptyLineKey);
+	}
+	set showBoxAtEmptyLine(v: boolean) {
+		this._config.updateValue(showBoxAtEmptyLineKey, v);
 	}
 
 	get showBoxWhenNotExecuted(): boolean {
@@ -3264,7 +3271,7 @@ export class RTVController implements IRTVController {
 
 	}
 
-	public focusOnSelection() {
+	public setVisiblityToSelectionOnly() {
 		let selection = this._editor.getSelection();
 		if (selection === null) {
 			return;
@@ -3290,8 +3297,7 @@ export class RTVController implements IRTVController {
 		if (e.keyCode === KeyCode.Escape) {
 			if (this.loopFocusController !== null) {
 				e.stopPropagation();
-				this.loopFocusController = null;
-				this.changeViewMode(ViewMode.Full);
+				this.stopFocus();
 			}
 		}
 		if (e.keyCode === KeyCode.KEY_P) {
@@ -3311,7 +3317,7 @@ export class RTVController implements IRTVController {
 			if (this._editor.getSelection()?.isEmpty() === true) {
 				this.changeViewMode(this.viewMode);
 			} else {
-				this.focusOnSelection();
+				this.setVisiblityToSelectionOnly();
 			}
 		}
 
@@ -3402,7 +3408,14 @@ export class RTVController implements IRTVController {
 
 	public focusOnLoopAtBox(box: RTVDisplayBox) {
 		this.loopFocusController = new LoopFocusController(this, box, box.getFirstLoopIter());
+		this.runProgram();
 		this.changeViewMode(ViewMode.Focused);
+	}
+
+	public stopFocus() {
+		this.loopFocusController = null;
+		this.runProgram();
+		this.changeViewMode(ViewMode.Full);
 	}
 
 	public executeEdits(edits: IIdentifiedSingleEditOperation[]) {
@@ -3421,6 +3434,7 @@ const colBorderKey = 'rtv.box.colBorder';
 const displayOnlyModifiedVarsKey = 'rtv.box.displayOnlyModifiedVars';
 const opacityKey = 'rtv.box.opacity';
 const showBoxAtLoopStmtKey = 'rtv.box.showBoxAtLoopStatements';
+const showBoxAtEmptyLineKey = 'rtv.box.showBoxAtEmptyLines';
 const showBoxWhenNotExecutedKey = 'rtv.box.showBoxWhenNotExecuted';
 const spaceBetweenBoxesKey = 'rtv.box.spaceBetweenBoxes';
 const zoomKey = 'rtv.box.zoom';
@@ -3490,6 +3504,11 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 			'type': 'boolean',
 			'default': false,
 			'description': localize('rtv.showboxatloop', 'Controls whether boxes are displayed at loop statements')
+		},
+		[showBoxAtEmptyLineKey]: {
+			'type': 'boolean',
+			'default': false,
+			'description': localize('rtv.showboxatempty', 'Controls whether boxes are displayed at empty lines')
 		},
 		[showBoxWhenNotExecutedKey]: {
 			'type': 'boolean',
