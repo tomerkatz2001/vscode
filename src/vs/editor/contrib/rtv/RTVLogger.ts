@@ -99,8 +99,12 @@ export class RTVLogger implements IRTVLogger {
 		this.logFile = 'snippy.log';
 	}
 
-	public dispose() {
-		this.log('log.end');
+	public projectionBoxCreated() {
+		this.log('projectionBox.created');
+	}
+
+	public projectionBoxDestroyed() {
+		this.log('projectionBox.destroyed');
 	}
 
 	public synthStart(problem: any, examples: number, lineno: number) {
@@ -184,15 +188,15 @@ export class RTVLogger implements IRTVLogger {
 		this.log('example.all.reset');
 	}
 
-	public imgSummaryStart() {
-		this.log('img.start');
+	public imgSummaryStart(program: string, lineno: number, variable: string) {
+		this.log('img.start',`${lineno},${variable}`);
 	}
 
 	public imgSummaryEnd() {
 		this.log('img.end');
 	}
 
-	public modeChanged(mode: string): void {
+	public projectionBoxModeChanged(mode: string): void {
 		this.log(`projectionBox.mode.${mode}`);
 	}
 

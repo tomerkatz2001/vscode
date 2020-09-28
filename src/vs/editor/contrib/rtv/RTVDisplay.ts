@@ -1750,6 +1750,7 @@ export class RTVController implements IRTVController {
 		this.changeViewMode(this.viewMode);
 
 		//this._modVarsInputField.getDomNode().style.width = '300px';
+		this.logger.projectionBoxCreated();
 	}
 
 	public static get(editor: ICodeEditor): RTVController {
@@ -1761,7 +1762,7 @@ export class RTVController implements IRTVController {
 	}
 
 	public dispose(): void {
-		this.logger.dispose();
+		this.logger.projectionBoxDestroyed();
 	}
 
 	public restoreViewState(state: any): void {
@@ -2543,7 +2544,7 @@ export class RTVController implements IRTVController {
 	}
 
 	private showErrorWithDelay(returnCode: number, errorMsg: string) {
-		this._showErrorDelay.run(4000, () => {
+		this._showErrorDelay.run(1500, () => {
 			this.clearError();
 			this.showError(errorMsg);
 		});
@@ -2993,7 +2994,7 @@ export class RTVController implements IRTVController {
 	public changeViewMode(m: ViewMode) {
 
 		if (m) {
-			this.logger.modeChanged(m.toString());
+			this.logger.projectionBoxModeChanged(m.toString());
 		}
 
 		this.viewMode = m;

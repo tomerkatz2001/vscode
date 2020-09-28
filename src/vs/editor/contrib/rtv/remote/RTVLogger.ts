@@ -69,9 +69,58 @@ export class RTVLogger implements IRTVLogger {
 
 	constructor(private readonly _editor: ICodeEditor) {}
 
-	public dispose() {
-		this.log('log.end');
+
+	// ----------------------------------------------------------------------------------
+	// General Projection Boxes
+	// ----------------------------------------------------------------------------------
+
+	public projectionBoxCreated() {
+		this.log('projectionBox.created');
 	}
+
+	public projectionBoxDestroyed() {
+		this.log('projectionBox.destroyed');
+	}
+
+	public projectionBoxUpdateStart(program: string): void {
+		this.log('projectionBox.update.start', undefined, program);
+	}
+
+	public projectionBoxUpdateEnd(result: string | undefined): void {
+		this.log('projectionBox.update.end', undefined, undefined, result);
+	}
+
+	public projectionBoxModeChanged(mode: string): void {
+		this.log(`projectionBox.mode.${mode}`);
+	}
+
+	// ----------------------------------------------------------------------------------
+	// Image Processing
+	// ----------------------------------------------------------------------------------
+
+	public imgSummaryStart(program: string, lineno: number, variable: string) {
+		this.log('img.start',`${lineno},${variable}`, program);
+	}
+
+	public imgSummaryEnd(result?: string) {
+		this.log('img.end', undefined, undefined, result);
+	}
+
+	// ----------------------------------------------------------------------------------
+	// Output Boxes
+	// ----------------------------------------------------------------------------------
+
+	public showOutputBox(program: string): void {
+		this.log(`outputBox.show`, undefined, program);
+	}
+
+	public hideOutputBox(): void {
+		this.log('outputBox.hide');
+	}
+
+	// ----------------------------------------------------------------------------------
+	// SnipPy
+	// ----------------------------------------------------------------------------------
 
 	public synthStart(problem: any, examples: number, lineno: number) {
 		this.log(`synth.start.${this.synthRequestCounter}.${lineno}.${examples}`);
@@ -114,14 +163,6 @@ export class RTVLogger implements IRTVLogger {
 		}
 	}
 
-	public projectionBoxUpdateStart(program: string): void {
-		this.log('projectionBox.update.start', undefined, program);
-	}
-
-	public projectionBoxUpdateEnd(result: string | undefined): void {
-		this.log('projectionBox.update.end', undefined, undefined, result);
-	}
-
 	public projectionBoxExit() {
 		this.log('focus.projectionBox.exit');
 	}
@@ -148,25 +189,5 @@ export class RTVLogger implements IRTVLogger {
 
 	public exampleReset() {
 		this.log('example.all.reset');
-	}
-
-	public imgSummaryStart() {
-		this.log('img.start');
-	}
-
-	public imgSummaryEnd() {
-		this.log('img.end');
-	}
-
-	public modeChanged(mode: string): void {
-		this.log(`projectionBox.mode.${mode}`);
-	}
-
-	public showOutputBox(program: string): void {
-		this.log(`outputBox.show`, undefined, program);
-	}
-
-	public hideOutputBox(): void {
-		this.log('outputBox.hide');
 	}
 }
