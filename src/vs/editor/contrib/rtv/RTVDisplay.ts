@@ -1751,6 +1751,7 @@ export class RTVController implements IRTVController {
 
 		//this._modVarsInputField.getDomNode().style.width = '300px';
 		this.logger.projectionBoxCreated();
+		this.showBoxWhenNotExecuted = true;
 	}
 
 	public static get(editor: ICodeEditor): RTVController {
