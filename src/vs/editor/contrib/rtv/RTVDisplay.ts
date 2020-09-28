@@ -3459,7 +3459,7 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 		},
 		[showBoxWhenNotExecutedKey]: {
 			'type': 'boolean',
-			'default': false,
+			'default': true,
 			'description': localize('rtv.showboxwhennotexecuted', 'Controls whether a box is displayed for statements that are not executed')
 		},
 		[spaceBetweenBoxesKey]: {
