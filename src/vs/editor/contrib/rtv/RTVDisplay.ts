@@ -24,7 +24,7 @@ import { IPosition, Position } from 'vs/editor/common/core/position';
 import { MarkdownString } from 'vs/base/common/htmlContent';
 import { IConfigurationChangeEvent, IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { Registry } from 'vs/platform/registry/common/platform';
-import { Extensions, IConfigurationRegistry } from 'vs/platform/configuration/common/configurationRegistry';
+import { Extensions, IConfigurationNode, IConfigurationRegistry } from 'vs/platform/configuration/common/configurationRegistry';
 import { localize } from 'vs/nls';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import { Action, IAction } from 'vs/base/common/actions';
@@ -1751,7 +1751,6 @@ export class RTVController implements IRTVController {
 
 		//this._modVarsInputField.getDomNode().style.width = '300px';
 		this.logger.projectionBoxCreated();
-		this.showBoxWhenNotExecuted = true;
 	}
 
 	public static get(editor: ICodeEditor): RTVController {
@@ -3444,7 +3443,7 @@ const viewModeKey = 'rtv.viewMode';
 const mouseShortcutsKey = 'rtv.box.mouseShortcuts';
 const supportSynthesisKey = 'rtv.box.supportSynthesis';
 
-Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfiguration({
+const configurations: IConfigurationNode = {
 	'id': 'rtv',
 	'order': 110,
 	'type': 'object',
@@ -3538,7 +3537,9 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 			'description': localize('rtv.supportsynth', 'Controls whether synthesis is supported')
 		}
 	}
-});
+};
+
+Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfiguration(configurations);
 
 
 class ConfigurationServiceCache {
@@ -3546,6 +3547,12 @@ class ConfigurationServiceCache {
 	public onDidUserChangeConfiguration: ((e: IConfigurationChangeEvent) => void) | undefined = undefined;
 	constructor(private readonly configurationService: IConfigurationService) {
 		this.configurationService.onDidChangeConfiguration((e) => { this.onChangeConfiguration(e); });
+
+		// Initialize our own values
+		const properties = configurations.properties!;
+		Object.entries(properties).forEach(([key, value]) => {
+			this.updateValue(key, value.default);
+		});
 	}
 
 	public getValue<T>(key: string): T {
@@ -3554,6 +3561,7 @@ class ConfigurationServiceCache {
 			result = this.configurationService.getValue(key);
 			this._vals[key] = result;
 		}
+
 		return result;
 	}
 
