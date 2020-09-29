@@ -2745,13 +2745,13 @@ export class RTVController implements IRTVController {
 
 		// avoid creating projection boxes/panels for the built-in output panel
 		if (!this.isTextEditor()) {
-			return
+			return;
 		}
 
 		this.padBoxArray();
 		this.addRemoveBoxes(e);
 
-		let delay = 800;
+		let delay: number = this._config.getValue(boxUpdateDelayKey);
 		if (runImmediately(e)) {
 			delay = 0;
 		}
@@ -3423,6 +3423,24 @@ export class RTVController implements IRTVController {
 		//this.getModelForce().applyEdits(edits);
 		this._editor.executeEdits(this.getId(), edits);
 	}
+
+	public increaseDelay() {
+		this._config.updateValue(
+			boxUpdateDelayKey,
+			this._config.getValue(boxUpdateDelayKey) as number + 100);
+	}
+
+	public decreaseDelay() {
+		let val: number = this._config.getValue(boxUpdateDelayKey) as number - 100;
+
+		if (val < 0) {
+			val = 0;
+		} else if (val > 5000) {
+			val = 5000;
+		}
+
+		this._config.updateValue(boxUpdateDelayKey, val);
+	}
 }
 
 registerEditorContribution(RTVController.ID, RTVController);
@@ -3442,6 +3460,7 @@ const zoomKey = 'rtv.box.zoom';
 const viewModeKey = 'rtv.viewMode';
 const mouseShortcutsKey = 'rtv.box.mouseShortcuts';
 const supportSynthesisKey = 'rtv.box.supportSynthesis';
+const boxUpdateDelayKey = 'rtv.box.updateDelay';
 
 const configurations: IConfigurationNode = {
 	'id': 'rtv',
@@ -3535,6 +3554,11 @@ const configurations: IConfigurationNode = {
 			'type': 'boolean',
 			'default': false,
 			'description': localize('rtv.supportsynth', 'Controls whether synthesis is supported')
+		},
+		[boxUpdateDelayKey]: {
+			type: 'number',
+			default: 800,
+			description: localize('rtv.boxupdatedelay', 'Controls the delay (in ms) between a change in the code and the projection boxes updating.')
 		}
 	}
 };
@@ -3812,5 +3836,25 @@ createRTVAction(
 	localize('rtv.editVar', 'Start Editing the Var'),
 	(c) => {
 		c.editingVar();
+	}
+);
+
+createRTVAction(
+	'rtv.addDelay',
+	'Increase the projection box delay',
+	KeyMod.Alt | KeyCode.US_EQUAL,
+	localize('rtv.addDelay', 'Increase the projection box delay'),
+	(c) => {
+		c.increaseDelay();
+	}
+);
+
+createRTVAction(
+	'rtv.subDelay',
+	'Decrease the projection box delay',
+	KeyMod.Alt | KeyCode.US_MINUS,
+	localize('rtv.subDelay', 'Decrease the projection box delay'),
+	(c) => {
+		c.decreaseDelay();
 	}
 );
