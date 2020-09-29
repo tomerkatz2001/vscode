@@ -3547,18 +3547,21 @@ class ConfigurationServiceCache {
 	public onDidUserChangeConfiguration: ((e: IConfigurationChangeEvent) => void) | undefined = undefined;
 	constructor(private readonly configurationService: IConfigurationService) {
 		this.configurationService.onDidChangeConfiguration((e) => { this.onChangeConfiguration(e); });
-
-		// Initialize our own values
-		const properties = configurations.properties!;
-		Object.entries(properties).forEach(([key, value]) => {
-			this.updateValue(key, value.default);
-		});
 	}
 
 	public getValue<T>(key: string): T {
 		let result = this._vals[key];
+
 		if (result === undefined) {
+			// Read it from the configurations
 			result = this.configurationService.getValue(key);
+			this._vals[key] = result;
+		}
+
+		if (result === undefined) {
+			// Read it from the defaults
+			result = configurations.properties![key].default;
+			this.configurationService.updateValue(key, result);
 			this._vals[key] = result;
 		}
 
