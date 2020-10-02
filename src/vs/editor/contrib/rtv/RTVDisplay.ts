@@ -2942,6 +2942,28 @@ class RTVController implements IEditorContribution {
 		this.changeViewMode(computeNextViewMode(this.viewMode));
 	}
 
+	public flipBetweenFullAndCursor() {
+		function computeNextViewMode(v: ViewMode) {
+			let rs: ViewMode;
+
+			switch (v) {
+				case ViewMode.Full:
+					rs = ViewMode.CursorAndReturn;
+					break;
+				case ViewMode.CursorAndReturn:
+					rs = ViewMode.Full;
+					break;
+				default:
+					rs = ViewMode.Full;
+					break;
+			}
+
+			return rs;
+		}
+
+		this.changeViewMode(computeNextViewMode(this.viewMode));
+	}
+
 	public changeViewMode(m: ViewMode) {
 		this.viewMode = m;
 		let editor_div = this._editor.getDomNode();
@@ -3581,13 +3603,23 @@ function createRTVAction(id: string, name: string, key: number, label: string, c
 // 	});
 // }
 
+// createRTVAction(
+// 	'rtv.flipview',
+// 	'Flip View Mode',
+// 	KeyMod.Alt | KeyCode.Enter,
+// 	localize('rtv.flipview', 'Flip View Mode'),
+// 	(c) => {
+// 		c.flipThroughViewModes();
+// 	}
+// );
+
 createRTVAction(
-	'rtv.flipview',
-	'Flip View Mode',
+	'rtv.quickflip',
+	'Flip Between Full View and Cursor View',
 	KeyMod.Alt | KeyCode.Enter,
-	localize('rtv.flipview', 'Flip View Mode'),
+	localize('rtv.quickflip', 'Flip Between Full View and Cursor View'),
 	(c) => {
-		c.flipThroughViewModes();
+		c.flipBetweenFullAndCursor();
 	}
 );
 
