@@ -276,6 +276,15 @@ function saveProgram(program: string) {
 			body: program,
 			mode: 'same-origin',
 			headers: headers
+		}).
+		then(response => {
+			if (response && response.status === 401) {
+				// Lab time must have ended.
+				document.location.reload();
+			}
+		}).
+		catch(_ => {
+			document.location.reload();
 		});
 }
 
