@@ -1,4 +1,4 @@
-import { Process, IRTVController, IRTVLogger } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { Process, IRTVController, IRTVLogger, ViewMode } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
@@ -318,6 +318,39 @@ export function getLogger(editor: ICodeEditor): IRTVLogger {
 
 // Assuming the server is running on a unix system
 export const EOL: string = '\n';
+
+/**
+ * Don't allow switching views unless we find the set cookie
+ */
+export function isViewModeAllowed(m: ViewMode): boolean {
+	let rs: boolean = false;
+
+	if (!studyGroup) {
+		for (let cookie of document.cookie.split(';')) {
+			if (cookie.startsWith('USER_STUDY_GROUP')) {
+				studyGroup = cookie.slice('USER_STUDY_GROUP'.length + 1);
+			}
+		}
+	}
+
+	switch (studyGroup) {
+		case 'GroupOne':
+			rs = m === ViewMode.Full || m === ViewMode.CursorAndReturn;
+			break;
+		case 'GroupTwo':
+			rs = m === ViewMode.Stealth;
+			break;
+		default:
+			console.log('USER_STUDY_GROUP cookie not recognized: ' + studyGroup);
+			rs = m === ViewMode.Stealth;
+			break;
+	}
+
+	return rs;
+}
+
+// Used to cache the results
+let studyGroup: string | undefined = undefined;
 
 // Start the web worker
 const pyodideWorker = new Worker('/pyodide/webworker.js');

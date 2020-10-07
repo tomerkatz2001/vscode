@@ -45,7 +45,7 @@ import {
 } from 'vs/platform/theme/common/colorRegistry';
 import { IIdentifiedSingleEditOperation, IModelDecorationOptions, ITextModel } from 'vs/editor/common/model';
 import { Selection } from 'vs/editor/common/core/selection';
-import { Process, IRTVController, IRTVLogger } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { Process, IRTVController, IRTVLogger, ViewMode } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
 import { Button } from 'vs/base/browser/ui/button/button';
 import { attachButtonStyler } from 'vs/platform/theme/common/styler';
@@ -1558,15 +1558,6 @@ enum RowColMode {
 	ByCol = 'By Col'
 }
 
-enum ViewMode {
-	Full = 'Full',
-	CursorAndReturn = 'Cursor and Return',
-	Compact = 'Compact',
-	Stealth = 'Stealth',
-	Focused = 'Focused',
-	Custom = 'Custom'
-}
-
 enum ChangeVarsWhere {
 	Here = 'here',
 	All = 'all',
@@ -3014,6 +3005,11 @@ export class RTVController implements IRTVController {
 	}
 
 	public changeViewMode(m: ViewMode) {
+
+		// Only change the view if allowed
+		if (!utils.isViewModeAllowed(m)) {
+			return;
+		}
 
 		if (m) {
 			this.logger.projectionBoxModeChanged(m.toString());

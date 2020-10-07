@@ -3,7 +3,7 @@ import * as child_process from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { Process, IRTVLogger } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { Process, IRTVLogger, ViewMode } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
@@ -104,6 +104,10 @@ export function runImgSummary(program: string, line: number, varname: string) {
 
 export function getLogger(editor: ICodeEditor): IRTVLogger {
 	return new RTVLogger(editor);
+}
+
+export function isViewModeAllowed(_: ViewMode): boolean {
+	return true;
 }
 
 export const EOL: string = os.EOL;

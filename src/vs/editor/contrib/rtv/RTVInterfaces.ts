@@ -48,3 +48,15 @@ export interface Process {
 	onStderr(fn: (data: any) => void): void;
 	kill(): void;
 }
+
+/**
+ * The Projection Box view modes.
+ */
+export enum ViewMode {
+	Full = 'Full',
+	CursorAndReturn = 'Cursor and Return',
+	Compact = 'Compact',
+	Stealth = 'Stealth',
+	Focused = 'Focused',
+	Custom = 'Custom'
+}
