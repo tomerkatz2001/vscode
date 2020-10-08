@@ -278,7 +278,7 @@ function saveProgram(program: string) {
 			headers: headers
 		}).
 		then(response => {
-			if (response && response.status === 401) {
+			if (response && response.status < 200 || response.status >= 300 || response.redirected) {
 				// Lab time must have ended.
 				document.location.reload();
 			}
@@ -327,7 +327,7 @@ export function isViewModeAllowed(m: ViewMode): boolean {
 
 	if (!studyGroup) {
 		for (let cookie of document.cookie.split(';')) {
-			if (cookie.startsWith('USER_STUDY_GROUP')) {
+			if (cookie.trim().startsWith('USER_STUDY_GROUP')) {
 				studyGroup = cookie.slice('USER_STUDY_GROUP'.length + 1);
 			}
 		}
