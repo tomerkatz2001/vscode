@@ -275,12 +275,16 @@ def compute_writes(lines):
 				code = "".join(lines)
 				root = ast.parse(code)
 				done = True
-			except IndentationError as e:
+			except Exception as e:
 				lineno = e.lineno-1
-				if (lines[lineno].find(core.magic_var_name) == -1):
+				did_lines_change = False
+				while lineno >= 0:
+					if lines[lineno].find(core.magic_var_name) != -1:
+						lines[lineno] = "\n"
+						did_lines_change = True
+					lineno = lineno - 1
+				if not did_lines_change:
 					raise
-				else:
-					lines[lineno] = "\n"
 	except Exception as e:
 		exception = e
 
