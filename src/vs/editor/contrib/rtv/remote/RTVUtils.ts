@@ -334,6 +334,9 @@ export function isViewModeAllowed(m: ViewMode): boolean {
 	}
 
 	switch (studyGroup) {
+		case 'None':
+			rs = true;
+			break;
 		case 'GroupOne':
 			rs = m === ViewMode.Full || m === ViewMode.CursorAndReturn;
 			break;
