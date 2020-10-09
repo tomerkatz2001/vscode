@@ -327,7 +327,8 @@ export function isViewModeAllowed(m: ViewMode): boolean {
 
 	if (!studyGroup) {
 		for (let cookie of document.cookie.split(';')) {
-			if (cookie.trim().startsWith('USER_STUDY_GROUP')) {
+			cookie = cookie.trim();
+			if (cookie.startsWith('USER_STUDY_GROUP')) {
 				studyGroup = cookie.slice('USER_STUDY_GROUP'.length + 1);
 			}
 		}
@@ -344,7 +345,7 @@ export function isViewModeAllowed(m: ViewMode): boolean {
 			rs = m === ViewMode.Stealth;
 			break;
 		default:
-			console.log('USER_STUDY_GROUP cookie not recognized: ' + studyGroup);
+			console.error('USER_STUDY_GROUP cookie not recognized: ' + studyGroup);
 			rs = m === ViewMode.Stealth;
 			break;
 	}
