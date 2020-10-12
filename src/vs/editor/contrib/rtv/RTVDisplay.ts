@@ -1121,9 +1121,11 @@ class RTVDisplayBox {
 				let loop_ids: string[] = env['$'].split(",");
 				loop_ids.forEach( loop_lineno => {
 					let loop_vars = this._controller.writes[loop_lineno];
-					loop_vars.forEach( v => {
-						this._allVars.add(v);
-					});
+					if (loop_vars !== undefined) {
+						loop_vars.forEach( v => {
+							this._allVars.add(v);
+						});
+					}
 				});
 			}
 
