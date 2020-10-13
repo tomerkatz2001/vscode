@@ -331,7 +331,7 @@ def adjust_to_next_time_step(data, lines):
 					if ("frame" in env and "frame" in next_env and env["frame"] is next_env["frame"]):
 						curr_stmt = lines[env["lineno"]]
 						next_stmt = lines[remove_R(next_env["lineno"])]
-						if not is_loop_str(curr_stmt) or indent(next_stmt) > indent(curr_stmt):
+						if "Exception Thrown" in next_env or not is_loop_str(curr_stmt) or indent(next_stmt) > indent(curr_stmt):
 							next_envs.append(next_env)
 						break
 					next_time = next_time + 1

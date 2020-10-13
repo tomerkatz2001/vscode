@@ -1076,17 +1076,7 @@ class RTVDisplayBox {
 			return true;
 		}
 
-		if (!this._controller.showBoxAtLoopStmt && this.isLoopLine()) {
-			this.setContentFalse();
-			return true;
-		}
-
 		if (!this._controller.showBoxAtEmptyLine && this.isEmptyLine()) {
-			this.setContentFalse();
-			return true;
-		}
-
-		if (this.isConditionalLine()) {
 			this.setContentFalse();
 			return true;
 		}
@@ -1097,6 +1087,21 @@ class RTVDisplayBox {
 			this.setContentForLineNotExecuted();
 			return true;
 		}
+
+		if (this.isConditionalLine() ||
+			(!this._controller.showBoxAtLoopStmt && this.isLoopLine())) {
+			let exception = false;
+			envs.forEach( env => {
+				if (env["Exception Thrown"] !== undefined) {
+					exception = true;
+				}
+			});
+			if (!exception) {
+				this.setContentFalse();
+				return true;
+			}
+		}
+
 
 		let count_countent_envs = 0
 		envs.forEach( env => {
