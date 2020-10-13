@@ -200,7 +200,7 @@ export class RTVLogger implements IRTVLogger {
 		this.log(`projectionBox.mode.${mode}`);
 	}
 
-	public showOutputBox(program: string): void {
+	public showOutputBox(): void {
 		this.log(`outputBox.show`);
 	}
 

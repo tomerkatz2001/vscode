@@ -99,7 +99,7 @@ export class RTVLogger implements IRTVLogger {
 	// ----------------------------------------------------------------------------------
 
 	public imgSummaryStart(program: string, lineno: number, variable: string) {
-		this.log('img.start',`${lineno},${variable}`, program);
+		this.log('img.start',`${lineno},${variable}`);
 	}
 
 	public imgSummaryEnd(result?: string) {
@@ -110,8 +110,8 @@ export class RTVLogger implements IRTVLogger {
 	// Output Boxes
 	// ----------------------------------------------------------------------------------
 
-	public showOutputBox(program: string): void {
-		this.log(`outputBox.show`, undefined, program);
+	public showOutputBox(): void {
+		this.log('outputBox.show');
 	}
 
 	public hideOutputBox(): void {

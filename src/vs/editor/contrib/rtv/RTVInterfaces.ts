@@ -20,7 +20,7 @@ export interface IRTVLogger {
 	imgSummaryEnd(result?: string): void;
 
 	// Output Box
-	showOutputBox(program: string): void;
+	showOutputBox(): void;
 	hideOutputBox(): void;
 
 	// SnipPy

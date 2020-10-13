@@ -2145,12 +2145,7 @@ export class RTVController implements IRTVController {
 	public flipOutputBoxVisibility() {
 		if (this.getOutputBox().isHidden()) {
 			this.showOutputBox();
-
-			// Log the event!
-			let lines = this.getModelForce().getLinesContent();
-			this.removeSeeds(lines);
-			const program = lines.join('\n');
-			this.logger.showOutputBox(program);
+			this.logger.showOutputBox();
 		} else {
 			this.hideOutputBox();
 			this.logger.hideOutputBox();
