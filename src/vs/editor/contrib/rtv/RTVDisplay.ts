@@ -2109,13 +2109,30 @@ class RTVController implements IEditorContribution {
 		let varName = this.getVarAssignmentAtLine(lineno);
 
 		// Build and write the synth_example.json file content
+		let prev_time: number = Number.MAX_VALUE;
+
+		timesToInclude.forEach((time, _) => {
+			if (time < prev_time) {
+				prev_time = time;
+			}
+		});
+
+		prev_time--;
+
 		let example_fname = os.tmpdir() + path.sep + 'synth_example.json';
+		let previous_env = undefined;
 		let envs: any[] = [];
 
-		search_loop:
+		// search_loop:
 		for (let env_list of Object.values(this.envs)) {
 			for (let env of env_list) {
-				if (envs.length === timesToInclude.size) { break search_loop; }
+
+				// TODO Is it safe to assume that the env_list is in order of time?
+				// if (envs.length === timesToInclude.size) { break search_loop; }
+
+				if (env['time'] === prev_time) {
+					previous_env = env;
+				}
 
 				if (timesToInclude.has(env['time'])) {
 					envs.push(env);
@@ -2123,7 +2140,7 @@ class RTVController implements IEditorContribution {
 			}
 		}
 
-		let problem = {'varName' : varName, 'env': envs};
+		let problem = {'varName' : varName, 'previous_env': previous_env, 'envs': envs};
 		fs.writeFileSync(example_fname, JSON.stringify(problem));
 		this.logger.synthStart(problem, timesToInclude.size, lineno);
 
