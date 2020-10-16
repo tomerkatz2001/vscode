@@ -2120,7 +2120,7 @@ class RTVController implements IEditorContribution {
 		prev_time--;
 
 		let example_fname = os.tmpdir() + path.sep + 'synth_example.json';
-		let previous_env = undefined;
+		let previous_env = {};
 		let envs: any[] = [];
 
 		// search_loop:
