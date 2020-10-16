@@ -91,7 +91,7 @@ class RTVImgController implements IEditorContribution {
 				this._pythonProcess.kill();
 			}
 
-			this.logger.imgSummaryStart(program, lineNumber, varname);
+			this.logger.imgSummaryStart(lineNumber, varname);
 			let c = utils.runImgSummary(program, lineNumber, varname);
 			this._pythonProcess = c;
 

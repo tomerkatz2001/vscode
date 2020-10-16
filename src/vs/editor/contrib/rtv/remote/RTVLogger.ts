@@ -98,7 +98,7 @@ export class RTVLogger implements IRTVLogger {
 	// Image Processing
 	// ----------------------------------------------------------------------------------
 
-	public imgSummaryStart(program: string, lineno: number, variable: string) {
+	public imgSummaryStart(lineno: number, variable: string) {
 		this.log('img.start',`${lineno},${variable}`);
 	}
 

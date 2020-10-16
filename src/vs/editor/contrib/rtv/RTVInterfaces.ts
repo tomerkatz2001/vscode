@@ -16,7 +16,7 @@ export interface IRTVLogger {
 	projectionBoxModeChanged(mode: string): void;
 
 	// Image Processing
-	imgSummaryStart(program: string, lineno: number, variable: string): void;
+	imgSummaryStart(lineno: number, variable: string): void;
 	imgSummaryEnd(result?: string): void;
 
 	// Output Box
