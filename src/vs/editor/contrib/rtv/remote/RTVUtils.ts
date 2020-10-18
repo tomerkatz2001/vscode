@@ -259,42 +259,11 @@ class SynthProcess implements Process {
 	}
 }
 
-function saveProgram(program: string) {
-	// We need this for CSRF protection on the server
-	const csrfInput = document.getElementById('csrf-parameter') as HTMLInputElement;
-	const csrfToken = csrfInput.value;
-	const csrfHeaderName = csrfInput.name;
-
-	const headers = new Headers();
-	headers.append('Content-Type', 'text/plain;charset=UTF-8');
-	headers.append(csrfHeaderName, csrfToken);
-
-	fetch(
-		'/save',
-		{
-			method: 'POST',
-			body: program,
-			mode: 'same-origin',
-			headers: headers
-		}).
-		then(response => {
-			if (response && response.status < 200 || response.status >= 300 || response.redirected) {
-				// Lab time must have ended.
-				document.location.reload();
-			}
-		}).
-		catch(_ => {
-			document.location.reload();
-		});
-}
-
 export function runProgram(program: string): Process {
 	if (!pyodideLoaded) {
 		// @Hack: We want to ignore this call until pyodide has loaded.
 		return new SynthProcess();
 	}
-
-	saveProgram(program);
 
 	return new RunpyProcess(program);
 }
@@ -323,41 +292,11 @@ export const EOL: string = '\n';
  * Don't allow switching views unless we find the set cookie
  */
 export function isViewModeAllowed(m: ViewMode): boolean {
-	let rs: boolean = false;
-
-	if (!studyGroup) {
-		for (let cookie of document.cookie.split(';')) {
-			cookie = cookie.trim();
-			if (cookie.startsWith('USER_STUDY_GROUP')) {
-				studyGroup = cookie.slice('USER_STUDY_GROUP'.length + 1);
-			}
-		}
-	}
-
-	switch (studyGroup) {
-		case 'None':
-			rs = true;
-			break;
-		case 'GroupOne':
-			rs = m === ViewMode.Full || m === ViewMode.CursorAndReturn;
-			break;
-		case 'GroupTwo':
-			rs = m === ViewMode.Stealth;
-			break;
-		default:
-			console.error('USER_STUDY_GROUP cookie not recognized: ' + studyGroup);
-			rs = m === ViewMode.Stealth;
-			break;
-	}
-
-	return rs;
+	return true;
 }
 
-// Used to cache the results
-let studyGroup: string | undefined = undefined;
-
 // Start the web worker
-const pyodideWorker = new Worker('/pyodide/webworker.js');
+const pyodideWorker = new Worker('webworker.js');
 let pyodideLoaded = false;
 
 const pyodideWorkerInitListener = (event: MessageEvent) =>
