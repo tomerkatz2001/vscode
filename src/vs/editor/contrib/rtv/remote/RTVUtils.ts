@@ -350,6 +350,10 @@ export function isViewModeAllowed(m: ViewMode): boolean {
 			break;
 	}
 
+	if (rs) {
+		document.cookie = 'PROJECTION_BOX_VIEW=' + m.toString();
+	}
+
 	return rs;
 }
 

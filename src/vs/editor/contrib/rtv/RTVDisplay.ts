@@ -1745,7 +1745,7 @@ export class RTVController implements IRTVController {
 		this._config.onDidUserChangeConfiguration = (e) => {
 			this.onUserChangeConfiguration(e);
 		};
-		this.changeViewMode(this.viewMode);
+		// this.changeViewMode(this.viewMode);
 
 		//this._modVarsInputField.getDomNode().style.width = '300px';
 		this.logger.projectionBoxCreated();
