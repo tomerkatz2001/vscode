@@ -351,7 +351,10 @@ export function isViewModeAllowed(m: ViewMode): boolean {
 	}
 
 	if (rs) {
-		document.cookie = 'PROJECTION_BOX_VIEW=' + m.toString();
+		// Set the expiration to one hour
+		let time: Date = new Date();
+		time.setTime(time.getTime() + 60 * 60 * 1000);
+		document.cookie = `PROJECTION_BOX_VIEW=${m.toString()};expires=${time.toUTCString()};`;
 	}
 
 	return rs;
