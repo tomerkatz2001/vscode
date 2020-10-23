@@ -2674,13 +2674,29 @@ export class RTVController implements IRTVController {
 		let varName = this.getVarAssignmentAtLine(lineno);
 
 		// Build and write the synth_example.json file content
+		let prev_time: number = Number.MAX_VALUE;
+
+		timesToInclude.forEach((time, _) => {
+			if (time < prev_time) {
+				prev_time = time;
+			}
+		});
+
+		prev_time--;
+
+		let previous_env = {};
 		let envs: any[] = [];
 
-		search_loop:
-		for (let key in this.envs) {
-			let env_list = this.envs[key];
+		// search_loop:
+		for (let env_list of Object.values(this.envs)) {
 			for (let env of env_list) {
-				if (envs.length === timesToInclude.size) { break search_loop; }
+
+				// TODO Is it safe to assume that the env_list is in order of time?
+				// if (envs.length === timesToInclude.size) { break search_loop; }
+
+				if (env['time'] === prev_time) {
+					previous_env = env;
+				}
 
 				if (timesToInclude.has(env['time'])) {
 					envs.push(env);
@@ -2688,7 +2704,7 @@ export class RTVController implements IRTVController {
 			}
 		}
 
-		let problem = { 'varName': varName, 'env': envs };
+		let problem = {'varName' : varName, 'previous_env': previous_env, 'envs': envs};
 		const c = utils.synthesizeSnippet(JSON.stringify(problem));
 		this.logger.synthStart(problem, timesToInclude.size, lineno);
 		this.insertSynthesizedFragment('# Synthesizing. Please wait...', lineno);
