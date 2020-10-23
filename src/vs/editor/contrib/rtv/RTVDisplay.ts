@@ -3284,6 +3284,7 @@ export class RTVController implements IRTVController {
 				let range = new Range(line, startCol, line, endCol);
 				let txt = l_operand + ' = ' + (r_operand ? r_operand : '0');
 				this._editor.executeEdits(this.getId(), [{ range: range, text: txt }]);
+				this.runProgram();
 
 				setTimeout(() => {
 					let cellContents = controller._boxes[line - 1].getCellContent()[l_operand];
@@ -3594,7 +3595,7 @@ const configurations: IConfigurationNode = {
 		},
 		[boxUpdateDelayKey]: {
 			type: 'number',
-			default: 0,
+			default: 500,
 			description: localize('rtv.boxupdatedelay', 'Controls the delay (in ms) between a change in the code and the projection boxes updating.')
 		}
 	}
