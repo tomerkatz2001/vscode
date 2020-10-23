@@ -3589,12 +3589,12 @@ const configurations: IConfigurationNode = {
 		},
 		[supportSynthesisKey]: {
 			'type': 'boolean',
-			'default': false,
+			'default': true,
 			'description': localize('rtv.supportsynth', 'Controls whether synthesis is supported')
 		},
 		[boxUpdateDelayKey]: {
 			type: 'number',
-			default: 800,
+			default: 0,
 			description: localize('rtv.boxupdatedelay', 'Controls the delay (in ms) between a change in the code and the projection boxes updating.')
 		}
 	}

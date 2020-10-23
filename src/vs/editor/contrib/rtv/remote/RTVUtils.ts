@@ -276,7 +276,7 @@ class SynthProcess implements Process {
 				this.result = result;
 
 				if (this.onResult) {
-					this.onResult(this.result);
+					this.onResult(0, this.result);
 				}
 			}).
 			catch(error => {
