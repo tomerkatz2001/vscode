@@ -242,12 +242,63 @@ class ImgSummaryProcess implements Process {
 }
 
 class SynthProcess implements Process {
+	private onResult?: ((exitCode: any, result?: string) => void) = undefined;
+	// private onOutput?: ((data: any) => void) = undefined;
+	private onError?: ((data: any) => void) = undefined;
+
+	private result?: string = undefined;
+	private error: string = '';
+	// private output: string = '';
+
+	constructor(problem: string) {
+		fetch(
+			'/synthesize',
+			{
+				method: 'POST',
+				body: problem,
+				mode: 'same-origin'
+			}).
+			then(response => {
+				if (response && response.status < 200 || response.status >= 300 || response.redirected) {
+					// TODO Error handling
+					this.error = response.statusText;
+
+					if (this.onError) {
+						this.onError(this.error);
+					}
+
+					return Promise.reject();
+				} else {
+					return response.text();
+				}
+			}).
+			then(result => {
+				this.result = result;
+
+				if (this.onResult) {
+					this.onResult(this.result);
+				}
+			}).
+			catch(error => {
+				// TODO Error handling
+				this.error = error;
+
+				if (this.onError) {
+					this.onError(this.error);
+				}
+			});
+	}
+
 	onStdout(fn: (data: any) => void): void {
 		// TODO
 	}
 
 	onStderr(fn: (data: any) => void): void {
-		// TODO
+		this.onStderr = fn;
+
+		if (this.error) {
+			fn(this.error);
+		}
 	}
 
 	kill() {
@@ -255,27 +306,39 @@ class SynthProcess implements Process {
 	}
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {
-		// TODO
+		this.onResult = fn;
+
+		if (this.result) {
+			this.onResult(0, this.result);
+		}
 	}
 }
+
+class EmptyProcess implements Process {
+	onExit(fn: (exitCode: any, result?: string) => void): void {}
+	onStdout(fn: (data: any) => void): void {}
+	onStderr(fn: (data: any) => void): void {}
+	kill(): void {}
+}
+
 
 export function runProgram(program: string): Process {
 	if (!pyodideLoaded) {
 		// @Hack: We want to ignore this call until pyodide has loaded.
-		return new SynthProcess();
+		return new EmptyProcess();
 	}
 
 	return new RunpyProcess(program);
 }
 
 export function synthesizeSnippet(problem: string): Process {
-	return new SynthProcess();
+	return new SynthProcess(problem);
 }
 
 export function runImgSummary(program: string, line: number, varname: string) {
 	if (!pyodideLoaded) {
 		// @Hack: We want to ignore this call until pyodide has loaded.
-		return new SynthProcess();
+		return new EmptyProcess();
 	}
 
 	return new ImgSummaryProcess(program, line, varname);
@@ -296,7 +359,7 @@ export function isViewModeAllowed(m: ViewMode): boolean {
 }
 
 // Start the web worker
-const pyodideWorker = new Worker('webworker.js');
+const pyodideWorker = new Worker('pyodide/webworker.js');
 let pyodideLoaded = false;
 
 const pyodideWorkerInitListener = (event: MessageEvent) =>
