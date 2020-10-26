@@ -1089,6 +1089,7 @@ class RTVDisplayBox {
 		}
 
 		if (this.isConditionalLine() ||
+			this.isBreakLine() ||
 			(!this._controller.showBoxAtLoopStmt && this.isLoopLine())) {
 			let exception = false;
 			envs.forEach( env => {
