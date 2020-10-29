@@ -242,6 +242,7 @@ class ImgSummaryProcess implements Process {
 }
 
 class SynthProcess implements Process {
+
 	private onResult?: ((exitCode: any, result?: string) => void) = undefined;
 	// private onOutput?: ((data: any) => void) = undefined;
 	private onError?: ((data: any) => void) = undefined;
@@ -285,6 +286,10 @@ class SynthProcess implements Process {
 
 				if (this.onError) {
 					this.onError(this.error);
+				}
+
+				if (this.onResult) {
+					this.onResult(1, this.error);
 				}
 			});
 	}
