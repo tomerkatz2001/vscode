@@ -2227,13 +2227,15 @@ export class RTVController implements IRTVController {
 						this.focusOnLoopWithSeed();
 					}
 					if (this.supportSynthesis) {
-						let listOfElems = this.getLineContent(i).split('=');
-						if (listOfElems.length === 2 && listOfElems[1].trim().endsWith('??')) {
+						const lineContent = this.getLineContent(i).trim();						
+						let listOfElems = lineContent.split('=');
+						if (lineContent.startsWith('return ') ||
+							(listOfElems.length === 2 && listOfElems[1].trim().endsWith('??'))) {
 							this.editingVar();
 							return;
 						}
 					}
-				}
+				}	
 			}
 		}
 		if (this.loopFocusController !== null) {
@@ -2643,6 +2645,11 @@ export class RTVController implements IRTVController {
 	}
 
 	private insertSynthesizedFragment(fragment: string, lineno: number) {
+		// Cleanup fragment
+		if (fragment.startsWith('rv = ')) {
+			fragment = fragment.replace('rv = ', 'return ');
+		}
+		
 		let model = this.getModelForce();
 		let cursorPos = this._editor.getPosition();
 		let startCol: number;
@@ -2665,9 +2672,18 @@ export class RTVController implements IRTVController {
 	private getVarAssignmentAtLine(lineNo: number): null | string {
 		let line = this.getLineContent(lineNo).trim();
 		if (!line) { return null; }
-		let content = line.split('=');
-		if (content.length !== 2) { return null; }
-		return content[0].trim();
+
+		let rs = null;
+		
+		if (line.startsWith('return ')) {
+			rs = 'rv';
+		} else {
+			let content = line.split('=');
+			if (content.length !== 2) { return null; }
+			rs = content[0].trim();
+		}
+
+		return rs;
 	}
 
 	public synthesizeFragment(lineno: number, timesToInclude: Set<number>) {
@@ -3255,60 +3271,81 @@ export class RTVController implements IRTVController {
 	}
 
 	private getDictionaryMakeEdit(s: string, line: number, controller: RTVController) {
-		let listOfElems = s.split('=');
+		let l_operand: string = '';
+		let r_operand: string = '';
+		s = s.trim();
 
-		if (listOfElems.length !== 2) {
+		if (s.startsWith('return ')) {
+			l_operand = 'return';
+			r_operand = s.substr('return '.length);
+		} else {
+			let listOfElems = s.split('=');
+
+			if (listOfElems.length !== 2) {
 			// TODO Can we inform the user of this?
-			console.error('Invalid input format. Must be of the form <varname> = ??');
-		}
-		else {
-			let l_operand = listOfElems[0].trim();
-			let r_operand = listOfElems[1].trim();
-
-			if (r_operand.endsWith('??')) {
-				r_operand = r_operand.substr(0, r_operand.length - 2).trim();
-
-				let model = this.getModelForce();
-				let cursorPos = this._editor.getPosition();
-				let startCol: number;
-				let endCol: number;
-
-				if (model.getLineContent(line).trim() === '' && cursorPos !== null && cursorPos.lineNumber === line) {
-					startCol = cursorPos.column;
-					endCol = cursorPos.column;
-				} else {
-					startCol = model.getLineFirstNonWhitespaceColumn(line);
-					endCol = model.getLineMaxColumn(line);
-				}
-
-				let range = new Range(line, startCol, line, endCol);
-				let txt = l_operand + ' = ' + (r_operand ? r_operand : '0');
-				this._editor.executeEdits(this.getId(), [{ range: range, text: txt }]);
-				this.runProgram();
-
-				setTimeout(() => {
-					let cellContents = controller._boxes[line - 1].getCellContent()[l_operand];
-
-					if (cellContents) {
-						cellContents.forEach(function (cellContent) {
-							cellContent.contentEditable = 'true';
-						});
-						cellContents[0].focus();
-
-						// TODO Is there a faster/cleaner way to select the content?
-						let selection = window.getSelection()!;
-						let range = selection.getRangeAt(0)!;
-						range.selectNodeContents(selection.focusNode!);
-						selection.addRange(range);
-
-						this.logger.projectionBoxFocus(s, r_operand !== '');
-						this.logger.exampleFocus(0, cellContents[0]!.textContent!);
-					}
-				}, 300);
+				console.error('Invalid input format. Must be of the form <varname> = ??');
+			} else {
+				l_operand = listOfElems[0].trim();
+				r_operand = listOfElems[1].trim();
 			}
 		}
+		
+		if (l_operand === '' || r_operand === '') {
+			return;
+		}		
 
-	}
+		if (r_operand.endsWith('??')) {
+			r_operand = r_operand.substr(0, r_operand.length - 2).trim();
+
+			let model = this.getModelForce();
+			let cursorPos = this._editor.getPosition();
+			let startCol: number;
+			let endCol: number;
+
+			if (model.getLineContent(line).trim() === '' && cursorPos !== null && cursorPos.lineNumber === line) {
+				startCol = cursorPos.column;
+				endCol = cursorPos.column;
+			} else {
+				startCol = model.getLineFirstNonWhitespaceColumn(line);
+				endCol = model.getLineMaxColumn(line);
+			}
+
+			let range = new Range(line, startCol, line, endCol);
+			let txt = '';
+
+			if (l_operand === 'return') {
+				txt = 'return ' + (r_operand ? r_operand : '0');
+			} else {
+				txt = l_operand + ' = ' + (r_operand ? r_operand : '0');
+			}
+			
+			this._editor.executeEdits(this.getId(), [{ range: range, text: txt }]);
+			this.runProgram();
+
+			setTimeout(() => {
+				let cellKey = l_operand == 'return' ? 'rv' : l_operand;
+				let cellContents = controller._boxes[line - 1].getCellContent()[cellKey];
+
+				if (cellContents) {
+					cellContents.forEach(function (cellContent) {
+						cellContent.contentEditable = 'true';
+					});
+					cellContents[0].focus();
+
+					// TODO Is there a faster/cleaner way to select the content?
+					let selection = window.getSelection()!;
+					let range = selection.getRangeAt(0)!;
+					range.selectNodeContents(selection.focusNode!);
+					selection.addRange(range);
+
+					this.logger.projectionBoxFocus(s, r_operand !== '');
+					this.logger.exampleFocus(0, cellContents[0]!.textContent!);
+				} else {
+					console.error(`No cell found with key "${cellKey}"`);
+				}
+			}, 300);
+		}
+	}	
 
 	public setVisiblityToSelectionOnly() {
 		let selection = this._editor.getSelection();
