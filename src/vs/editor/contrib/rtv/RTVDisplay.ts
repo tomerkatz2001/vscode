@@ -49,6 +49,7 @@ import { Process, IRTVController, IRTVLogger, ViewMode } from 'vs/editor/contrib
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
 import { Button } from 'vs/base/browser/ui/button/button';
 import { attachButtonStyler } from 'vs/platform/theme/common/styler';
+import { EditOperation } from 'vs/editor/common/core/editOperation';
 
 function indent(s: string): number {
 	return s.length - s.trimLeft().length;
@@ -246,6 +247,7 @@ class RTVLine {
 }
 
 class TableElement {
+	public nonEmpty: boolean;
 	constructor(
 		public content: string,
 		public loopID: string,
@@ -253,7 +255,9 @@ class TableElement {
 		public controllingLineNumber: number,
 		public vname?: string,
 		public env?: any
-	) { }
+	) {
+		this.nonEmpty = content !== '';
+	}
 }
 
 type MapLoopsToCells = { [k: string]: HTMLTableDataCellElement[]; };
@@ -461,6 +465,7 @@ class RTVDisplayBox {
 	private _deltaVarSet: DeltaVarSet;
 	private _cellDictionary: { [k: string]: [HTMLElement] } = {};
 	private _timesToInclude: Set<number> = new Set<number>();
+	private _elseAdded: Map<number, number> = new Map<number, number>();
 
 	constructor(
 		private readonly _controller: RTVController,
@@ -800,6 +805,56 @@ class RTVDisplayBox {
 		return rs as HTMLTableRowElement;
 	}
 
+	private synthAddElseCase(vname: string, lineno: number) {
+		let currCount = this._elseAdded.get(lineno)!;
+		console.log(currCount);
+		if (currCount && currCount > 0) {
+			this._elseAdded.set(lineno, currCount + 1);
+			return;
+		}
+
+		this._elseAdded.set(lineno, 1);
+
+		const controllerEnabledWas = this._controller.enabled;
+		this._controller.enabled = false;
+		let model = this._controller.getModelForce();
+		let startCol: number = model.getLineFirstNonWhitespaceColumn(lineno);
+		let endCol: number = model.getLineMaxColumn(lineno);
+
+		const elseLine = EditOperation.insert(
+			new Position(lineno, endCol),
+			'\n#' + ' '.repeat(startCol - 6) + 'else:' +
+			'\n#' + ' '.repeat(startCol - 2) + vname + ' = ??');
+
+		this._editor.pushUndoStop();
+		this._editor.executeEdits(this._controller.getId(), [elseLine]);
+
+		this._controller.enabled = controllerEnabledWas;
+	}
+
+	private synthRemoveElseCase(lineno: number, cell: HTMLElement) {
+		let currCount = this._elseAdded.get(lineno);
+		console.log(currCount);
+		if (!currCount || currCount === 0) {
+			return;
+		}
+
+		this._elseAdded.set(lineno, currCount - 1);
+
+		if (currCount !== 1) {
+			return;
+		}
+
+		const controllerEnabledWas = this._controller.enabled;
+		this._controller.enabled = false;
+
+		this._editor.executeEdits(
+			this._controller.getId(),
+			[ EditOperation.delete(new Range(lineno + 1, 0, lineno + 3, 0)) ]);
+
+		this._controller.enabled = controllerEnabledWas;
+	}
+
 	private synthToggleElement(elmt: TableElement, cell: HTMLElement, force: boolean | null = null) {
 		let time = elmt.env['time'];
 		let row = this.findParentRow(cell);
@@ -821,6 +876,10 @@ class RTVDisplayBox {
 			row.style.fontWeight = '900';
 			row.style.backgroundColor = String(theme.getColor(badgeBackground) ?? '');
 
+			if (!elmt.nonEmpty) {
+				this.synthAddElseCase(elmt.vname!, this.lineNumber);
+			}
+
 			this._controller.logger.exampleInclude(this.findParentRow(cell).rowIndex, cell.innerText);
 		} else {
 			// Toggle off
@@ -828,6 +887,10 @@ class RTVDisplayBox {
 
 			// Remove row highlight
 			row.style.fontWeight = row.style.backgroundColor = '';
+
+			if (!elmt.nonEmpty) {
+				this.synthRemoveElseCase(this.lineNumber, cell);
+			}
 
 			this._controller.logger.exampleExclude(this.findParentRow(cell).rowIndex, cell.innerText);
 		}
@@ -912,69 +975,71 @@ class RTVDisplayBox {
 		} else {
 			let renderedText = r.render(new MarkdownString(s));
 			cellContent = renderedText.element;
-
-			if (this._controller.supportSynthesis) {
-				cellContent.onblur = (e: FocusEvent) => {
-					if (elmt.env[elmt.vname!] !== cellContent.innerText) {
-						// TODO This might be expensive
-						this._controller.logger.exampleChanged(
-							this.findParentRow(cell).rowIndex,
-							elmt.env[elmt.vname!],
-							cellContent.innerText);
-						this.synthToggleElement(elmt, cellContent, true);
-					}
-				};
-
-				cellContent.onkeydown = (e: KeyboardEvent) => {
-					let rs: boolean = true;
-
-					switch (e.key) {
-						case 'Enter':
-							e.preventDefault();
-
-							if (e.shiftKey) {
-								this.synthToggleElement(elmt, cellContent);
-								this.synthFocusNextRow();
-							} else {
-								if (elmt.env[elmt.vname!] !== cellContent.innerText) {
-									this._controller.logger.exampleChanged(
-										this.findParentRow(cell).rowIndex,
-										elmt.env[elmt.vname!],
-										cellContent.innerText);
-									this.synthToggleElement(elmt, cellContent, true);
-								}
-								cellContent.contentEditable = 'false';
-								this._editor.focus();
-								this._controller.logger.projectionBoxExit();
-								setTimeout(() => {
-									// Pressing enter also triggers the blur event, so we don't need to record any changes here.
-									this._controller.synthesizeFragment(elmt.controllingLineNumber, this._timesToInclude);
-									this._timesToInclude.clear();
-									this._controller.logger.exampleReset();
-								}, 200);
-							}
-							break;
-						case 'Tab':
-							// ----------------------------------------------------------
-							// Use Tabs to go over values of the same variable
-							// ----------------------------------------------------------
-							e.preventDefault();
-							this.synthFocusNextRow(e.shiftKey);
-							break;
-						case 'Escape':
-							this._controller.logger.projectionBoxExit();
-							this._editor.focus();
-							this._controller.runProgram();
-							this._timesToInclude.clear();
-							this._controller.logger.exampleReset();
-							rs = false;
-							break;
-					}
-
-					return rs;
-				};
-			}
 		}
+
+		if (this._controller.supportSynthesis) {
+			cellContent.onblur = (e: FocusEvent) => {
+				if ((elmt.env[elmt.vname!] === undefined && cellContent.innerText !== ' ') ||
+					(elmt.env[elmt.vname!] !== undefined && elmt.env[elmt.vname!] !== cellContent.innerText)) {
+					// TODO This might be expensive
+					this._controller.logger.exampleChanged(
+						this.findParentRow(cell).rowIndex,
+						elmt.env[elmt.vname!],
+						cellContent.innerText);
+					this.synthToggleElement(elmt, cellContent, true);
+				}
+			};
+
+			cellContent.onkeydown = (e: KeyboardEvent) => {
+				let rs: boolean = true;
+
+				switch (e.key) {
+					case 'Enter':
+						e.preventDefault();
+
+						if (e.shiftKey) {
+							this.synthToggleElement(elmt, cellContent);
+							this.synthFocusNextRow();
+						} else {
+							if (elmt.env[elmt.vname!] !== cellContent.innerText) {
+								this._controller.logger.exampleChanged(
+									this.findParentRow(cell).rowIndex,
+									elmt.env[elmt.vname!],
+									cellContent.innerText);
+								this.synthToggleElement(elmt, cellContent, true);
+							}
+							cellContent.contentEditable = 'false';
+							this._editor.focus();
+							this._controller.logger.projectionBoxExit();
+							setTimeout(() => {
+								// Pressing enter also triggers the blur event, so we don't need to record any changes here.
+								this._controller.synthesizeFragment(elmt.controllingLineNumber, this._timesToInclude);
+								this._timesToInclude.clear();
+								this._controller.logger.exampleReset();
+							}, 200);
+						}
+						break;
+					case 'Tab':
+						// ----------------------------------------------------------
+						// Use Tabs to go over values of the same variable
+						// ----------------------------------------------------------
+						e.preventDefault();
+						this.synthFocusNextRow(e.shiftKey);
+						break;
+					case 'Escape':
+						this._controller.logger.projectionBoxExit();
+						this._editor.focus();
+						this._controller.runProgram();
+						this._timesToInclude.clear();
+						this._controller.logger.exampleReset();
+						rs = false;
+						break;
+				}
+
+				return rs;
+			};
+		}
+
 		if (this._controller.mouseShortcuts) {
 			if (elmt.iter === 'header') {
 				cellContent = this.wrapAsVarMenuButton(cellContent, s.substr(2, s.length - 4));
@@ -1689,6 +1754,7 @@ function visibilityCursorAndReturn(b: RTVDisplayBox, cursorLineNumber: number) {
 // }
 
 export class RTVController implements IRTVController {
+	public enabled: boolean = true;
 	public envs: { [k: string]: any[]; } = {};
 	public writes: { [k: string]: string[]; } = {};
 	private _boxes: RTVDisplayBox[] = [];
@@ -2227,7 +2293,7 @@ export class RTVController implements IRTVController {
 						this.focusOnLoopWithSeed();
 					}
 					if (this.supportSynthesis) {
-						const lineContent = this.getLineContent(i).trim();						
+						const lineContent = this.getLineContent(i).trim();
 						let listOfElems = lineContent.split('=');
 						if (lineContent.startsWith('return ') ||
 							(listOfElems.length === 2 && listOfElems[1].trim().endsWith('??'))) {
@@ -2235,7 +2301,7 @@ export class RTVController implements IRTVController {
 							return;
 						}
 					}
-				}	
+				}
 			}
 		}
 		if (this.loopFocusController !== null) {
@@ -2649,7 +2715,7 @@ export class RTVController implements IRTVController {
 		if (fragment.startsWith('rv = ')) {
 			fragment = fragment.replace('rv = ', 'return ');
 		}
-		
+
 		let model = this.getModelForce();
 		let cursorPos = this._editor.getPosition();
 		let startCol: number;
@@ -2674,7 +2740,7 @@ export class RTVController implements IRTVController {
 		if (!line) { return null; }
 
 		let rs = null;
-		
+
 		if (line.startsWith('return ')) {
 			rs = 'rv';
 		} else {
@@ -2748,6 +2814,10 @@ export class RTVController implements IRTVController {
 	}
 
 	public runProgram(e?: IModelContentChangedEvent) {
+
+		if (!this.enabled) {
+			return;
+		}
 
 		function runImmediately(e?: IModelContentChangedEvent): boolean {
 			if (e === undefined) {
@@ -3289,10 +3359,10 @@ export class RTVController implements IRTVController {
 				r_operand = listOfElems[1].trim();
 			}
 		}
-		
+
 		if (l_operand === '' || r_operand === '') {
 			return;
-		}		
+		}
 
 		if (r_operand.endsWith('??')) {
 			r_operand = r_operand.substr(0, r_operand.length - 2).trim();
@@ -3318,7 +3388,7 @@ export class RTVController implements IRTVController {
 			} else {
 				txt = l_operand + ' = ' + (r_operand ? r_operand : '0');
 			}
-			
+
 			this._editor.executeEdits(this.getId(), [{ range: range, text: txt }]);
 			this.runProgram();
 
@@ -3345,7 +3415,7 @@ export class RTVController implements IRTVController {
 				}
 			}, 300);
 		}
-	}	
+	}
 
 	public setVisiblityToSelectionOnly() {
 		let selection = this._editor.getSelection();
