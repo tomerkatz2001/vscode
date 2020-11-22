@@ -50,6 +50,22 @@ class RunpyProcess implements Process {
 			fn(exitCode, result);
 		});
 	}
+
+	toPromise(success: (exitCode: any, result?: string) => void): Promise<any> {
+		return new Promise(
+			(resolve, reject) => {
+				this.p.on('exit', (exitCode, _) => {
+					let result: string | undefined = undefined;
+
+					if (exitCode !== null) {
+						result = fs.readFileSync(this.file + '.out').toString();
+					}
+
+					success(exitCode, result);
+				});
+			}
+		);
+	}
 }
 
 class SynthProcess implements Process {
@@ -78,6 +94,11 @@ class SynthProcess implements Process {
 
 			fn(exitCode, result);
 		});
+	}
+
+	toPromise(success: (exitCode: any, result?: string) => void): Promise<any> {
+		// TODO implement
+		return new Promise((_1, _2) => {});
 	}
 }
 

@@ -47,6 +47,7 @@ export interface Process {
 	onStdout(fn: (data: any) => void): void;
 	onStderr(fn: (data: any) => void): void;
 	kill(): void;
+	toPromise(success: (exitCode: any, result?: string) => void): Promise<any>;
 }
 
 /**

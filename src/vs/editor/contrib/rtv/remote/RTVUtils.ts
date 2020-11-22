@@ -154,6 +154,11 @@ class RunpyProcess implements Process {
 			this.onResult('');
 		}
 	}
+
+	toPromise(success: (exitCode: any, result?: string) => void): Promise<any> {
+		// TODO Implement
+		return new Promise((_1, _2) => {});
+	}
 }
 
 class ImgSummaryProcess implements Process {
@@ -239,6 +244,11 @@ class ImgSummaryProcess implements Process {
 			this.onResult(this.result);
 		}
 	}
+
+	toPromise(success: (exitCode: any, result?: string) => void): Promise<any> {
+		// TODO Implement
+		return new Promise((_1, _2) => {});
+	}
 }
 
 class SynthProcess implements Process {
@@ -317,6 +327,11 @@ class SynthProcess implements Process {
 			this.onResult(0, this.result);
 		}
 	}
+
+	toPromise(success: (exitCode: any, result?: string) => void): Promise<any> {
+		// TODO Implement
+		return new Promise((_1, _2) => {});
+	}
 }
 
 class EmptyProcess implements Process {
@@ -324,6 +339,9 @@ class EmptyProcess implements Process {
 	onStdout(fn: (data: any) => void): void {}
 	onStderr(fn: (data: any) => void): void {}
 	kill(): void {}
+	toPromise(success: (exitCode: any, result?: string) => void): Promise<any> {
+		return new Promise((_1, _2) => {});
+	}
 }
 
 
