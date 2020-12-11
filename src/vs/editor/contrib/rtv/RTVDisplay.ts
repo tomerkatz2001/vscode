@@ -43,7 +43,7 @@ import {
 	widgetShadow
 } from 'vs/platform/theme/common/colorRegistry';
 import { IIdentifiedSingleEditOperation, IModelDecorationOptions, ITextModel } from 'vs/editor/common/model';
-import { Process, IRTVController, IRTVLogger, ViewMode } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { Process, IRTVController, IRTVLogger, ViewMode, RowColMode, IRTVDisplayBox } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
 import { Button } from 'vs/base/browser/ui/button/button';
 import { attachButtonStyler } from 'vs/platform/theme/common/styler';
@@ -451,7 +451,7 @@ class RTVRunButton {
 
 }
 
-class RTVDisplayBox {
+class RTVDisplayBox implements IRTVDisplayBox {
 	private _box: HTMLDivElement;
 	private _line: RTVLine;
 	private _zoom: number = 1;
@@ -1416,11 +1416,6 @@ class RTVDisplayBox {
 
 }
 
-export enum RowColMode {
-	ByRow = 'By Row',
-	ByCol = 'By Col'
-}
-
 enum ChangeVarsWhere {
 	Here = 'here',
 	All = 'all',
@@ -1595,7 +1590,7 @@ export class RTVController implements IRTVController {
 		this._editor.onKeyDown((e) => { this.onKeyDown(e); });
 		//this._modelService.onModelModeChanged((e) => { console.log('BBBB');  });
 
-		this._synthesis = new RTVSynth(_editor, this);
+		this._synthesis = new RTVSynth(_editor, this, this._themeService);
 		this.logger = utils.getLogger(this._editor);
 
 		this.updateMaxPixelCol();
@@ -1970,7 +1965,7 @@ export class RTVController implements IRTVController {
 		});
 	}
 
-	public getBox(lineNumber: number) {
+	public getBox(lineNumber: number): RTVDisplayBox {
 		let i = lineNumber - 1;
 		if (i >= this._boxes.length) {
 			for (let j = this._boxes.length; j <= i; j++) {
@@ -2455,8 +2450,15 @@ export class RTVController implements IRTVController {
 			// found a line number here, so this is a runtime error)
 			// match[0] is entire 'line N' match, match[1] is just the number N
 			lineNumber = +match[1];
-			colStart = this.firstNonWhitespaceCol(lineNumber);
-			colEnd = this.lastNonWhitespaceCol(lineNumber);
+
+			try {
+				colStart = this.firstNonWhitespaceCol(lineNumber);
+				colEnd = this.lastNonWhitespaceCol(lineNumber);
+			} catch (e) {
+				console.error(e);
+				return;
+			}
+
 		} else {
 			// No line number here so this is a syntax error, so we in fact
 			// didn't get the error line number, we got the line with the caret

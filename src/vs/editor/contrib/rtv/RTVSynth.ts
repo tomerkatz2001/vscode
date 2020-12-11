@@ -1,24 +1,22 @@
 import { Range } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
-import { RTVController, RowColMode } from 'vs/editor/contrib/rtv/RTVDisplay';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
-import { IRTVLogger } from './RTVInterfaces';
+import { IRTVLogger, IRTVController, RowColMode } from './RTVInterfaces';
 import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
-import { EditOperation } from 'vs/editor/common/core/editOperation';
-import { Position } from 'vs/editor/common/core/position';
+import { IThemeService } from 'vs/platform/theme/common/themeService';
 
 export class RTVSynth {
 	private logger: IRTVLogger;
 	private includedTimes: Set<number>;
-	private elseCaseAdded: boolean = false;
 	private envs?: any[] = undefined; // TODO Can we do better than any?
 	private varname?: string = undefined;
 	private lineno?: number = undefined;
 
 	constructor(
 		private readonly editor: ICodeEditor,
-		private readonly controller: RTVController
+		private readonly controller: IRTVController,
+		@IThemeService readonly _themeService: IThemeService
 	) {
 		this.logger = utils.getLogger(editor);
 		this.includedTimes = new Set();
@@ -199,7 +197,6 @@ export class RTVSynth {
 
 		// Reset the synth state
 		this.includedTimes.clear();
-		this.removeElseCase();
 		this.logger.exampleReset();
 	}
 
@@ -234,7 +231,7 @@ export class RTVSynth {
 			}
 		}
 
-		this.controller.logger.exampleBlur(row!.rowIndex, cell!.textContent!);
+		this.logger.exampleBlur(row!.rowIndex, cell!.textContent!);
 
 		if (this.controller.byRowOrCol === RowColMode.ByCol) {
 			let table: HTMLTableElement = row!.parentNode as HTMLTableElement;
@@ -251,7 +248,7 @@ export class RTVSynth {
 			range.selectNodeContents(newFocusNode);
 			selection?.removeAllRanges();
 			selection?.addRange(range);
-			this.controller.logger.exampleFocus(
+			this.logger.exampleFocus(
 				nextRowIdx,
 				newFocusNode!.textContent!
 			);
@@ -269,7 +266,7 @@ export class RTVSynth {
 			range.selectNodeContents(newFocusNode);
 			selection?.removeAllRanges();
 			selection?.addRange(range);
-			this.controller.logger.exampleFocus(
+			this.logger.exampleFocus(
 				nextCellIdx,
 				newFocusNode!.textContent!
 			);
@@ -301,7 +298,7 @@ export class RTVSynth {
 			this.includedTimes.add(env['time']);
 
 			// Highligh the row
-			let theme = this.controller._themeService.getColorTheme();
+			let theme = this._themeService.getColorTheme();
 			row.style.fontWeight = '900';
 			row.style.backgroundColor = String(theme.getColor(badgeBackground) ?? '');
 
@@ -472,89 +469,5 @@ export class RTVSynth {
 		}
 
 		return rs;
-	}
-
-	private runWithElseCase(
-		lineno: number,
-		vname: string,
-		currentEnv: any
-	): Promise<any> {
-		let model = this.controller.getModelForce();
-		let startCol: number = model.getLineFirstNonWhitespaceColumn(lineno);
-		let program = this.controller.getProgram();
-		let lines = program.split('\n');
-
-		// TODO Find a safer way. This is brittle.
-		let newProgram = lines
-			.slice(0, this.lineno)
-			.concat([
-				' '.repeat(startCol - 5) + 'else:',
-				' '.repeat(startCol - 1) + vname + ' = 0',
-			])
-			.concat(lines.slice(this.lineno))
-			.join('\n');
-
-		return utils.runProgram(newProgram).toPromise((exitCode, json) => {
-			if (exitCode !== 0 || !json) {
-				console.error('Failed to enable LooPy! Running the program failed.');
-				return;
-			}
-
-			let result = JSON.parse(json);
-			let envs = result[2] as any;
-			let env: any | undefined = undefined;
-
-			for (let k in envs) {
-				let es = envs[k] as any[];
-				for (let i in es) {
-					let e = es[i];
-					if (e['#'] === currentEnv['#'] && e['$'] === currentEnv['$']) {
-						env = e;
-						break;
-					}
-				}
-
-				if (env) {
-					break;
-				}
-			}
-
-			return env;
-		});
-	}
-
-	public addElseCase() {
-		if (!this.elseCaseAdded) {
-			let model = this.controller.getModelForce();
-			let startCol: number = model.getLineFirstNonWhitespaceColumn(
-				this.lineno!
-			);
-			let endCol: number = model.getLineMaxColumn(this.lineno!);
-
-			const elseLine = EditOperation.insert(
-				new Position(this.lineno!, endCol),
-				'\n#' +
-					' '.repeat(startCol - 6) +
-					'else:' +
-					'\n#' +
-					' '.repeat(startCol - 2) +
-					this.varname! +
-					' = ??'
-			);
-			this.editor.pushUndoStop();
-			this.editor.executeEdits(this.controller.getId(), [elseLine]);
-			this.elseCaseAdded = true;
-		}
-	}
-
-	public removeElseCase() {
-		if (this.elseCaseAdded) {
-			this.editor.executeEdits(this.controller.getId(), [
-				EditOperation.delete(
-					new Range(this.lineno! + 1, 0, this.lineno! + 3, 0)
-				),
-			]);
-			this.elseCaseAdded = false;
-		}
 	}
 }

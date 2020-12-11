@@ -1,7 +1,26 @@
 import { IEditorContribution } from 'vs/editor/common/editorCommon';
+import { ITextModel } from 'vs/editor/common/model';
+
+export interface IRTVDisplayBox {
+	getCellContent(): { [k: string]: [HTMLElement] };
+	getEnvs(): any[];
+}
 
 export interface IRTVController extends IEditorContribution {
+	// Set auto updates of the projection boxes
+	enable(): void;
+	disable(): void;
+
+	// Utility functions for accessing the editor or PB content
+	getBox(lineno: number): IRTVDisplayBox;
+	getLineContent(lineno: number): string;
+	getProgram(): string;
+	getModelForce(): ITextModel;
+
+	// Functions for running the program
 	runProgram(): void;
+	getId(): string;
+	byRowOrCol: RowColMode;
 }
 
 /**
@@ -60,4 +79,9 @@ export enum ViewMode {
 	Stealth = 'Stealth',
 	Focused = 'Focused',
 	Custom = 'Custom'
+}
+
+export enum RowColMode {
+	ByRow = 'By Row',
+	ByCol = 'By Col'
 }
