@@ -34,7 +34,7 @@ export class RTVSynth {
 	// Interface
 	// -----------------------------------------------------------------------------------
 
-	public startSynthesis(lineno: number) {
+	public async startSynthesis(lineno: number) {
 		// First of all, we need to disable Projection Boxes since we are going to be
 		// modifying both the editor content, and the current projection box, and don't
 		// want the boxes to auto-update at any point.
@@ -68,34 +68,34 @@ export class RTVSynth {
 		// Okay, we are definitely using SnipPy here!
 		// ------------------------------------------
 
-		this.lineno = lineno;
-		this.varname = l_operand;
-
 		// TODO If we're in an if-branch, we need to run this for a
 		// modified version of the code instead.
-		this.controller.runProgram();
-		this.controller.disable();
+		return this.controller.runProgram()
+		.then(() => {
+			this.controller.disable();
 
-		r_operand = r_operand.substr(0, r_operand.length - 2).trim();
+			this.lineno = lineno;
+			this.varname = l_operand;
 
-		let model = this.controller.getModelForce();
-		let startCol = model.getLineFirstNonWhitespaceColumn(lineno);
-		let endCol = model.getLineMaxColumn(lineno);
+			r_operand = r_operand.substr(0, r_operand.length - 2).trim();
 
-		let range = new Range(lineno, startCol, lineno, endCol);
-		let txt = '';
+			let model = this.controller.getModelForce();
+			let startCol = model.getLineFirstNonWhitespaceColumn(lineno);
+			let endCol = model.getLineMaxColumn(lineno);
 
-		if (l_operand === 'rv') {
-			txt = 'return ' + (r_operand ? r_operand : '0');
-		} else {
-			txt = l_operand + ' = ' + (r_operand ? r_operand : '0');
-		}
+			let range = new Range(lineno, startCol, lineno, endCol);
+			let txt = '';
 
-		this.editor.executeEdits(this.controller.getId(), [
-			{ range: range, text: txt },
-		]);
+			if (l_operand === 'rv') {
+				txt = 'return ' + (r_operand ? r_operand : '0');
+			} else {
+				txt = l_operand + ' = ' + (r_operand ? r_operand : '0');
+			}
 
-		setTimeout(() => {
+			this.editor.executeEdits(this.controller.getId(), [
+				{ range: range, text: txt },
+			]);
+
 			let cellKey = l_operand;
 			let cellContents = box.getCellContent()[cellKey];
 
@@ -116,75 +116,77 @@ export class RTVSynth {
 			} else {
 				console.error(`No cell found with key "${cellKey}"`);
 			}
-		}, 300);
 
-		// Get all cell contents for the variable
-		let contents = box.getCellContent()[this.varname];
-		let elmt = box;
-		this.envs = box.getEnvs();
+			// Get all cell contents for the variable
+			let contents = box.getCellContent()[this.varname];
+			let elmt = box;
+			this.envs = box.getEnvs();
 
-		for (let i in contents) {
-			let cellContent = contents[i];
-			let env = this.envs![i];
+			for (let i in contents) {
+				let cellContent = contents[i];
+				let env = this.envs![i];
 
-			cellContent.onblur = (e: FocusEvent) => {
-				if (env[this.varname!] !== cellContent.innerText) {
-					this.logger.exampleChanged(
-						this.findParentRow(cellContent).rowIndex,
-						env[this.varname!],
-						cellContent.innerText
-					);
-					this.toggleElement(env, cellContent, true);
-				}
-			};
+				cellContent.onblur = (e: FocusEvent) => {
+					if (env[this.varname!] !== cellContent.innerText) {
+						this.logger.exampleChanged(
+							this.findParentRow(cellContent).rowIndex,
+							env[this.varname!],
+							cellContent.innerText
+						);
+						this.toggleElement(env, cellContent, true);
+					}
+				};
 
-			cellContent.onkeydown = (e: KeyboardEvent) => {
-				let rs: boolean = true;
+				cellContent.onkeydown = (e: KeyboardEvent) => {
+					let rs: boolean = true;
 
-				switch (e.key) {
-					case 'Enter':
-						e.preventDefault();
+					switch (e.key) {
+						case 'Enter':
+							e.preventDefault();
 
-						if (e.shiftKey) {
-							this.toggleElement(env, cellContent);
-							this.focusNextRow();
-						} else {
-							if (env[this.varname!] !== cellContent.innerText) {
-								this.logger.exampleChanged(
-									this.findParentRow(cellContent).rowIndex,
-									env[this.varname!],
-									cellContent.innerText
-								);
-								this.toggleElement(elmt, cellContent, true);
+							if (e.shiftKey) {
+								this.toggleElement(env, cellContent);
+								this.focusNextRow();
+							} else {
+								if (env[this.varname!] !== cellContent.innerText) {
+									this.logger.exampleChanged(
+										this.findParentRow(cellContent).rowIndex,
+										env[this.varname!],
+										cellContent.innerText
+									);
+									this.toggleElement(elmt, cellContent, true);
+								}
+								cellContent.contentEditable = 'false';
+								this.editor.focus();
+								this.logger.projectionBoxExit();
+								setTimeout(() => {
+									// Pressing enter also triggers the blur event, so we don't need to record any changes here.
+									this.synthesizeFragment();
+									this.includedTimes.clear();
+									this.logger.exampleReset();
+								}, 200);
 							}
-							cellContent.contentEditable = 'false';
+							break;
+						case 'Tab':
+							// ----------------------------------------------------------
+							// Use Tabs to go over values of the same variable
+							// ----------------------------------------------------------
+							e.preventDefault();
+							this.focusNextRow(e.shiftKey);
+							break;
+						case 'Escape':
+							rs = false;
 							this.editor.focus();
-							this.logger.projectionBoxExit();
-							setTimeout(() => {
-								// Pressing enter also triggers the blur event, so we don't need to record any changes here.
-								this.synthesizeFragment();
-								this.includedTimes.clear();
-								this.logger.exampleReset();
-							}, 200);
-						}
-						break;
-					case 'Tab':
-						// ----------------------------------------------------------
-						// Use Tabs to go over values of the same variable
-						// ----------------------------------------------------------
-						e.preventDefault();
-						this.focusNextRow(e.shiftKey);
-						break;
-					case 'Escape':
-						rs = false;
-						this.editor.focus();
-						this.stopSynthesis();
-						break;
-				}
+							this.stopSynthesis();
+							break;
+					}
 
-				return rs;
-			};
-		}
+					return rs;
+				};
+			}
+		})
+		// Go back to the editor if something breaks.
+		.catch(this.stopSynthesis);
 	}
 
 	public stopSynthesis() {
@@ -397,8 +399,6 @@ export class RTVSynth {
 			if (error) {
 				this.insertSynthesizedFragment('# Synthesis failed', lineno);
 			}
-
-			this.stopSynthesis();
 		});
 	}
 
