@@ -23,6 +23,8 @@ let SYNTH = getOSEnvVariable('SYNTH');
 let SCALA = getOSEnvVariable('SCALA');
 
 class RunpyProcess implements Process {
+	private _reject?: () => void;
+
 	constructor(private file: string,
 		private p: child_process.ChildProcessWithoutNullStreams) {
 	}
@@ -37,6 +39,10 @@ class RunpyProcess implements Process {
 
 	kill() {
 		this.p.kill();
+		if (this._reject) {
+			this._reject();
+			this._reject = undefined;
+		}
 	}
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {
@@ -51,9 +57,10 @@ class RunpyProcess implements Process {
 		});
 	}
 
-	toPromise(success: (exitCode: any, result?: string) => void): Promise<any> {
+	toPromise(): Promise<any> {
 		return new Promise(
 			(resolve, reject) => {
+				// We consider failed executions (non-zero exitCode) as resolved.
 				this.p.on('exit', (exitCode, _) => {
 					let result: string | undefined = undefined;
 
@@ -61,14 +68,19 @@ class RunpyProcess implements Process {
 						result = fs.readFileSync(this.file + '.out').toString();
 					}
 
-					success(exitCode, result);
+					resolve([exitCode, result]);
 				});
+
+				// Kill, however, is not resolved!
+				this._reject = reject;
 			}
 		);
 	}
 }
 
 class SynthProcess implements Process {
+	private _reject?: () => void;
+
 	constructor(private file: string,
 		private process: child_process.ChildProcessWithoutNullStreams) { }
 
@@ -82,6 +94,11 @@ class SynthProcess implements Process {
 
 	kill() {
 		this.process.kill();
+
+		if (this._reject) {
+			this._reject();
+			this._reject = undefined;
+		}
 	}
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {
@@ -96,9 +113,20 @@ class SynthProcess implements Process {
 		});
 	}
 
-	toPromise(success: (exitCode: any, result?: string) => void): Promise<any> {
-		// TODO implement
-		return new Promise((_1, _2) => {});
+	toPromise(): Promise<any> {
+		return new Promise((resolve, reject) => {
+			this.process.on('close', (exitCode) => {
+				let result = undefined;
+
+				if (exitCode === 0) {
+					result = fs.readFileSync(this.file + '.out').toString();
+				}
+
+				resolve([exitCode, result]);
+			});
+
+			this._reject = reject;
+		});
 	}
 }
 

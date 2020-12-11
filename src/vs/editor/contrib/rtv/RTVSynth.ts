@@ -397,6 +397,8 @@ export class RTVSynth {
 			if (error) {
 				this.insertSynthesizedFragment('# Synthesis failed', lineno);
 			}
+
+			this.stopSynthesis();
 		});
 	}
 

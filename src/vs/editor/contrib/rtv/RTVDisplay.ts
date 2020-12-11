@@ -111,27 +111,34 @@ function regExpMatchEntireString(s: string, regExp: string) {
 }
 
 export class DelayedRunAtMostOne {
-	private _timer: ReturnType<typeof setTimeout> | null = null;
+	private _reject?: () => void;
 
-	public run(delay: number, c: () => void) {
-		if (this._timer !== null) {
-			clearTimeout(this._timer);
+	public async run(delay: number, c: () => void) {
+		if (this._reject) {
+			this._reject();
 		}
+
 		if (delay === 0) {
-			this._timer = null;
+			this._reject = undefined;
 			c();
+			return Promise.resolve();
 		} else {
-			this._timer = setTimeout(() => {
-				this._timer = null;
-				c();
-			}, delay);
+			await new Promise((resolve, reject) => {
+				let timeout = setTimeout(resolve, delay);
+				this._reject = () => {
+					clearTimeout(timeout);
+					reject();
+				};
+			});
+
+			return c();
 		}
 	}
 
 	public cancel() {
-		if (this._timer !== null) {
-			clearTimeout(this._timer);
-			this._timer = null;
+		if (this._reject) {
+			this._reject();
+			this._reject = undefined;
 		}
 	}
 }
@@ -2520,7 +2527,7 @@ export class RTVController implements IRTVController {
 		return lines.join('\n');
 	}
 
-	public runProgram(e?: IModelContentChangedEvent) {
+	public async runProgram(e?: IModelContentChangedEvent): Promise<any> {
 
 		if (!this.enabled) {
 			return;
@@ -2559,34 +2566,35 @@ export class RTVController implements IRTVController {
 			delay = 0;
 		}
 
-		this._runProgramDelay.run(delay, () => {
+		// Just delay
+		await this._runProgramDelay.run(delay, () => {});
 
-			this.hideOutputBox();
-			const program = this.getProgram();
+		this.hideOutputBox();
+		const program = this.getProgram();
 
-			// if (program.length === 0) {
-			// 	return;
-			// }
+		if (this._pythonProcess !== undefined) {
+			this._pythonProcess.kill();
+		}
 
-			if (this._pythonProcess !== undefined) {
-				this._pythonProcess.kill();
-			}
+		this.logger.projectionBoxUpdateStart(program);
+		let c = utils.runProgram(program);
+		this._pythonProcess = c;
 
-			this.logger.projectionBoxUpdateStart(program);
-			let c = utils.runProgram(program);
-			this._pythonProcess = c;
+		let errorMsg: string = '';
+		c.onStderr((msg) => {
+			errorMsg += msg;
+		});
 
-			let errorMsg: string = '';
-			c.onStderr((msg) => {
-				errorMsg += msg;
-			});
+		let outputMsg: string = '';
+		c.onStdout((msg) => {
+			outputMsg += msg;
+		});
 
-			let outputMsg: string = '';
-			c.onStdout((msg) => {
-				outputMsg += msg;
-			});
+		return c.toPromise()
+			.then((results) => {
+				const exitCode = results[0];
+				const result = results[1];
 
-			c.onExit((exitCode, result) => {
 				this.logger.projectionBoxUpdateEnd(result);
 
 				// onExit renders enough delay to update the positioning of the boxes
@@ -2600,12 +2608,11 @@ export class RTVController implements IRTVController {
 				this._pythonProcess = undefined;
 
 				let parsedResult = JSON.parse(result!);
-
 				let returnCode = parsedResult[0];
 
 				this.updateLinesWhenOutOfDate(returnCode, e);
 
-				if (returnCode === 0 || returnCode == 2) {
+				if (returnCode === 0 || returnCode === 2) {
 					this.updateData(parsedResult);
 					this.clearError();
 				} else {
@@ -2613,10 +2620,9 @@ export class RTVController implements IRTVController {
 				}
 
 				this.updateContentAndLayout();
-
 				this.getOutputBox().setOutAndErrMsg(outputMsg, errorMsg);
-			});
-		});
+			}
+		);
 	}
 
 	private updateData(parsedResult: any) {

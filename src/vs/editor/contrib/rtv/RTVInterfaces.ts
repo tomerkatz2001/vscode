@@ -18,7 +18,7 @@ export interface IRTVController extends IEditorContribution {
 	getModelForce(): ITextModel;
 
 	// Functions for running the program
-	runProgram(): void;
+	runProgram(): Promise<any>;
 	getId(): string;
 	byRowOrCol: RowColMode;
 }
@@ -66,8 +66,27 @@ export interface Process {
 	onStdout(fn: (data: any) => void): void;
 	onStderr(fn: (data: any) => void): void;
 	kill(): void;
-	toPromise(success: (exitCode: any, result?: string) => void): Promise<any>;
+	toPromise(): Promise<any>;
 }
+
+
+/**
+ * An empty implementation of Process. Can be used in place of the
+ * actual process until initial setups are completed. Resolves
+ * immediately.
+ */
+export class EmptyProcess implements Process {
+	onExit(_fn: (exitCode: any, result?: string) => void): void {}
+	onStdout(_fn: (data: any) => void): void {}
+	onStderr(_fn: (data: any) => void): void {}
+	kill(): void {}
+	toPromise(): Promise<any> {
+		return new Promise((resolve) => {
+			resolve();
+		});
+	}
+}
+
 
 /**
  * The Projection Box view modes.

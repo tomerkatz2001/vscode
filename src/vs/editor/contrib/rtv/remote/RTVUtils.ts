@@ -1,4 +1,4 @@
-import { Process, IRTVController, IRTVLogger, ViewMode } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { Process, IRTVController, IRTVLogger, EmptyProcess, ViewMode } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
@@ -155,7 +155,7 @@ class RunpyProcess implements Process {
 		}
 	}
 
-	toPromise(success: (exitCode: any, result?: string) => void): Promise<any> {
+	toPromise(): Promise<any> {
 		// TODO Implement
 		return new Promise((_1, _2) => {});
 	}
@@ -245,7 +245,7 @@ class ImgSummaryProcess implements Process {
 		}
 	}
 
-	toPromise(success: (exitCode: any, result?: string) => void): Promise<any> {
+	toPromise(): Promise<any> {
 		// TODO Implement
 		return new Promise((_1, _2) => {});
 	}
@@ -328,22 +328,11 @@ class SynthProcess implements Process {
 		}
 	}
 
-	toPromise(success: (exitCode: any, result?: string) => void): Promise<any> {
+	toPromise(): Promise<any> {
 		// TODO Implement
 		return new Promise((_1, _2) => {});
 	}
 }
-
-class EmptyProcess implements Process {
-	onExit(fn: (exitCode: any, result?: string) => void): void {}
-	onStdout(fn: (data: any) => void): void {}
-	onStderr(fn: (data: any) => void): void {}
-	kill(): void {}
-	toPromise(success: (exitCode: any, result?: string) => void): Promise<any> {
-		return new Promise((_1, _2) => {});
-	}
-}
-
 
 export function runProgram(program: string): Process {
 	if (!pyodideLoaded) {
