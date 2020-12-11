@@ -197,11 +197,11 @@
 			"timeout": 20000,
 			"env": {
 				"VSCODE_EXTHOST_WILL_SEND_SOCKET": null,
-				"PYTHON3": "/usr/local/bin/python3",
-				"SCALA": "",
-				"RUNPY": "/Users/kferdowsifard/projects/ProjectionBoxes/vscode/src/run.py",
-				"SYNTH": "",
-				"IMGSUM": "/Users/kferdowsifard/projects/ProjectionBoxes/vscode/src/img-summary.py"
+				"PYTHON3": "/usr/bin/python3",
+				"SCALA": "/usr/bin/scala",
+				"RUNPY": "/home/kas/projects/LooPy/vscode/src/run.py",
+				"SYNTH": "/home/kas/projects/LooPy/synthesizer/target/snippy-server-0.1-SNAPSHOT-jar-with-dependencies.jar",
+				"IMGSUM": "/home/kas/projects/LooPy/vscode/src/img-summary.py"
 			},
 			"breakOnLoad": false,
 			"urlFilter": "*workbench.html*",
