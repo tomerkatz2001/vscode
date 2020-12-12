@@ -9,7 +9,8 @@ import { IThemeService } from 'vs/platform/theme/common/themeService';
 export class RTVSynth {
 	private logger: IRTVLogger;
 	private includedTimes: Set<number>;
-	private envs?: any[] = undefined; // TODO Can we do better than any?
+	private allEnvs?: any[] = undefined; // TODO Can we do better than any?
+	private boxEnvs?: any[] = undefined;
 	private varname?: string = undefined;
 	private lineno?: number = undefined;
 
@@ -68,125 +69,134 @@ export class RTVSynth {
 		// Okay, we are definitely using SnipPy here!
 		// ------------------------------------------
 
-		// TODO If we're in an if-branch, we need to run this for a
-		// modified version of the code instead.
-		return this.controller.runProgram()
-		.then(() => {
-			this.controller.disable();
+		this.controller.disable();
 
-			this.lineno = lineno;
-			this.varname = l_operand;
+		this.lineno = lineno;
+		this.varname = l_operand;
 
-			r_operand = r_operand.substr(0, r_operand.length - 2).trim();
+		r_operand = r_operand.substr(0, r_operand.length - 2).trim();
 
-			let model = this.controller.getModelForce();
-			let startCol = model.getLineFirstNonWhitespaceColumn(lineno);
-			let endCol = model.getLineMaxColumn(lineno);
+		let model = this.controller.getModelForce();
+		let startCol = model.getLineFirstNonWhitespaceColumn(lineno);
+		let endCol = model.getLineMaxColumn(lineno);
 
-			let range = new Range(lineno, startCol, lineno, endCol);
-			let txt = '';
+		let range = new Range(lineno, startCol, lineno, endCol);
+		let txt = '';
 
-			if (l_operand === 'rv') {
-				txt = 'return ' + (r_operand ? r_operand : '0');
-			} else {
-				txt = l_operand + ' = ' + (r_operand ? r_operand : '0');
-			}
+		if (l_operand === 'rv') {
+			txt = 'return ' + (r_operand ? r_operand : '0');
+		} else {
+			txt = l_operand + ' = ' + (r_operand ? r_operand : '0');
+		}
 
-			this.editor.executeEdits(this.controller.getId(), [
-				{ range: range, text: txt },
-			]);
+		this.editor.executeEdits(this.controller.getId(), [
+			{ range: range, text: txt },
+		]);
 
-			let cellKey = l_operand;
-			let cellContents = box.getCellContent()[cellKey];
+		// Update the projection box with the new value
+		const runResults: any = await this.controller.runProgram();
 
-			if (cellContents) {
-				cellContents.forEach(function (cellContent) {
-					cellContent.contentEditable = 'true';
-				});
-				cellContents[0].focus();
+		let cellKey = l_operand;
+		let cellContents = box.getCellContent()[cellKey];
 
-				// TODO Is there a faster/cleaner way to select the content?
-				let selection = window.getSelection()!;
-				let range = selection.getRangeAt(0)!;
-				range.selectNodeContents(selection.focusNode!);
-				selection.addRange(range);
+		if (cellContents) {
+			cellContents.forEach(function (cellContent) {
+				cellContent.contentEditable = 'true';
+			});
+			cellContents[0].focus();
 
-				this.logger.projectionBoxFocus(line, r_operand !== '');
-				this.logger.exampleFocus(0, cellContents[0]!.textContent!);
-			} else {
-				console.error(`No cell found with key "${cellKey}"`);
-			}
+			// TODO Is there a faster/cleaner way to select the content?
+			let selection = window.getSelection()!;
+			let range = selection.getRangeAt(0)!;
+			const node = selection.focusNode!;
 
-			// Get all cell contents for the variable
-			let contents = box.getCellContent()[this.varname];
-			let elmt = box;
-			this.envs = box.getEnvs();
+			range.selectNodeContents(node);
+			selection.addRange(range);
 
-			for (let i in contents) {
-				let cellContent = contents[i];
-				let env = this.envs![i];
+			this.logger.projectionBoxFocus(line, r_operand !== '');
+			this.logger.exampleFocus(0, cellContents[0]!.textContent!);
+		} else {
+			console.error(`No cell found with key "${cellKey}"`);
+			this.stopSynthesis();
+			return;
+		}
 
-				cellContent.onblur = (e: FocusEvent) => {
-					if (env[this.varname!] !== cellContent.innerText) {
-						this.logger.exampleChanged(
-							this.findParentRow(cellContent).rowIndex,
-							env[this.varname!],
-							cellContent.innerText
-						);
-						this.toggleElement(env, cellContent, true);
-					}
-				};
+		// Get the values we will be working with
+		this.boxEnvs = box.getEnvs();
 
-				cellContent.onkeydown = (e: KeyboardEvent) => {
-					let rs: boolean = true;
+		// TODO Cleanup all available envs
+		this.allEnvs = [];
 
-					switch (e.key) {
-						case 'Enter':
-							e.preventDefault();
+		for (let line in (runResults[2] as { [k: string]: any[]; })) {
+			this.allEnvs = this.allEnvs.concat(runResults[2][line]);
+		}
 
-							if (e.shiftKey) {
-								this.toggleElement(env, cellContent);
-								this.focusNextRow();
-							} else {
-								if (env[this.varname!] !== cellContent.innerText) {
-									this.logger.exampleChanged(
-										this.findParentRow(cellContent).rowIndex,
-										env[this.varname!],
-										cellContent.innerText
-									);
-									this.toggleElement(elmt, cellContent, true);
-								}
-								cellContent.contentEditable = 'false';
-								this.editor.focus();
-								this.logger.projectionBoxExit();
-								setTimeout(() => {
-									// Pressing enter also triggers the blur event, so we don't need to record any changes here.
-									this.synthesizeFragment();
-									this.includedTimes.clear();
-									this.logger.exampleReset();
-								}, 200);
+		// Get all cell contents for the variable
+		let contents = box.getCellContent()[this.varname];
+		let elmt = box;
+
+		for (let i in contents) {
+			let cellContent = contents[i];
+			let env = this.boxEnvs![i];
+
+			cellContent.onblur = (e: FocusEvent) => {
+				if (env[this.varname!] !== cellContent.innerText) {
+					this.logger.exampleChanged(
+						this.findParentRow(cellContent).rowIndex,
+						env[this.varname!],
+						cellContent.innerText
+					);
+					this.toggleElement(env, cellContent, true);
+				}
+			};
+
+			cellContent.onkeydown = (e: KeyboardEvent) => {
+				let rs: boolean = true;
+
+				switch (e.key) {
+					case 'Enter':
+						e.preventDefault();
+
+						if (e.shiftKey) {
+							this.toggleElement(env, cellContent);
+							this.focusNextRow();
+						} else {
+							if (env[this.varname!] !== cellContent.innerText) {
+								this.logger.exampleChanged(
+									this.findParentRow(cellContent).rowIndex,
+									env[this.varname!],
+									cellContent.innerText
+								);
+								this.toggleElement(elmt, cellContent, true);
 							}
-							break;
-						case 'Tab':
-							// ----------------------------------------------------------
-							// Use Tabs to go over values of the same variable
-							// ----------------------------------------------------------
-							e.preventDefault();
-							this.focusNextRow(e.shiftKey);
-							break;
-						case 'Escape':
-							rs = false;
+							cellContent.contentEditable = 'false';
 							this.editor.focus();
-							this.stopSynthesis();
-							break;
-					}
+							this.logger.projectionBoxExit();
+							setTimeout(() => {
+								// Pressing enter also triggers the blur event, so we don't need to record any changes here.
+								this.synthesizeFragment();
+								this.includedTimes.clear();
+								this.logger.exampleReset();
+							}, 200);
+						}
+						break;
+					case 'Tab':
+						// ----------------------------------------------------------
+						// Use Tabs to go over values of the same variable
+						// ----------------------------------------------------------
+						e.preventDefault();
+						this.focusNextRow(e.shiftKey);
+						break;
+					case 'Escape':
+						rs = false;
+						this.editor.focus();
+						this.stopSynthesis();
+						break;
+				}
 
-					return rs;
-				};
-			}
-		})
-		// Go back to the editor if something breaks.
-		.catch(this.stopSynthesis);
+				return rs;
+			};
+		}
 	}
 
 	public stopSynthesis() {
@@ -284,7 +294,7 @@ export class RTVSynth {
 		let row = this.findParentRow(cell);
 		let on: boolean;
 
-		if (time === undefined) {
+		if (!time) {
 			on = true;
 		} else if (force !== null) {
 			on = force;
@@ -346,9 +356,13 @@ export class RTVSynth {
 		let envs: any[] = [];
 
 		// search_loop:
-		for (let env of this.envs!) {
+		for (let env of this.allEnvs!) {
 			// TODO Is it safe to assume that the env_list is in order of time?
 			// if (envs.length === timesToInclude.size) { break search_loop; }
+
+			if (!env['time']) {
+				continue;
+			}
 
 			if (env['time'] === prev_time) {
 				previous_env = env;

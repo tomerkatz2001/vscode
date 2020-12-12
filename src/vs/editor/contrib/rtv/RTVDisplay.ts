@@ -2101,7 +2101,12 @@ export class RTVController implements IRTVController {
 
 						if (lineContent.endsWith('??') &&
 							lineContent.startsWith('return ') || lineContent.split('=').length === 2) {
-								this._synthesis.startSynthesis(i);
+								this._synthesis.startSynthesis(i)
+									.catch((e) => {
+										console.error('Synthesis failed with exception:');
+										console.error(e);
+										this._synthesis.stopSynthesis();
+									});
 								return;
 						}
 					}
@@ -2529,10 +2534,6 @@ export class RTVController implements IRTVController {
 
 	public async runProgram(e?: IModelContentChangedEvent): Promise<any> {
 
-		if (!this.enabled) {
-			return;
-		}
-
 		function runImmediately(e?: IModelContentChangedEvent): boolean {
 			if (e === undefined) {
 				return true;
@@ -2555,6 +2556,11 @@ export class RTVController implements IRTVController {
 
 		// avoid creating projection boxes/panels for the built-in output panel
 		if (!this.isTextEditor()) {
+			return;
+		}
+
+		// Don't run automatically if Controller is disabled
+		if (e && !this.enabled) {
 			return;
 		}
 
@@ -2621,6 +2627,8 @@ export class RTVController implements IRTVController {
 
 				this.updateContentAndLayout();
 				this.getOutputBox().setOutAndErrMsg(outputMsg, errorMsg);
+
+				return parsedResult;
 			}
 		);
 	}
