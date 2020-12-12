@@ -103,14 +103,13 @@ export class RTVSynth {
 			cellContents.forEach(function (cellContent) {
 				cellContent.contentEditable = 'true';
 			});
-			cellContents[0].focus();
 
 			// TODO Is there a faster/cleaner way to select the content?
 			let selection = window.getSelection()!;
 			let range = selection.getRangeAt(0)!;
-			const node = selection.focusNode!;
 
-			range.selectNodeContents(node);
+			range.selectNodeContents(cellContents[0]);
+			selection.removeAllRanges();
 			selection.addRange(range);
 
 			this.logger.projectionBoxFocus(line, r_operand !== '');
