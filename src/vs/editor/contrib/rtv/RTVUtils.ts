@@ -8,7 +8,7 @@ import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
 // Helper functions
-function getOSEnvVariable(v: string): string {
+export function getOSEnvVariable(v: string): string {
 	let result = process.env[v];
 	if (result === undefined) {
 		throw new Error('OS environment variable ' + v + ' is not defined.');

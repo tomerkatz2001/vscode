@@ -2,6 +2,7 @@ import { Range } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
+import * as synth_utils from 'vs/editor/contrib/rtv/RTVSynthUtils';
 import { IRTVLogger, IRTVController, RowColMode } from './RTVInterfaces';
 import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
@@ -215,7 +216,13 @@ export class RTVSynth {
 	// Recording changes
 	// -----------------------------------------------------------------------------------
 
-	private focusNextRow(backwards: boolean = false): void {
+	/**
+	 * Checks whether the current row's value is valid. If yes, it selects the next "row".
+	 * If not, it keeps the cursor position, but adds an error message to the value to
+	 * indicate the issue.
+	 */
+	private async focusNextRow(backwards: boolean = false): Promise<void> {
+		// Get the current value
 		let selection = window.getSelection()!;
 		let cell: HTMLTableCellElement;
 		let row: HTMLTableRowElement;
@@ -241,6 +248,20 @@ export class RTVSynth {
 				break;
 			}
 		}
+
+		cell = cell!;
+		const currentValue = cell!.textContent!;
+
+		// Check if value was valid
+		const error = await synth_utils.validate(currentValue);
+
+		if (error) {
+			// Show error message if not
+			this.addError(cell, error)
+			return;
+		}
+
+		// Value was valid, move the cursor.
 
 		this.logger.exampleBlur(row!.rowIndex, cell!.textContent!);
 
@@ -311,8 +332,8 @@ export class RTVSynth {
 			// Highligh the row
 			let theme = this._themeService.getColorTheme();
 			row.style.fontWeight = '900';
-			row.style.backgroundColor = String(theme.getColor(badgeBackground) ?? '');
 
+			row.style.backgroundColor = String(theme.getColor(badgeBackground) ?? '');
 			this.logger.exampleInclude(
 				this.findParentRow(cell).rowIndex,
 				cell.innerText
@@ -484,5 +505,70 @@ export class RTVSynth {
 		}
 
 		return rs;
+	}
+
+	private addError(element: HTMLElement, msg: string) {
+		// First, squiggly lines!
+		element.className += 'squiggly-error';
+
+		// <div class="monaco-hover visible"
+		//      tabindex="0" role="tooltip"
+		//      widgetid="editor.contrib.modesContentHoverWidget"
+		//      style="position: absolute; visibility: hidden; max-width: 1581px; top: 172px; left: 179px;">
+		//          <div class="monaco-scrollable-element "
+		//               role="presentation" style="position: relative; overflow: hidden;">
+		//                    <div class="monaco-hover-content"
+		//                         style="overflow: hidden; font-size: 15px; line-height: 20px; max-height: 336.75px; max-width: 1033.56px;">
+		//                             <div class="hover-row markdown-hover">
+		//                                 <div class="hover-contents">
+		//                                     <div><p>SyntaxError: invalid syntax</p></div>
+		//                                 </div>
+		//                             </div>
+		//                    </div>
+		//          </div>
+		// </div>
+		// Use monaco's monaco-hover class to keep the style the same
+		const hover = document.createElement('div');
+		hover.className = 'monaco-hover visible';
+		hover.id = 'snippy-example-hover';
+
+		const scrollable = document.createElement('div');
+		scrollable.className = 'monaco-scrollable-element';
+		scrollable.style.position = 'relative';
+		scrollable.style.overflow = 'hidden';
+
+		const row = document.createElement('row');
+		row.className = 'hover-row markdown-hover';
+
+		const content = document.createElement('div');
+		content.className = 'monaco-hover-content';
+
+		const div = document.createElement('div');
+		const p = document.createElement('p');
+		p.innerText = msg;
+
+		div.appendChild(p);
+		content.appendChild(div);
+		row.appendChild(content);
+		scrollable.appendChild(row);
+		hover.appendChild(scrollable);
+
+		let position = element.getBoundingClientRect();
+		hover.style.position = 'fixed';
+		hover.style.top = position.bottom.toString() + 'px';
+		hover.style.left = position.right.toString() + 'px';
+
+		// Add it to the DOM
+		let editorNode = this.editor.getDomNode()!;
+		editorNode.appendChild(hover);
+
+		// Finally, add a listener to remove the hover and annotation
+		let removeError = (ev: Event) => {
+			element.removeEventListener('input', removeError);
+			editorNode.removeChild(hover);
+			element.className = element.className.replace('squiggly-error', '');
+		};
+
+		element.addEventListener('input', removeError);
 	}
 }
