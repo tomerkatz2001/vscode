@@ -3,12 +3,50 @@ import { ITextModel } from 'vs/editor/common/model';
 
 export interface IRTVDisplayBox {
 	getCellContent(): { [k: string]: [HTMLElement] };
+
+	/**
+	 * Returns the environments displayed in this PB.
+	 * The values are not identical to the result of
+	 * `runProgram()`, since the box does some post
+	 * processing before displaying its `envs`.
+	 */
 	getEnvs(): any[];
+
+	/**
+	 * Return the ID of the HTML <TD> element at the
+	 * given row and column.
+	 */
+	getCellId(row: number, col: number): string;
+
+	/**
+	 * Return the HTML <TD> element at the given row and column.
+	 */
+	getCell(row: number, col: number): HTMLTableCellElement | null;
+
+	/**
+	 * Updates the box's values, destroys the existing
+	 * HTML table and recreates it from the new data.
+	 *
+	 * @param allEnvs Optional. If provided, these values
+	 * will be used to update the box. If not, it reads the
+	 * `envs` from its `RTVController`.
+	 * @param updateInPlace Optional. If `true`, the table
+	 * values will be updated in-place, without destroying
+	 * the table and rebuilding it from scratch.
+	 */
+	updateContent(allEnvs?: any[], updateInPlace?: boolean): void;
 }
 
 export interface IRTVController extends IEditorContribution {
-	// Set auto updates of the projection boxes
+	/**
+	 * Enables the Projection Boxes, making them auto-update
+	 * when the editor's code changes.
+	 * PB is enabled by default.
+	 */
 	enable(): void;
+
+	/**
+	 */
 	disable(): void;
 
 	// Utility functions for accessing the editor or PB content
@@ -100,6 +138,10 @@ export enum ViewMode {
 	Custom = 'Custom'
 }
 
+/**
+ * Whether 'time' in the projection boxes is
+ * displayed as a row or as a column.
+ */
 export enum RowColMode {
 	ByRow = 'By Row',
 	ByCol = 'By Col'

@@ -199,9 +199,10 @@
 				"VSCODE_EXTHOST_WILL_SEND_SOCKET": null,
 				"PYTHON3": "/usr/bin/python3",
 				"SCALA": "/usr/bin/scala",
-				"RUNPY": "/home/kas/projects/LooPy/vscode/src/run.py",
+				"RUNPY": "/home/kas/projects/LooPy/synthesizer/src/main/resources/static/editor/run.py",
+				"SNIPPY_UTILS": "/home/kas/projects/LooPy/synthesizer/src/main/resources/static/editor/snippy.py",
 				"SYNTH": "/home/kas/projects/LooPy/synthesizer/target/snippy-server-0.1-SNAPSHOT-jar-with-dependencies.jar",
-				"IMGSUM": "/home/kas/projects/LooPy/vscode/src/img-summary.py"
+				"IMGSUM": "/home/kas/projects/LooPy/synthesizer/src/main/resources/static/editor/img-summary.py"
 			},
 			"breakOnLoad": false,
 			"urlFilter": "*workbench.html*",

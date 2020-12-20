@@ -821,6 +821,10 @@ class RTVDisplayBox implements IRTVDisplayBox {
 			cell.align = 'center';
 		} */
 
+		this.addCellContent(cell, elmt, r);
+	}
+
+	private addCellContent(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer) {
 		let s = elmt.content;
 		let cellContent: HTMLElement;
 		if (s === '') {
@@ -857,14 +861,73 @@ class RTVDisplayBox implements IRTVDisplayBox {
 			}
 		}
 
+		// Remove any existing content
+		cell.childNodes.forEach((child) => cell.removeChild(child));
+
+		// Add the new content
 		cell.appendChild(cellContent);
 	}
 
+	public getCellId(row: number, col: number): string {
+		return `${this.lineNumber}_${col}_${row}`;
+	}
+
+	public getCell(row: number, col: number): HTMLTableCellElement | null {
+		return document.getElementById(this.getCellId(row, col)) as HTMLTableCellElement;
+	}
+
+	private updateTableByRows(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
+		for (let colIdx = 0; colIdx < rows[0].length; colIdx++) {
+			for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
+				let elmt = rows[rowIdx][colIdx];
+				// Get the cell
+				let cell = this.getCell(rowIdx - 1, colIdx - 1)!;
+				this.addCellContent(cell, elmt, renderer);
+
+				// TODO (How) Do we need to do this?
+				// if (elmt.iter !== '') {
+				// 	if (tableCellsByLoop[elmt.iter] === undefined) {
+				// 		tableCellsByLoop[elmt.iter] = [];
+				// 	}
+				// 	tableCellsByLoop[elmt.iter].push(newCell);
+				// }
+			}
+		}
+	}
+
+	private updateTableByCols(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
+		rows.forEach((row: TableElement[], rowIdx: number) => {
+			if (rowIdx === 0) {
+				// Skip the header.
+				return;
+			}
+			row.forEach((elmt: TableElement, colIdx: number) => {
+				// Get the cell
+				let cell = this.getCell(rowIdx - 1, colIdx - 1)!;
+				this.addCellContent(cell, elmt, renderer);
+
+				// TODO (How) Do we need to do this?
+				// if (elmt.iter !== '') {
+				// 	if (tableCellsByLoop[elmt.iter] === undefined) {
+				// 		tableCellsByLoop[elmt.iter] = [];
+				// 	}
+				// 	tableCellsByLoop[elmt.iter].push(newCell);
+				// }
+			});
+		});
+	}
+
 	private populateTableByCols(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
-		rows.forEach((row: TableElement[]) => {
+		rows.forEach((row: TableElement[], rowIdx: number) => {
 			let newRow = table.insertRow(-1);
-			row.forEach((elmt: TableElement) => {
+			row.forEach((elmt: TableElement, colIdx: number) => {
 				let newCell = newRow.insertCell(-1);
+
+				// Skip the headers
+				if (rowIdx > 0) {
+					newCell.id = this.getCellId(rowIdx - 1, colIdx - 1);
+				}
+
 				this.addCellContentAndStyle(newCell, elmt, renderer);
 			});
 		});
@@ -877,6 +940,11 @@ class RTVDisplayBox implements IRTVDisplayBox {
 			for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
 				let elmt = rows[rowIdx][colIdx];
 				let newCell = newRow.insertCell(-1);
+
+				if (rowIdx > 0 && colIdx > 0) {
+					newCell.id = this.getCellId(rowIdx - 1, colIdx - 1);
+				}
+
 				this.addCellContentAndStyle(newCell, elmt, renderer);
 				if (elmt.iter !== '') {
 					if (tableCellsByLoop[elmt.iter] === undefined) {
@@ -927,7 +995,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		}
 	}
 
-	public computeEnvs() {
+	public computeEnvs(allEnvs?: any[]) {
 
 		let count = 0;
 		if (this._controller.changedLinesWhenOutOfDate !== null) {
@@ -945,7 +1013,14 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		}
 
 		// Get all envs at this line number
-		let envs = this._controller.envs[this.lineNumber - 1];
+		let envs;
+
+		if (allEnvs) {
+			envs = allEnvs[this.lineNumber-1];
+		} else {
+			envs = this._controller.envs[this.lineNumber - 1];
+		}
+
 		if (envs === undefined) {
 			this.setContentForLineNotExecuted();
 			return true;
@@ -954,7 +1029,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		if (this.isConditionalLine() ||
 			(!this._controller.showBoxAtLoopStmt && this.isLoopLine())) {
 			let exception = false;
-			envs.forEach( env => {
+			envs.forEach((env: any) => {
 				if (env["Exception Thrown"] !== undefined) {
 					exception = true;
 				}
@@ -967,7 +1042,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 
 
 		let count_countent_envs = 0
-		envs.forEach( env => {
+		envs.forEach((env: any) => {
 			if (env.end_loop === undefined && env.begin_loop === undefined) {
 				count_countent_envs++;
 			}
@@ -988,10 +1063,10 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		return false;
 	}
 
-	public updateContent() {
+	public updateContent(allEnvs?: any[], updateInPlace?: boolean) {
 
 		// if computeEnvs returns false, there is no content to display
-		let done = this.computeEnvs();
+		let done = this.computeEnvs(allEnvs);
 		if (done) {
 			return;
 		}
@@ -1094,28 +1169,40 @@ class RTVDisplayBox implements IRTVDisplayBox {
 			this._box.style.border = '0';
 		}
 
-		// Create html table from rows
-		this._box.textContent = '';
 		const renderer = new MarkdownRenderer(this._editor, this._modeService, this._openerService);
-		let table = document.createElement('table');
-		table.style.borderSpacing = '0px';
-		table.style.paddingLeft = '13px';
-		table.style.paddingRight = '13px';
 
-		this._cellDictionary = {};
-		if (this._controller.byRowOrCol === RowColMode.ByRow) {
-			this.populateTableByRows(table, renderer, rows);
+		if (updateInPlace) {
+			if (this._controller.byRowOrCol === RowColMode.ByRow) {
+				this.updateTableByRows(this._box.firstElementChild as HTMLTableElement, renderer, rows);
+			} else {
+				this.updateTableByCols(this._box.firstElementChild as HTMLTableElement, renderer, rows);
+			}
 		} else {
-			this.populateTableByCols(table, renderer, rows);
-		}
-		this._box.appendChild(table);
+			// Remove the contents
+			this._box.textContent = '';
 
-		this.addStalenessIndicator();
+			// Create html table from rows
+			let table = document.createElement('table');
+			table.style.borderSpacing = '0px';
+			table.style.paddingLeft = '13px';
+			table.style.paddingRight = '13px';
 
-		//this.addConfigButton();
-		if (this._controller.mouseShortcuts) {
-			this.addPlusButton();
+			this._cellDictionary = {};
+			if (this._controller.byRowOrCol === RowColMode.ByRow) {
+				this.populateTableByRows(table, renderer, rows);
+			} else {
+				this.populateTableByCols(table, renderer, rows);
+			}
+			this._box.appendChild(table);
+
+			this.addStalenessIndicator();
+
+			//this.addConfigButton();
+			if (this._controller.mouseShortcuts) {
+				this.addPlusButton();
+			}
 		}
+
 	}
 
 	private addStalenessIndicator() {

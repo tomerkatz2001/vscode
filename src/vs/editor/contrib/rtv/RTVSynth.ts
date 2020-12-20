@@ -2,8 +2,7 @@ import { Range } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
-import * as synth_utils from 'vs/editor/contrib/rtv/RTVSynthUtils';
-import { IRTVLogger, IRTVController, RowColMode } from './RTVInterfaces';
+import { IRTVLogger, IRTVController, RowColMode, IRTVDisplayBox } from './RTVInterfaces';
 import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 
@@ -14,6 +13,7 @@ export class RTVSynth {
 	private boxEnvs?: any[] = undefined;
 	private varname?: string = undefined;
 	private lineno?: number = undefined;
+	private box?: IRTVDisplayBox = undefined;
 
 	constructor(
 		private readonly editor: ICodeEditor,
@@ -40,7 +40,8 @@ export class RTVSynth {
 		// First of all, we need to disable Projection Boxes since we are going to be
 		// modifying both the editor content, and the current projection box, and don't
 		// want the boxes to auto-update at any point.
-		const box = this.controller.getBox(lineno);
+		this.box = this.controller.getBox(lineno);
+		this.boxEnvs = this.box.getEnvs();
 		const line = this.controller.getLineContent(lineno).trim();
 		let l_operand: string = '';
 		let r_operand: string = '';
@@ -63,6 +64,7 @@ export class RTVSynth {
 		}
 
 		if (l_operand === '' || r_operand === '' || !r_operand.endsWith('??')) {
+			this.stopSynthesis();
 			return;
 		}
 
@@ -85,9 +87,9 @@ export class RTVSynth {
 		let txt = '';
 
 		if (l_operand === 'rv') {
-			txt = 'return ' + (r_operand ? r_operand : '0');
+			txt = 'return ' + this.defaultValue(l_operand, r_operand);
 		} else {
-			txt = l_operand + ' = ' + (r_operand ? r_operand : '0');
+			txt = l_operand + ' = ' + this.defaultValue(l_operand, r_operand);
 		}
 
 		this.editor.executeEdits(this.controller.getId(), [
@@ -98,7 +100,7 @@ export class RTVSynth {
 		const runResults: any = await this.controller.runProgram();
 
 		let cellKey = l_operand;
-		let cellContents = box.getCellContent()[cellKey];
+		let cellContents = this.box.getCellContent()[cellKey];
 
 		if (cellContents) {
 			cellContents.forEach(function (cellContent) {
@@ -121,9 +123,6 @@ export class RTVSynth {
 			return;
 		}
 
-		// Get the values we will be working with
-		this.boxEnvs = box.getEnvs();
-
 		// TODO Cleanup all available envs
 		this.allEnvs = [];
 
@@ -132,71 +131,7 @@ export class RTVSynth {
 		}
 
 		// Get all cell contents for the variable
-		let contents = box.getCellContent()[this.varname];
-		let elmt = box;
-
-		for (let i in contents) {
-			let cellContent = contents[i];
-			let env = this.boxEnvs![i];
-
-			cellContent.onblur = (e: FocusEvent) => {
-				if (env[this.varname!] !== cellContent.innerText) {
-					this.logger.exampleChanged(
-						this.findParentRow(cellContent).rowIndex,
-						env[this.varname!],
-						cellContent.innerText
-					);
-					this.toggleElement(env, cellContent, true);
-				}
-			};
-
-			cellContent.onkeydown = (e: KeyboardEvent) => {
-				let rs: boolean = true;
-
-				switch (e.key) {
-					case 'Enter':
-						e.preventDefault();
-
-						if (e.shiftKey) {
-							this.toggleElement(env, cellContent);
-							this.focusNextRow();
-						} else {
-							if (env[this.varname!] !== cellContent.innerText) {
-								this.logger.exampleChanged(
-									this.findParentRow(cellContent).rowIndex,
-									env[this.varname!],
-									cellContent.innerText
-								);
-								this.toggleElement(elmt, cellContent, true);
-							}
-							cellContent.contentEditable = 'false';
-							this.editor.focus();
-							this.logger.projectionBoxExit();
-							setTimeout(() => {
-								// Pressing enter also triggers the blur event, so we don't need to record any changes here.
-								this.synthesizeFragment();
-								this.includedTimes.clear();
-								this.logger.exampleReset();
-							}, 200);
-						}
-						break;
-					case 'Tab':
-						// ----------------------------------------------------------
-						// Use Tabs to go over values of the same variable
-						// ----------------------------------------------------------
-						e.preventDefault();
-						this.focusNextRow(e.shiftKey);
-						break;
-					case 'Escape':
-						rs = false;
-						this.editor.focus();
-						this.stopSynthesis();
-						break;
-				}
-
-				return rs;
-			};
-		}
+		this.setupTableCellContents();
 	}
 
 	public stopSynthesis() {
@@ -225,7 +160,6 @@ export class RTVSynth {
 		// Get the current value
 		let selection = window.getSelection()!;
 		let cell: HTMLTableCellElement;
-		let row: HTMLTableRowElement;
 
 		for (
 			let cellIter = selection.focusNode!;
@@ -238,69 +172,63 @@ export class RTVSynth {
 			}
 		}
 
-		for (
-			let rowIter = cell!.parentNode!;
-			rowIter.parentNode;
-			rowIter = rowIter.parentNode
-		) {
-			if (rowIter.nodeName === 'TR') {
-				row = rowIter as HTMLTableRowElement;
-				break;
-			}
-		}
-
 		cell = cell!;
+
+		// Extract the info from the cell ID, skip the first, which is the lineno
+		let [col, row]: number[] = cell.id.split('_').map((num) => parseInt(num)).slice(1);
+
 		const currentValue = cell!.textContent!;
 
-		// Check if value was valid
-		const error = await synth_utils.validate(currentValue);
+		// Keep track of changes!
+		const env = this.boxEnvs![(this.controller.byRowOrCol === RowColMode.ByRow) ? col : row];
+		if (env[this.varname!] !== currentValue) {
+			this.logger.exampleChanged(row, env[this.varname!], currentValue);
+			this.toggleElement(env, cell, true);
 
-		if (error) {
-			// Show error message if not
-			this.addError(cell, error)
-			return;
+			// Check if value was valid
+			const error = await utils.validate(currentValue);
+
+			if (error) {
+				// Show error message if not
+				this.addError(cell, error);
+				return;
+			}
+
+			// Value valid, update the box env with the user's values.
+			await this.updateBoxValues();
 		}
 
-		// Value was valid, move the cursor.
-
-		this.logger.exampleBlur(row!.rowIndex, cell!.textContent!);
+		// Finally, select the next value.
+		this.logger.exampleBlur(row, cell!.textContent!);
 
 		if (this.controller.byRowOrCol === RowColMode.ByCol) {
-			let table: HTMLTableElement = row!.parentNode as HTMLTableElement;
-			let nextRowIdx =
-				((row!.rowIndex - 1 + (backwards ? -1 : 1)) % (table.rows.length - 1)) +
-				1;
-			if (nextRowIdx <= 0) {
-				nextRowIdx += table.rows.length - 1;
+			// Find the next row
+			let nextRowId = backwards ? row - 1 : row + 1;
+			let nextCell = this.box!.getCell(nextRowId, col);
+
+			if (!nextCell) {
+				// The cell doesn't exist, so wrap around!
+				nextRowId = backwards ? (this.boxEnvs!.length - 1) : 0;
+				nextCell = this.box!.getCell(nextRowId, col);
 			}
-			let nextRow = table.rows[nextRowIdx];
-			let col = nextRow.childNodes[cell!.cellIndex!];
-			let newFocusNode = col.childNodes[0];
-			let range = selection?.getRangeAt(0);
-			range.selectNodeContents(newFocusNode);
-			selection?.removeAllRanges();
-			selection?.addRange(range);
-			this.logger.exampleFocus(
-				nextRowIdx,
-				newFocusNode!.textContent!
-			);
+
+			this.select(nextCell!.childNodes[0]);
+			this.logger.exampleFocus(nextRowId, nextCell!.textContent!);
 		} else {
-			let nextCellIdx =
-				((cell!.cellIndex - 1 + (backwards ? -1 : 1)) %
-					(row!.childNodes.length - 1)) +
-				1;
-			if (nextCellIdx <= 0) {
-				nextCellIdx += row!.childNodes.length - 1;
+			// Find the next col
+			let nextColId = backwards ? col - 1 : col + 1;
+			let nextCell = document.getElementById(this.box!.getCellId(row, nextColId));
+
+			if (!nextCell) {
+				// The cell doesn't exist, so wrap around!
+				nextColId = backwards ? this.boxEnvs!.length : 0;
+				nextCell = document.getElementById(this.box!.getCellId(row, nextColId));
 			}
-			let col = row!.childNodes[nextCellIdx];
-			let newFocusNode = col.childNodes[0];
-			let range = selection?.getRangeAt(0);
-			range.selectNodeContents(newFocusNode);
-			selection?.removeAllRanges();
-			selection?.addRange(range);
+
+			this.select(nextCell!.childNodes[0]);
 			this.logger.exampleFocus(
-				nextCellIdx,
-				newFocusNode!.textContent!
+				nextColId,
+				nextCell!.textContent!
 			);
 		}
 	}
@@ -329,11 +257,8 @@ export class RTVSynth {
 			env[this.varname!] = cell.innerText;
 			this.includedTimes.add(env['time']);
 
-			// Highligh the row
-			let theme = this._themeService.getColorTheme();
-			row.style.fontWeight = '900';
+			this.highlightRow(row);
 
-			row.style.backgroundColor = String(theme.getColor(badgeBackground) ?? '');
 			this.logger.exampleInclude(
 				this.findParentRow(cell).rowIndex,
 				cell.innerText
@@ -375,11 +300,19 @@ export class RTVSynth {
 		let previous_env = {};
 		let envs: any[] = [];
 
-		// search_loop:
+		// Look for the previous env in allEnvs
 		for (let env of this.allEnvs!) {
-			// TODO Is it safe to assume that the env_list is in order of time?
-			// if (envs.length === timesToInclude.size) { break search_loop; }
+			if (!env['time']) {
+				continue;
+			}
 
+			if (env['time'] === prev_time) {
+				previous_env = env;
+			}
+		}
+
+		// Read the user's values from this box's envs
+		for (let env of this.boxEnvs!) {
 			if (!env['time']) {
 				continue;
 			}
@@ -511,22 +444,6 @@ export class RTVSynth {
 		// First, squiggly lines!
 		element.className += 'squiggly-error';
 
-		// <div class="monaco-hover visible"
-		//      tabindex="0" role="tooltip"
-		//      widgetid="editor.contrib.modesContentHoverWidget"
-		//      style="position: absolute; visibility: hidden; max-width: 1581px; top: 172px; left: 179px;">
-		//          <div class="monaco-scrollable-element "
-		//               role="presentation" style="position: relative; overflow: hidden;">
-		//                    <div class="monaco-hover-content"
-		//                         style="overflow: hidden; font-size: 15px; line-height: 20px; max-height: 336.75px; max-width: 1033.56px;">
-		//                             <div class="hover-row markdown-hover">
-		//                                 <div class="hover-contents">
-		//                                     <div><p>SyntaxError: invalid syntax</p></div>
-		//                                 </div>
-		//                             </div>
-		//                    </div>
-		//          </div>
-		// </div>
 		// Use monaco's monaco-hover class to keep the style the same
 		const hover = document.createElement('div');
 		hover.className = 'monaco-hover visible';
@@ -570,5 +487,132 @@ export class RTVSynth {
 		};
 
 		element.addEventListener('input', removeError);
+	}
+
+	private async updateBoxValues(): Promise<void> {
+		let values: any = {};
+		for (let env of this.boxEnvs!) {
+			if (this.includedTimes.has(env['time'])) {
+				values[`(${env['lineno']},${env['time']})`] = env;
+			}
+		}
+		const results: any = await utils.runProgram(this.controller.getProgram(), values).toPromise();
+		const parsedResults = JSON.parse(results[1]);
+
+		this.box?.updateContent(parsedResults[2]);
+		this.boxEnvs = this.box?.getEnvs();
+		this.setupTableCellContents();
+	}
+
+	private defaultValue(varname: string, currentVal: string): string {
+		// If the user specified a default value, use that.
+		if (currentVal !== '') {
+			return currentVal;
+		}
+
+		return '0';
+
+		// TODO We need this.boxEnvs and this.allEnvs to be set before
+		//  we can check for this.
+
+		// // See if the variable was defined before this statement.
+		// // If yes, we can set the default value to itself!
+		// let earliestTime = 100000;
+		// for (let env of this.boxEnvs!) {
+		// 	if (env['time'] < earliestTime) {
+		// 		earliestTime = env['time'];
+		// 	}
+		// }
+
+		// earliestTime--;
+
+		// for (let env of this.allEnvs!) {
+		// 	if (env['time'] === earliestTime) {
+		// 		if (env.hasOwnProperty(varname)) {
+		// 			return varname;
+		// 		}
+		// 		break;
+		// 	}
+		// }
+
+		// // If not, we don't have any information, so let's go with 0.
+		// return '0';
+	}
+
+	private select(node: Node) {
+		let selection = window.getSelection()!;
+		let range = selection.getRangeAt(0);
+		range.selectNodeContents(node);
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+	}
+
+	private highlightRow(row: HTMLTableRowElement) {
+		// Highligh the row
+		let theme = this._themeService.getColorTheme();
+		row.style.fontWeight = '900';
+		row.style.backgroundColor = String(theme.getColor(badgeBackground) ?? '');
+	}
+
+	private setupTableCellContents() {
+		let contents = this.box!.getCellContent()[this.varname!];
+
+		for (let i in contents) {
+			const cellContent = contents[i];
+			const env = this.boxEnvs![i];
+
+			cellContent.contentEditable = 'true';
+			cellContent.onkeydown = (e: KeyboardEvent) => {
+				let rs: boolean = true;
+
+				switch (e.key) {
+					case 'Enter':
+						e.preventDefault();
+
+						if (e.shiftKey) {
+							this.toggleElement(env, cellContent);
+							this.focusNextRow();
+						} else {
+							if (env[this.varname!] !== cellContent.innerText) {
+								this.logger.exampleChanged(
+									this.findParentRow(cellContent).rowIndex,
+									env[this.varname!],
+									cellContent.innerText
+								);
+								this.toggleElement(this.box, cellContent, true);
+							}
+							cellContent.contentEditable = 'false';
+							this.editor.focus();
+							this.logger.projectionBoxExit();
+							setTimeout(() => {
+								// Pressing enter also triggers the blur event, so we don't need to record any changes here.
+								this.synthesizeFragment();
+								this.includedTimes.clear();
+								this.logger.exampleReset();
+							}, 200);
+						}
+						break;
+					case 'Tab':
+						// ----------------------------------------------------------
+						// Use Tabs to go over values of the same variable
+						// ----------------------------------------------------------
+						e.preventDefault();
+						this.focusNextRow(e.shiftKey);
+						break;
+					case 'Escape':
+						rs = false;
+						this.editor.focus();
+						this.stopSynthesis();
+						break;
+				}
+
+				return rs;
+			};
+
+			// Re-highlight the rows
+			if (this.includedTimes.has(env['time'])) {
+				this.highlightRow(this.findParentRow(cellContent));
+			}
+		}
 	}
 }
