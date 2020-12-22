@@ -40,8 +40,6 @@ export class RTVSynth {
 		// First of all, we need to disable Projection Boxes since we are going to be
 		// modifying both the editor content, and the current projection box, and don't
 		// want the boxes to auto-update at any point.
-		this.box = this.controller.getBox(lineno);
-		this.boxEnvs = this.box.getEnvs();
 		const line = this.controller.getLineContent(lineno).trim();
 		let l_operand: string = '';
 		let r_operand: string = '';
@@ -71,9 +69,6 @@ export class RTVSynth {
 		// ------------------------------------------
 		// Okay, we are definitely using SnipPy here!
 		// ------------------------------------------
-
-		this.controller.disable();
-
 		this.lineno = lineno;
 		this.varname = l_operand;
 
@@ -98,6 +93,9 @@ export class RTVSynth {
 
 		// Update the projection box with the new value
 		const runResults: any = await this.controller.runProgram();
+
+		this.box = this.controller.getBox(lineno);
+		this.boxEnvs = this.box.getEnvs();
 
 		let cellKey = l_operand;
 		let cellContents = this.box.getCellContent()[cellKey];
@@ -139,7 +137,6 @@ export class RTVSynth {
 
 		// Update the Proejection Boxes again
 		this.editor.focus();
-		this.controller.enable();
 		this.controller.runProgram();
 
 		// Reset the synth state
@@ -579,17 +576,15 @@ export class RTVSynth {
 									env[this.varname!],
 									cellContent.innerText
 								);
-								this.toggleElement(this.box, cellContent, true);
+								this.toggleElement(env, cellContent, true);
 							}
+							this.synthesizeFragment();
+
 							cellContent.contentEditable = 'false';
 							this.editor.focus();
 							this.logger.projectionBoxExit();
-							setTimeout(() => {
-								// Pressing enter also triggers the blur event, so we don't need to record any changes here.
-								this.synthesizeFragment();
-								this.includedTimes.clear();
-								this.logger.exampleReset();
-							}, 200);
+							this.includedTimes.clear();
+							this.logger.exampleReset();
 						}
 						break;
 					case 'Tab':

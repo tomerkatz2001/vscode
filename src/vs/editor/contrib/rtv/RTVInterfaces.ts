@@ -38,17 +38,6 @@ export interface IRTVDisplayBox {
 }
 
 export interface IRTVController extends IEditorContribution {
-	/**
-	 * Enables the Projection Boxes, making them auto-update
-	 * when the editor's code changes.
-	 * PB is enabled by default.
-	 */
-	enable(): void;
-
-	/**
-	 */
-	disable(): void;
-
 	// Utility functions for accessing the editor or PB content
 	getBox(lineno: number): IRTVDisplayBox;
 	getLineContent(lineno: number): string;

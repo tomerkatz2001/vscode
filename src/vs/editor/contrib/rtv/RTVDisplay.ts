@@ -1634,7 +1634,6 @@ function visibilityCursorAndReturn(b: RTVDisplayBox, cursorLineNumber: number) {
 // }
 
 export class RTVController implements IRTVController {
-	public enabled: boolean = true;
 	public envs: { [k: string]: any[]; } = {};
 	public writes: { [k: string]: string[]; } = {};
 	private _boxes: RTVDisplayBox[] = [];
@@ -1701,15 +1700,6 @@ export class RTVController implements IRTVController {
 
 	public static get(editor: ICodeEditor): RTVController {
 		return editor.getContribution<RTVController>(RTVController.ID);
-	}
-
-	public enable() {
-		this.enabled = true;
-	}
-
-	public disable() {
-		this.enabled = false;
-		this._pythonProcess?.kill();
 	}
 
 	public getId(): string {
@@ -2187,7 +2177,7 @@ export class RTVController implements IRTVController {
 						const lineContent = this.getLineContent(i).trim();
 
 						if (lineContent.endsWith('??') &&
-							lineContent.startsWith('return ') || lineContent.split('=').length === 2) {
+							(lineContent.startsWith('return ') || lineContent.split('=').length === 2)) {
 								this._synthesis.startSynthesis(i)
 									.catch((e) => {
 										console.error('Synthesis failed with exception:');
@@ -2251,21 +2241,20 @@ export class RTVController implements IRTVController {
 		});
 
 	}
-	public updateContentAndLayout() {
+	public async updateContentAndLayout(): Promise<void> {
 		this.tableCellsByLoop = {};
 		this.updateContent();
 		// The 0 timeout seems odd, but it's really a thing in browsers.
 		// We need to let layout threads catch up after we updated content to
 		// get the correct sizes for boxes.
-		setTimeout(() => {
-			for (let x in this.tableCellsByLoop) {
-				this.tableCellsByLoop[x].forEach(y => {
-					//console.log('Delayed: ' + x + ' ' + y.offsetWidth + ' ' + y.clientWidth);
-				});
-			}
-			this.updateCellSizesForNewContent();
-			this.updateLayout();
-		}, 0);
+
+		return new Promise((resolve, _reject) => {
+			setTimeout(() => {
+				this.updateCellSizesForNewContent();
+				this.updateLayout();
+				resolve();
+			}, 0);
+		});
 	}
 
 	private updateContent() {
@@ -2646,11 +2635,6 @@ export class RTVController implements IRTVController {
 			return;
 		}
 
-		// Don't run automatically if Controller is disabled
-		if (e && !this.enabled) {
-			return;
-		}
-
 		this.padBoxArray();
 		this.addRemoveBoxes(e);
 
@@ -2659,8 +2643,13 @@ export class RTVController implements IRTVController {
 			delay = 0;
 		}
 
-		// Just delay
-		await this._runProgramDelay.run(delay, () => {});
+		try {
+			// Just delay
+			await this._runProgramDelay.run(delay, () => {});
+		} catch (_err) {
+			// The timer was cancelled. Just return.
+			return;
+		}
 
 		this.hideOutputBox();
 		const program = this.getProgram();
@@ -2683,41 +2672,46 @@ export class RTVController implements IRTVController {
 			outputMsg += msg;
 		});
 
-		return c.toPromise()
-			.then((results) => {
-				const exitCode = results[0];
-				const result = results[1];
+		let results = await c.toPromise();
 
-				this.logger.projectionBoxUpdateEnd(result);
+		if (!results) {
+			console.error('runProgram() process returned: ', results);
+			return;
+		}
 
-				// onExit renders enough delay to update the positioning of the boxes
-				this.updateMaxPixelCol();
-				// When exitCode === null, it means the process was killed,
-				// so there is nothing else to do
-				if (exitCode === null) {
-					return;
-				}
+		const exitCode = results[0];
+		const result = results[1];
 
-				this._pythonProcess = undefined;
+		this.logger.projectionBoxUpdateEnd(result);
 
-				let parsedResult = JSON.parse(result!);
-				let returnCode = parsedResult[0];
+		// onExit renders enough delay to update the positioning of the boxes
+		this.updateMaxPixelCol();
 
-				this.updateLinesWhenOutOfDate(returnCode, e);
+		// When exitCode === null, it means the process was killed,
+		// so there is nothing else to do
+		if (exitCode === null) {
+			return;
+		}
 
-				if (returnCode === 0 || returnCode === 2) {
-					this.updateData(parsedResult);
-					this.clearError();
-				} else {
-					this.showErrorWithDelay(returnCode, errorMsg);
-				}
+		this._pythonProcess = undefined;
 
-				this.updateContentAndLayout();
-				this.getOutputBox().setOutAndErrMsg(outputMsg, errorMsg);
+		let parsedResult = JSON.parse(result!);
+		let returnCode = parsedResult[0];
 
-				return parsedResult;
-			}
-		);
+		this.updateLinesWhenOutOfDate(returnCode, e);
+
+		if (returnCode === 0 || returnCode === 2) {
+			this.updateData(parsedResult);
+			this.clearError();
+		} else {
+			this.showErrorWithDelay(returnCode, errorMsg);
+		}
+
+		// Wait for the layout to finish
+		await this.updateContentAndLayout();
+		this.getOutputBox().setOutAndErrMsg(outputMsg, errorMsg);
+
+		return parsedResult;
 	}
 
 	private updateData(parsedResult: any) {
