@@ -8,6 +8,7 @@ import { IThemeService } from 'vs/platform/theme/common/themeService';
 
 export class RTVSynth {
 	private logger: IRTVLogger;
+	private enabled: boolean;
 	private includedTimes: Set<number>;
 	private allEnvs?: any[] = undefined; // TODO Can we do better than any?
 	private boxEnvs?: any[] = undefined;
@@ -22,6 +23,12 @@ export class RTVSynth {
 	) {
 		this.logger = utils.getLogger(editor);
 		this.includedTimes = new Set();
+		this.enabled = false;
+
+		// In case the user click's out of the boxes.
+		editor.onDidFocusEditorText(() => {
+			this.stopSynthesis();
+		});
 	}
 
 	/**
@@ -37,6 +44,8 @@ export class RTVSynth {
 	// -----------------------------------------------------------------------------------
 
 	public async startSynthesis(lineno: number) {
+		this.enabled = true;
+
 		// First of all, we need to disable Projection Boxes since we are going to be
 		// modifying both the editor content, and the current projection box, and don't
 		// want the boxes to auto-update at any point.
@@ -133,15 +142,18 @@ export class RTVSynth {
 	}
 
 	public stopSynthesis() {
-		this.logger.projectionBoxExit();
+		if (this.enabled) {
+			this.enabled = false;
+			this.logger.projectionBoxExit();
 
-		// Update the Proejection Boxes again
-		this.editor.focus();
-		this.controller.runProgram();
+			// Update the Proejection Boxes again
+			this.editor.focus();
+			this.controller.runProgram();
 
-		// Reset the synth state
-		this.includedTimes.clear();
-		this.logger.exampleReset();
+			// Reset the synth state
+			this.includedTimes.clear();
+			this.logger.exampleReset();
+		}
 	}
 
 	// -----------------------------------------------------------------------------------
@@ -292,7 +304,7 @@ export class RTVSynth {
 			}
 		});
 
-		prev_time--;
+		prev_time -= 1;
 
 		let previous_env = {};
 		let envs: any[] = [];

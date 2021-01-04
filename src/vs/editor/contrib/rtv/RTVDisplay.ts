@@ -2494,7 +2494,8 @@ export class RTVController implements IRTVController {
 		this._showErrorDelay.run(1500, () => {
 			this.clearError();
 			this.showError(errorMsg);
-		});
+		})
+		.catch((_err) => {});
 	}
 
 	private showError(errorMsg: string) {
