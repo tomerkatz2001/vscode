@@ -3,13 +3,13 @@
 #  Licensed under the MIT License. See License.txt in the project root for license information.
 # ---------------------------------------------------------------------------------------------
 
+# import ctypes
 import sys
 import ast
 import bdb
 import json
 import re
-import core
-import time
+from core import *
 import time
 import types
 import numpy as np
@@ -47,7 +47,7 @@ class LoopInfo:
 		self.iter = 0
 
 class Logger(bdb.Bdb):
-	def __init__(self, lines):
+	def __init__(self, lines, values = []):
 		bdb.Bdb.__init__(self)
 		self.lines = lines
 		self.time = 0
@@ -56,6 +56,9 @@ class Logger(bdb.Bdb):
 		self.active_loops = []
 		self.preexisting_locals = None
 		self.exception = None
+
+		# Optional dict from (lineno, time) to a dict of varname: value
+		self.values = values
 
 	def data_at(self, l):
 		if not(l in self.data):
@@ -86,6 +89,22 @@ class Logger(bdb.Bdb):
 		self.exception = None
 
 		adjusted_lineno = frame.f_lineno-1
+
+		line_time = "(%d,%d)" % (adjusted_lineno, self.time)
+		if line_time in self.values:
+			# Replace the current values with the given ones first
+			env = self.values[line_time]
+
+			for varname in frame.f_locals:
+				# if varname in self.preexisting_locals: continue
+				if varname in env:
+					new_value = eval(env[varname])
+					print("\t'%s': '%s' -> '%s'" % (varname, repr(frame.f_locals[varname]), repr(new_value)))
+					frame.f_locals.update({ varname: new_value })
+					# ctypes.pythonapi.PyFrame_LocalsToFast(ctypes.py_object(frame), ctypes.c_int(0))
+
+			frame.f_locals.clear()
+
 		self.record_loop_end(frame, adjusted_lineno)
 		self.record_env(frame, adjusted_lineno)
 		self.record_loop_begin(frame, adjusted_lineno)
@@ -163,7 +182,7 @@ class Logger(bdb.Bdb):
 			return None
 		if isinstance(v, types.ModuleType):
 			return None
-		html = core.if_img_convert_to_html(v)
+		html = if_img_convert_to_html(v)
 		if html == None:
 			return repr(v)
 		else:
@@ -179,7 +198,7 @@ class Logger(bdb.Bdb):
 		self.add_loop_info(env)
 		self.time = self.time + 1
 		for k in frame.f_locals:
-			if k != core.magic_var_name and (frame.f_code.co_name != "<module>" or not k in self.preexisting_locals):
+			if k != magic_var_name and (frame.f_code.co_name != "<module>" or not k in self.preexisting_locals):
 				r = self.compute_repr(frame.f_locals[k])
 				if (r != None):
 					env[k] = self.compute_repr(frame.f_locals[k])
@@ -242,7 +261,7 @@ class WriteCollector(ast.NodeVisitor):
 		return self.data[l]
 
 	def record_write(self, lineno, id):
-		if (id != core.magic_var_name):
+		if (id != magic_var_name):
 			self.data_at(lineno-1).append(id)
 
 	def visit_Name(self, node):
@@ -279,7 +298,7 @@ def compute_writes(lines):
 				lineno = e.lineno-1
 				did_lines_change = False
 				while lineno >= 0:
-					if lines[lineno].find(core.magic_var_name) != -1:
+					if lines[lineno].find(magic_var_name) != -1:
 						lines[lineno] = "\n"
 						did_lines_change = True
 					lineno = lineno - 1
@@ -296,12 +315,12 @@ def compute_writes(lines):
 		writes = write_collector.data
 	return (writes, exception)
 
-def compute_runtime_data(lines):
+def compute_runtime_data(lines, values):
 	exception = None
 	if len(lines) == 0:
 		return ({}, exception)
 	code = "".join(lines)
-	l = Logger(lines)
+	l = Logger(lines, values)
 	try:
 		l.run(code)
 	except Exception as e:
@@ -347,41 +366,33 @@ def remove_frame_data(data):
 			if "frame" in env:
 				del env["frame"]
 
-def main():
+def main(file, values_file = None):
+	lines = load_code_lines(file)
+	values = []
 
-	start = time.time()
-	if len(sys.argv) != 2:
-		print("Usage: run <file-name>")
-		exit(-1)
-
-	lines = core.load_code_lines(sys.argv[1])
-	code = "".join(lines)
-	# print("(" + code + ")")
+	if values_file:
+		values = json.load(open(values_file))
 
 	return_code = 0
 	run_time_data = {}
-	writes = {}
 
 	(writes, exception) = compute_writes(lines)
 
 	if exception != None:
 		return_code = 1
 	else:
-		(run_time_data, exception) = compute_runtime_data(lines)
+		(run_time_data, exception) = compute_runtime_data(lines, values)
 		if (exception != None):
 			return_code = 2
 
-	# print(writes)
-	# print()
-	# print(run_time_data)
-
-	with open(sys.argv[1] + ".out", "w") as out:
+	with open(file + ".out", "w") as out:
 		out.write(json.dumps((return_code, writes, run_time_data)))
-
-	end = time.time()
-	# print("Time: " + str(end - start))
 
 	if exception != None:
 		raise exception
 
-main()
+if __name__ == '__main__':
+	if len(sys.argv) > 2:
+		main(sys.argv[1], sys.argv[2])
+	else:
+		main(sys.argv[1])
