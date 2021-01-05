@@ -1027,6 +1027,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		}
 
 		if (this.isConditionalLine() ||
+			this.isBreakLine() ||
 			(!this._controller.showBoxAtLoopStmt && this.isLoopLine())) {
 			let exception = false;
 			envs.forEach((env: any) => {
