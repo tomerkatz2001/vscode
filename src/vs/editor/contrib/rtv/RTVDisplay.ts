@@ -299,6 +299,16 @@ class RTVOutputDisplayBox {
 		this._box.style.transitionDelay = '0s';
 		this._box.style.transitionTimingFunction = 'ease-in';
 
+		this._box.addEventListener('transitionend', (e: TransitionEvent) => {
+			if (e.propertyName !== 'opacity') {
+				return;
+			}
+
+			if (this._box.style.opacity === '0') {
+				this._box.style.display = 'none';
+			}
+		});
+
 		this._box.onmouseenter = (e) => {
 			this.onMouseEnter(e);
 		};
@@ -331,18 +341,17 @@ class RTVOutputDisplayBox {
 			throw new Error('Cannot find Monaco Editor');
 		}
 
+		this._box.style.display = 'inline-block';
 		this._box.style.opacity = '1';
-		this._box.style.display = '';
 		editor_div.appendChild(this._box);
-
 	}
 
 	public hide(): void {
-		this._box.style.display = 'none';
+		this._box.style.opacity = '0';
 	}
 
 	public isHidden() : boolean {
-		return this._box.style.display === 'none';
+		return this._box.style.opacity === '0';
 	}
 
 	private onMouseEnter(e: MouseEvent): void {
@@ -361,11 +370,11 @@ class RTVOutputDisplayBox {
 
 		function escapeHTML(unsafe: string) : string {
 			return unsafe
-				.replace(/&/g, "&amp;")
-				.replace(/</g, "&lt;")
-				.replace(/>/g, "&gt;")
-				.replace(/"/g, "&quot;")
-				.replace(/'/g, "&#039;");
+				.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;')
+				.replace(/"/g, '&quot;')
+				.replace(/'/g, '&#039;');
 		}
 
 		setTimeout(() => {
@@ -449,7 +458,8 @@ class RTVRunButton {
 	}
 
 	public isHidden() : boolean {
-		return this._box.style.display === 'none';
+		return this._box.style.display === 'none' ||
+			this._box.style.opacity === '0';
 	}
 
 	private onClick(): void {
@@ -502,6 +512,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		this._box.style.maxHeight = '500px';
 		this._box.style.zIndex = '1'; // Prevents it from covering the error dialog.
 		this._box.style.paddingLeft = '13px';
+		this._box.style.paddingRight = '13px';
 		this._box.className = 'monaco-hover';
 		this._box.id = 'rtv-display-box';
 
@@ -705,7 +716,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 
 	private isEmptyLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
-		return lineContent.trim().length === 0
+		return lineContent.trim().length === 0;
 	}
 
 	private isConditionalLine(): boolean {
@@ -985,11 +996,11 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		if (this._controller.showBoxWhenNotExecuted) {
 			this._allEnvs = [];
 			this._hasContent = true;
-			this._box.textContent = "Line not executed";
-			this._box.style.paddingLeft = "8px";
-			this._box.style.paddingRight = "8px";
-			this._box.style.paddingBottom = "0px";
-			this._box.style.paddingTop = "0px";
+			this._box.textContent = 'Line not executed';
+			this._box.style.paddingLeft = '8px';
+			this._box.style.paddingRight = '8px';
+			this._box.style.paddingBottom = '0px';
+			this._box.style.paddingTop = '0px';
 		} else {
 			this.setContentFalse();
 		}
@@ -1031,7 +1042,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 			(!this._controller.showBoxAtLoopStmt && this.isLoopLine())) {
 			let exception = false;
 			envs.forEach((env: any) => {
-				if (env["Exception Thrown"] !== undefined) {
+				if (env['Exception Thrown'] !== undefined) {
 					exception = true;
 				}
 			});
@@ -1042,7 +1053,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		}
 
 
-		let count_countent_envs = 0
+		let count_countent_envs = 0;
 		envs.forEach((env: any) => {
 			if (env.end_loop === undefined && env.begin_loop === undefined) {
 				count_countent_envs++;
@@ -1185,8 +1196,10 @@ class RTVDisplayBox implements IRTVDisplayBox {
 			// Create html table from rows
 			let table = document.createElement('table');
 			table.style.borderSpacing = '0px';
-			table.style.paddingLeft = '13px';
-			table.style.paddingRight = '13px';
+
+			// TODO Delete me: We do this for the whole box now.
+			// table.style.paddingLeft = '13px';
+			// table.style.paddingRight = '13px';
 
 			this._cellDictionary = {};
 			if (this._controller.byRowOrCol === RowColMode.ByRow) {
