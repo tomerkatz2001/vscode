@@ -113,7 +113,8 @@ class RTVImgController implements IEditorContribution {
 				}
 			});
 
-		});
+		})
+		.catch((_err) => {});
 	}
 
 	public getModelForce(): ITextModel {

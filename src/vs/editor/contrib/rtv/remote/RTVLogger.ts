@@ -1,71 +1,40 @@
 import { IRTVLogger } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
-class LogRequestData {
-	constructor(
-		public event: string,
-		public program ?: string,
-		public result ?: string) {}
-}
+// class LogRequestData {
+// 	constructor(
+// 		public event: string,
+// 		public program ?: string,
+// 		public result ?: string) {}
+// }
 
 export class RTVLogger implements IRTVLogger {
 	// States for various things we need to log
 	private synthRequestCounter: number = 0;
-	private currentFileName: string = 'unknown';
+	// private currentFileName: string = 'unknown';
 
-	private now(): number {
-		return new Date().getTime();
-	}
+	// private now(): number {
+	// 	return new Date().getTime();
+	// }
 
-	private getCurrentFileName() {
-		let rs = this._editor.getModel()?.uri.toString();
+	// private getCurrentFileName() {
+	// 	let rs = this._editor.getModel()?.uri.toString();
 
-		if (rs) {
-			console.log(rs);
-			if (!rs.includes(this.currentFileName)) {
-				let start = rs.lastIndexOf('/') + 1;
-				let end = rs.length - start - 3;
-				this.currentFileName = rs.substr(start, end);
-			}
-		} else {
-			this.currentFileName = 'unknown';
-		}
+	// 	if (rs) {
+	// 		console.log(rs);
+	// 		if (!rs.includes(this.currentFileName)) {
+	// 			let start = rs.lastIndexOf('/') + 1;
+	// 			let end = rs.length - start - 3;
+	// 			this.currentFileName = rs.substr(start, end);
+	// 		}
+	// 	} else {
+	// 		this.currentFileName = 'unknown';
+	// 	}
 
-		return this.currentFileName;
-	}
+	// 	return this.currentFileName;
+	// }
 
-	private log(code: string, msg?: string, program ?: string, result ?: string): void {
-		let log: string;
-
-		if (msg) {
-			msg = msg.replace(/\n/g, '\\n');
-			log = `${this.now()},${this.getCurrentFileName()},${code},${msg}`;
-		} else {
-			log = `${this.now()},${this.getCurrentFileName()},${code}`;
-		}
-
-		// We need this for CSRF protection on the server
-		const csrfInput = document.getElementById('csrf-parameter') as HTMLInputElement;
-		const csrfToken = csrfInput.value;
-		const csrfHeaderName = csrfInput.name;
-
-		const headers = new Headers();
-		headers.append('Content-Type', 'application/json;charset=UTF-8');
-		headers.append(csrfHeaderName, csrfToken);
-
-		const body = new LogRequestData(log, program, result);
-
-		fetch(
-			'/log',
-			{
-				method: 'POST',
-				body: JSON.stringify(body),
-				mode: 'same-origin',
-				headers: headers
-			});
-
-		console.log(log);
-	}
+	private log(code: string, msg?: string, program ?: string, result ?: string): void {}
 
 	constructor(private readonly _editor: ICodeEditor) {}
 
