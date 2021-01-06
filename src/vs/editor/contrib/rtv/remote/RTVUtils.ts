@@ -34,43 +34,60 @@ enum ResponseType {
 
 enum RequestType {
 	RUNPY = 1,
-	IMGSUM = 2
+	IMGSUM = 2,
+	SNIPPY = 3,
 }
 
-class PyodideWorkerResponse {
+class PyodideResponse {
 	constructor(
 		public id: number,
 		public type: ResponseType,
 		public msg: string) {}
 }
 
-class RunpyWorkerRequest {
-	public type: RequestType;
-	constructor(
-		public id: number,
-		public name: string,
-		public content: string) {
-			this.type = RequestType.RUNPY;
-		}
+abstract class PyodideRequest {
+	public id: number = idGen.getId();
+
+	constructor(public type: RequestType) {}
 }
 
-class ImgSumWorkerRequest {
-	public type: RequestType = RequestType.IMGSUM;
+class RunpyRequest extends PyodideRequest {
+	public name: string;
 
 	constructor(
-		public id: number,
-		public name: string,
+		public content: string,
+		public values?: string
+	) {
+		super(RequestType.RUNPY);
+		this.name = `program_${this.id}.py`;
+	}
+}
+
+class ImgSumRequest extends PyodideRequest {
+	public name: string;
+	constructor(
 		public content: string,
 		public line: number,
 		public varname: string
 	) {
-		this.type = RequestType.IMGSUM;
+		super(RequestType.IMGSUM);
+		this.name = `imgum_${this.id}.py`;
 	}
 }
 
-class RunpyProcess implements Process {
+class SnipPyRequest extends PyodideRequest {
+	constructor(
+		public action: string,
+		public parameter: string,
+	) {
+		super(RequestType.SNIPPY);
+	}
+}
+
+class PyodideProcess<R extends PyodideRequest> implements Process {
 	private id: number;
 
+	// Event listeners
 	private onResult?: ((exitCode: any, result?: string) => void) = undefined;
 	private onOutput?: ((data: any) => void) = undefined;
 	private onError?: ((data: any) => void) = undefined;
@@ -79,16 +96,17 @@ class RunpyProcess implements Process {
 	private error: string = '';
 	private output: string = '';
 
+	private resolve?: (result: any) =>  void = undefined;
+
 	private killed: boolean = false;
 
 	private eventListener: (this: Worker, event: MessageEvent) => void;
 
-	constructor(program: string) {
-		this.id = idGen.getId();
-
+	constructor(request: R) {
+		this.id = request.id;
 		this.eventListener = (event: MessageEvent) =>
 		{
-			let msg: PyodideWorkerResponse = event.data;
+			let msg: PyodideResponse = event.data;
 
 			if (msg.id !== this.id) {
 				return;
@@ -100,6 +118,9 @@ class RunpyProcess implements Process {
 					this.result = msg.msg;
 					if (this.onResult) {
 						this.onResult(this.result);
+					}
+					if (this.resolve) {
+						this.resolve(this.result);
 					}
 					break;
 				case ResponseType.STDOUT:
@@ -115,7 +136,7 @@ class RunpyProcess implements Process {
 		};
 
 		pyodideWorker.addEventListener('message', this.eventListener);
-		pyodideWorker.postMessage(new RunpyWorkerRequest(this.id, `program_${this.id}.py`, program));
+		pyodideWorker.postMessage(request);
 	}
 
 	onStdout(fn: (data: any) => void): void {
@@ -127,12 +148,25 @@ class RunpyProcess implements Process {
 	}
 
 	kill() {
-		this.killed = true;
 		pyodideWorker.removeEventListener('message', this.eventListener);
 
-		if (this.onResult) {
-			this.onResult('');
+		if (this.onOutput && this.output) {
+			this.onOutput(this.output);
 		}
+
+		if (this.onError && this.error) {
+			this.onError(this.error);
+		}
+
+		if (this.onResult) {
+			this.onResult(0);
+		}
+
+		if (this.resolve) {
+			this.resolve('');
+		}
+
+		this.killed = true;
 	}
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {
@@ -156,98 +190,23 @@ class RunpyProcess implements Process {
 	}
 
 	toPromise(): Promise<any> {
-		// TODO Implement
-		return new Promise((_1, _2) => {});
-	}
-}
+		return new Promise((resolve, _reject) => {
+			this.resolve = (result) => {
+				const rs = [(result && result !== '') ? 0 : null, result];
 
-class ImgSummaryProcess implements Process {
-	private id: number;
+				// TODO Delete me
+				console.log('Resolving request with:');
+				console.log(rs);
 
-	private onResult?: ((exitCode: any, result?: string) => void) = undefined;
-	private onOutput?: ((data: any) => void) = undefined;
-	private onError?: ((data: any) => void) = undefined;
-
-	private result?: string = undefined;
-	private error: string = '';
-	private output: string = '';
-
-	private eventListener: (this: Worker, event: MessageEvent) => void;
-
-	constructor(program: string, line: number, varname: string) {
-		this.id = idGen.getId();
-
-		this.eventListener = (event: MessageEvent) =>
-		{
-			let msg: PyodideWorkerResponse = event.data;
-
-			if (msg.id !== this.id) {
-				return;
+				resolve(rs);
 			}
 
-			switch (msg.type)
-			{
-				case ResponseType.RESULT:
-					this.result = msg.msg;
-					if (this.onResult) {
-						this.onResult(this.result);
-					}
-					break;
-				case ResponseType.STDOUT:
-					this.output += msg.msg;
-					if (this.onOutput) {
-						this.onOutput(msg.msg);
-					}
-					break;
-				case ResponseType.STDERR:
-				case ResponseType.EXCEPTION:
-					this.error += msg.msg;
-					if (this.onError) {
-						this.onError(msg.msg);
-					}
-					break;
-				default:
-					break;
+			if (this.result) {
+				this.resolve(this.result);
+			} else if (this.killed) {
+				this.resolve('');
 			}
-		};
-
-		pyodideWorker.addEventListener('message', this.eventListener);
-		pyodideWorker.postMessage(new ImgSumWorkerRequest(this.id, `imgsum_${this.id}.py`, program, line, varname));
-	}
-
-	onStdout(fn: (data: any) => void): void {
-		this.onOutput = fn;
-
-		if (this.output) {
-			this.onOutput(this.output);
-		}
-	}
-
-	onStderr(fn: (data: any) => void): void {
-		this.onError = fn;
-
-		if (this.error) {
-			this.onError(this.error);
-		}
-	}
-
-	kill() {
-		pyodideWorker.removeEventListener('message', this.eventListener);
-	}
-
-	onExit(fn: (exitCode: any, result?: string) => void): void {
-		this.onResult = (result) => {
-			fn((result && result !== '') ? 0 : 1, result);
-		};
-
-		if (this.result) {
-			this.onResult(this.result);
-		}
-	}
-
-	toPromise(): Promise<any> {
-		// TODO Implement
-		return new Promise((_1, _2) => {});
+		});
 	}
 }
 
@@ -259,15 +218,20 @@ class SynthProcess implements Process {
 
 	private result?: string = undefined;
 	private error: string = '';
-	// private output: string = '';
+	private promise: Promise<string | undefined>;
+	private abortController: AbortController;
 
 	constructor(problem: string) {
-		fetch(
+		this.abortController = new AbortController();
+		const signal = this.abortController.signal;
+
+		this.promise = fetch(
 			'/synthesize',
 			{
 				method: 'POST',
 				body: problem,
-				mode: 'same-origin'
+				mode: 'same-origin',
+				signal: signal
 			}).
 			then(response => {
 				if (response && response.status < 200 || response.status >= 300 || response.redirected) {
@@ -289,24 +253,26 @@ class SynthProcess implements Process {
 				if (this.onResult) {
 					this.onResult(0, this.result);
 				}
+
+				return result;
 			}).
 			catch(error => {
 				// TODO Error handling
 				this.error = error;
 
 				if (this.onError) {
-					this.onError(this.error);
+					this.onError(error);
 				}
 
 				if (this.onResult) {
-					this.onResult(1, this.error);
+					this.onResult(1, error);
 				}
+
+				return error;
 			});
 	}
 
-	onStdout(fn: (data: any) => void): void {
-		// TODO
-	}
+	onStdout(_fn: (data: any) => void): void {}
 
 	onStderr(fn: (data: any) => void): void {
 		this.onStderr = fn;
@@ -317,7 +283,8 @@ class SynthProcess implements Process {
 	}
 
 	kill() {
-		// TODO
+		// TODO What happens to the promise?
+		this.abortController.abort();
 	}
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {
@@ -329,31 +296,48 @@ class SynthProcess implements Process {
 	}
 
 	toPromise(): Promise<any> {
-		// TODO Implement
-		return new Promise((_1, _2) => {});
+		return this.promise;
 	}
 }
 
-export function runProgram(program: string): Process {
+export function runProgram(program: string, values?: any): Process {
 	if (!pyodideLoaded) {
 		// @Hack: We want to ignore this call until pyodide has loaded.
 		return new EmptyProcess();
 	}
 
-	return new RunpyProcess(program);
+	values = JSON.stringify(values)
+	// values = undefined;
+	return new PyodideProcess(new RunpyRequest(program, values));
 }
 
 export function synthesizeSnippet(problem: string): Process {
 	return new SynthProcess(problem);
 }
 
-export function runImgSummary(program: string, line: number, varname: string) {
+export function runImgSummary(program: string, line: number, varname: string): Process {
 	if (!pyodideLoaded) {
 		// @Hack: We want to ignore this call until pyodide has loaded.
 		return new EmptyProcess();
 	}
 
-	return new ImgSummaryProcess(program, line, varname);
+	return new PyodideProcess(new ImgSumRequest(program, line, varname));
+}
+
+/**
+ * Runs the SnipPy helper python code with a request to validate the
+ * given user input.
+ */
+export async function validate(input: string): Promise<string | undefined> {
+	if (!pyodideLoaded) {
+		// @Hack: We want to ignore this call until pyodide has loaded.
+		return new EmptyProcess().toPromise();
+	}
+
+	let process = new PyodideProcess(new SnipPyRequest('validate', input));
+	let results = (await process.toPromise())[1];
+
+	return results;
 }
 
 export function getLogger(editor: ICodeEditor): IRTVLogger {
@@ -376,7 +360,7 @@ let pyodideLoaded = false;
 
 const pyodideWorkerInitListener = (event: MessageEvent) =>
 {
-	let msg = event.data as PyodideWorkerResponse;
+	let msg = event.data as PyodideResponse;
 
 	if (msg.type === ResponseType.LOADED)
 	{
