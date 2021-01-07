@@ -3135,102 +3135,6 @@ export class RTVController implements IRTVController {
 		}
 	}
 
-	public editingVar() {
-		let d = this._editor.getPosition();
-		let controller = RTVController.get(this._editor);
-		let s: string = '';
-		let line: number = -1;
-
-		if (d) {
-			line = d.lineNumber;
-		}
-
-		if (controller) {
-			s = controller.getLineContent(line).trim();
-		}
-
-		if (line > -1) {
-			this.getDictionaryMakeEdit(s, line, controller);
-		}
-	}
-
-	private getDictionaryMakeEdit(s: string, line: number, controller: RTVController) {
-		let l_operand: string = '';
-		let r_operand: string = '';
-		s = s.trim();
-
-		if (s.startsWith('return ')) {
-			l_operand = 'return';
-			r_operand = s.substr('return '.length);
-		} else {
-			let listOfElems = s.split('=');
-
-			if (listOfElems.length !== 2) {
-			// TODO Can we inform the user of this?
-				console.error('Invalid input format. Must be of the form <varname> = ??');
-			} else {
-				l_operand = listOfElems[0].trim();
-				r_operand = listOfElems[1].trim();
-			}
-		}
-
-		if (l_operand === '' || r_operand === '') {
-			return;
-		}
-
-		if (r_operand.endsWith('??')) {
-			r_operand = r_operand.substr(0, r_operand.length - 2).trim();
-
-			let model = this.getModelForce();
-			let cursorPos = this._editor.getPosition();
-			let startCol: number;
-			let endCol: number;
-
-			if (model.getLineContent(line).trim() === '' && cursorPos !== null && cursorPos.lineNumber === line) {
-				startCol = cursorPos.column;
-				endCol = cursorPos.column;
-			} else {
-				startCol = model.getLineFirstNonWhitespaceColumn(line);
-				endCol = model.getLineMaxColumn(line);
-			}
-
-			let range = new Range(line, startCol, line, endCol);
-			let txt = '';
-
-			if (l_operand === 'return') {
-				txt = 'return ' + (r_operand ? r_operand : '0');
-			} else {
-				txt = l_operand + ' = ' + (r_operand ? r_operand : '0');
-			}
-
-			this._editor.executeEdits(this.getId(), [{ range: range, text: txt }]);
-			this.runProgram();
-
-			setTimeout(() => {
-				let cellKey = l_operand == 'return' ? 'rv' : l_operand;
-				let cellContents = controller._boxes[line - 1].getCellContent()[cellKey];
-
-				if (cellContents) {
-					cellContents.forEach(function (cellContent) {
-						cellContent.contentEditable = 'true';
-					});
-					cellContents[0].focus();
-
-					// TODO Is there a faster/cleaner way to select the content?
-					let selection = window.getSelection()!;
-					let range = selection.getRangeAt(0)!;
-					range.selectNodeContents(selection.focusNode!);
-					selection.addRange(range);
-
-					this.logger.projectionBoxFocus(s, r_operand !== '');
-					this.logger.exampleFocus(0, cellContents[0]!.textContent!);
-				} else {
-					console.error(`No cell found with key "${cellKey}"`);
-				}
-			}, 300);
-		}
-	}
-
 	public setVisiblityToSelectionOnly() {
 		let selection = this._editor.getSelection();
 		if (selection === null) {
@@ -3797,16 +3701,6 @@ createRTVAction(
 // 		c.scrollLoopFocusIter(1);
 // 	}
 // );
-
-createRTVAction(
-	'rtv.editVar',
-	'Start Editing the Var',
-	KeyMod.Shift | KeyCode.Space,
-	localize('rtv.editVar', 'Start Editing the Var'),
-	(c) => {
-		c.editingVar();
-	}
-);
 
 createRTVAction(
 	'rtv.addDelay',
