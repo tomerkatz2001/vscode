@@ -199,7 +199,7 @@ class PyodideProcess<R extends PyodideRequest> implements Process {
 				console.log(rs);
 
 				resolve(rs);
-			}
+			};
 
 			if (this.result) {
 				this.resolve(this.result);
