@@ -502,18 +502,18 @@ export class RTVSynth {
 		// TODO This does not work on the web version yet.
 		return Promise.resolve();
 
-		let values: any = {};
-		for (let env of this.boxEnvs!) {
-			if (this.includedTimes.has(env['time'])) {
-				values[`(${env['lineno']},${env['time']})`] = env;
-			}
-		}
-		const results: any = await utils.runProgram(this.controller.getProgram(), values).toPromise();
-		const parsedResults = JSON.parse(results[1]);
-
-		this.box?.updateContent(parsedResults[2]);
-		this.boxEnvs = this.box?.getEnvs();
-		this.setupTableCellContents();
+		// let values: any = {};
+		// for (let env of this.boxEnvs!) {
+		// 	if (this.includedTimes.has(env['time'])) {
+		// 		values[`(${env['lineno']},${env['time']})`] = env;
+		// 	}
+		// }
+		// const results: any = await utils.runProgram(this.controller.getProgram(), values).toPromise();
+		// const parsedResults = JSON.parse(results[1]);
+		//
+		// this.box?.updateContent(parsedResults[2]);
+		// this.boxEnvs = this.box?.getEnvs();
+		// this.setupTableCellContents();
 	}
 
 	private defaultValue(varname: string, currentVal: string): string {

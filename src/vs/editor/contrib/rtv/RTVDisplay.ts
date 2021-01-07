@@ -19,7 +19,7 @@ import { IRange, Range } from 'vs/editor/common/core/range';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
 import { IModeService } from 'vs/editor/common/services/modeService';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
-import { MarkdownRenderer } from 'vs/editor/contrib/markdown/markdownRenderer';
+import { MarkdownRenderer } from 'vs/editor/browser/core/markdownRenderer';
 import { IPosition, Position } from 'vs/editor/common/core/position';
 import { MarkdownString } from 'vs/base/common/htmlContent';
 import { IConfigurationChangeEvent, IConfigurationService } from 'vs/platform/configuration/common/configuration';
@@ -27,9 +27,7 @@ import { Registry } from 'vs/platform/registry/common/platform';
 import { Extensions, IConfigurationNode, IConfigurationRegistry } from 'vs/platform/configuration/common/configurationRegistry';
 import { localize } from 'vs/nls';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
-import { Action, IAction } from 'vs/base/common/actions';
-import { Separator } from 'vs/base/browser/ui/actionbar/actionbar';
-import { ContextSubMenu } from 'vs/base/browser/contextmenu';
+import { Action, IAction, Separator, SubmenuAction} from 'vs/base/common/actions';
 import { IMouseWheelEvent } from 'vs/base/browser/mouseEvent';
 import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
@@ -54,7 +52,7 @@ function indent(s: string): number {
 }
 
 function isHtmlEscape(s: string): boolean {
-	return strings.startsWith(s, '```html\n') && strings.endsWith(s, '```');
+	return s.startsWith('```html\n') && s.endsWith('```');
 }
 
 function removeHtmlEscape(s: string): string {
@@ -91,9 +89,8 @@ function isSeedLine(str: string) {
 
 function isLoopStr(str: string) {
 	let trimmed = str.trim();
-	return strings.endsWith(trimmed, ':') &&
-		(strings.startsWith(trimmed, 'for') ||
-			strings.startsWith(trimmed, 'while'));
+	return trimmed.endsWith(':') &&
+		(trimmed.startsWith('for') || trimmed.startsWith('while'));
 }
 
 function strNumsToArray(s: string): number[] {
@@ -703,7 +700,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 					c.restoreAllBoxesToDefault();
 				}),
 				new Separator(),
-				new ContextSubMenu('Appearance of All Boxes', viewModeActions),
+				new SubmenuAction('id', 'Appearance of All Boxes', viewModeActions, ''),
 				new Separator(),
 				this.newAction('See All Loop Iterations', () => {
 					c.loopFocusController = null;
@@ -721,26 +718,26 @@ class RTVDisplayBox implements IRTVDisplayBox {
 
 	private isConditionalLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
-		return strings.endsWith(lineContent, ':') &&
-			(strings.startsWith(lineContent, 'if') ||
-				strings.startsWith(lineContent, 'else'));
+		return lineContent.endsWith(':') &&
+			(lineContent.startsWith('if') ||
+				lineContent.startsWith('else'));
 	}
 
 	private isLoopLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
-		return strings.endsWith(lineContent, ':') &&
-			(strings.startsWith(lineContent, 'for') ||
-				strings.startsWith(lineContent, 'while'));
+		return lineContent.endsWith(':') &&
+			(lineContent.startsWith('for') ||
+				lineContent.startsWith('while'));
 	}
 
 	public isBreakLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
-		return strings.startsWith(lineContent, 'break');
+		return lineContent.startsWith('break');
 	}
 
 	public isReturnLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
-		return strings.startsWith(lineContent, 'return');
+		return lineContent.startsWith('return');
 	}
 
 	private bringToLoopCount(envs: any[], active_loop_iters: number[], loopId: string, iterCount: number) {
@@ -1181,7 +1178,10 @@ class RTVDisplayBox implements IRTVDisplayBox {
 			this._box.style.border = '0';
 		}
 
-		const renderer = new MarkdownRenderer(this._editor, this._modeService, this._openerService);
+		const renderer = new MarkdownRenderer(
+			{ 'editor': this._editor },
+			this._modeService,
+			this._openerService);
 
 		if (updateInPlace) {
 			if (this._controller.byRowOrCol === RowColMode.ByRow) {
@@ -1297,7 +1297,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 	private newAction(label: string, actionCallBack: () => void): Action {
 		return new Action('id', label, '', true, (event?) => {
 			actionCallBack();
-			return new Promise((resolve, reject) => {
+			return new Promise<void>((resolve, reject) => {
 				resolve();
 			});
 		});
@@ -1393,10 +1393,10 @@ class RTVDisplayBox implements IRTVDisplayBox {
 
 	}
 
-	private createActionsForPlusMenu(): (IAction | ContextSubMenu)[] {
-		let res: (IAction | ContextSubMenu)[] = [];
+	private createActionsForPlusMenu(): (IAction )[] {
+		let res: IAction[] = [];
 		this.notDisplayedVars().forEach((v) => {
-			res.push(new ContextSubMenu('Add ' + v, [
+			res.push(new SubmenuAction('id', 'Add ' + v, [
 				this.newAction('to This Box', () => {
 					this._controller.varAddInThisBox(v, this);
 				}),
@@ -1405,7 +1405,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 				})
 			]));
 		});
-		res.push(new ContextSubMenu('Add All Vars ', [
+		res.push(new SubmenuAction('id', 'Add All Vars ', [
 			this.newAction('to This Box', () => {
 				this._controller.varAddAllInThisBox(this);
 			}),
@@ -1885,7 +1885,7 @@ export class RTVController implements IRTVController {
 	private onUserChangeConfiguration(e: IConfigurationChangeEvent) {
 		if (e.affectedKeys.indexOf(viewModeKey) !== -1) {
 			this.changeViewMode(this.viewMode);
-		} else if (e.affectedKeys.some((s) => strings.startsWith(s, 'rtv'))) {
+		} else if (e.affectedKeys.some((s) => s.startsWith('rtv'))) {
 			this.viewMode = ViewMode.Custom;
 		}
 	}
@@ -2238,7 +2238,7 @@ export class RTVController implements IRTVController {
 			for (let j = 0; j < i; j++) {
 				let child_loop = loops[j];
 				if (child_loop.split(',').length === 1 + parent_loop.split(',').length &&
-					strings.startsWith(child_loop, parent_loop)) {
+					child_loop.startsWith(parent_loop)) {
 					width = width + widths[child_loop];
 					//width = width + widths[child_loop] + spaceBetweenCells;
 				}
@@ -3558,7 +3558,7 @@ class ConfigurationServiceCache {
 
 	private onChangeConfiguration(e: IConfigurationChangeEvent) {
 		e.affectedKeys.forEach((key: string) => {
-			if (strings.startsWith(key, 'rtv')) {
+			if (key.startsWith('rtv')) {
 				let v = this.configurationService.getValue(key);
 				if (v !== this._vals[key]) {
 					this._vals[key] = v;
