@@ -820,6 +820,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		cell.style.paddingRight = padding;
 		cell.style.paddingTop = '0';
 		cell.style.paddingBottom = '0';
+		cell.style.boxSizing = 'content-box';
 
 		cell.align = 'center';
 
