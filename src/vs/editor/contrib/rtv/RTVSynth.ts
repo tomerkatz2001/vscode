@@ -165,13 +165,12 @@ export class RTVSynth {
 	 * If not, it keeps the cursor position, but adds an error message to the value to
 	 * indicate the issue.
 	 */
-	private async focusNextRow(backwards: boolean = false): Promise<void> {
+	private async focusNextRow(cellContent: HTMLElement, backwards: boolean = false, trackChanges: boolean = true): Promise<void> {
 		// Get the current value
-		let selection = window.getSelection()!;
 		let cell: HTMLTableCellElement;
 
 		for (
-			let cellIter = selection.focusNode!;
+			let cellIter = cellContent.parentNode!;
 			cellIter.parentNode;
 			cellIter = cellIter.parentNode
 		) {
@@ -188,14 +187,16 @@ export class RTVSynth {
 
 		const currentValue = cell!.textContent!;
 
-		// Keep track of changes!
-		const env = this.boxEnvs![(this.controller.byRowOrCol === RowColMode.ByRow) ? col : row];
-		if (env[this.varname!] !== currentValue) {
-			this.logger.exampleChanged(row, env[this.varname!], currentValue);
-			const success = await this.toggleElement(env, cell, true);
+		if (trackChanges) {
+			// Keep track of changes!
+			const env = this.boxEnvs![(this.controller.byRowOrCol === RowColMode.ByRow) ? col : row];
+			if (env[this.varname!] !== currentValue) {
+				this.logger.exampleChanged(row, env[this.varname!], currentValue);
+				const success = await this.toggleElement(env, cell, true);
 
-			if (!success) {
-				return;
+				if (!success) {
+					return;
+				}
 			}
 		}
 
@@ -296,6 +297,16 @@ export class RTVSynth {
 
 			// Toggle off
 			this.includedTimes.delete(time);
+
+			// Update box values
+			let error = await this.updateBoxValues();
+			if (error) {
+				// Undoing this causes an exception.
+				// Rollback the changes and show the error.
+				this.includedTimes.add(time);
+				this.addError(cell, error);
+				return false;
+			}
 
 			// Remove row highlight
 			row.style.fontWeight = row.style.backgroundColor = '';
@@ -622,7 +633,9 @@ export class RTVSynth {
 							this.toggleElement(env, cellContent)
 								.then((success) => {
 									if (success) {
-										this.focusNextRow();
+										// We're already tracked changes, so this should
+										// not do that!
+										this.focusNextRow(cellContent, false, false);
 									}
 								});
 						} else {
@@ -658,7 +671,7 @@ export class RTVSynth {
 						// Use Tabs to go over values of the same variable
 						// ----------------------------------------------------------
 						e.preventDefault();
-						this.focusNextRow(e.shiftKey);
+						this.focusNextRow(cellContent, e.shiftKey);
 						break;
 					case 'Escape':
 						rs = false;
