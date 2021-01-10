@@ -192,19 +192,11 @@ export class RTVSynth {
 		const env = this.boxEnvs![(this.controller.byRowOrCol === RowColMode.ByRow) ? col : row];
 		if (env[this.varname!] !== currentValue) {
 			this.logger.exampleChanged(row, env[this.varname!], currentValue);
-			this.toggleElement(env, cell, true);
+			const success = await this.toggleElement(env, cell, true);
 
-			// Check if value was valid
-			const error = await utils.validate(currentValue);
-
-			if (error) {
-				// Show error message if not
-				this.addError(cell, error);
+			if (!success) {
 				return;
 			}
-
-			// Value valid, update the box env with the user's values.
-			await this.updateBoxValues();
 		}
 
 		// Finally, select the next value.
@@ -242,11 +234,11 @@ export class RTVSynth {
 		}
 	}
 
-	private toggleElement(
+	private async toggleElement(
 		env: any,
 		cell: HTMLElement,
 		force: boolean | null = null
-	) {
+	): Promise<boolean> {
 		let time = env['time'];
 		let row = this.findParentRow(cell);
 		let on: boolean;
@@ -260,7 +252,18 @@ export class RTVSynth {
 		}
 
 		if (on) {
-			// TODO Check if we need to add else case
+			// Make sure the values are correct and up to date
+			// Check if value was valid
+			const error = await utils.validate(cell.textContent!);
+
+			if (error) {
+				// Show error message if not
+				this.addError(cell, error);
+				return false;
+			}
+
+			// Value valid, update the box env with the user's values.
+			await this.updateBoxValues();
 
 			// Toggle on
 			env[this.varname!] = cell.innerText;
@@ -286,6 +289,8 @@ export class RTVSynth {
 				cell.innerText
 			);
 		}
+
+		return true;
 	}
 
 	// -----------------------------------------------------------------------------------
@@ -579,24 +584,38 @@ export class RTVSynth {
 						e.preventDefault();
 
 						if (e.shiftKey) {
-							this.toggleElement(env, cellContent);
-							this.focusNextRow();
+							this.toggleElement(env, cellContent)
+								.then((success) => {
+									if (success) {
+										this.focusNextRow();
+									}
+								});
 						} else {
+							let togglePromise;
+
 							if (env[this.varname!] !== cellContent.innerText) {
 								this.logger.exampleChanged(
 									this.findParentRow(cellContent).rowIndex,
 									env[this.varname!],
 									cellContent.innerText
 								);
-								this.toggleElement(env, cellContent, true);
-							}
-							this.synthesizeFragment();
 
-							cellContent.contentEditable = 'false';
-							this.editor.focus();
-							this.logger.projectionBoxExit();
-							this.includedTimes.clear();
-							this.logger.exampleReset();
+								togglePromise = this.toggleElement(env, cellContent, true);
+							} else {
+								togglePromise = Promise.resolve(true);
+							}
+
+							togglePromise.then((success: boolean) => {
+								if (success) {
+									this.synthesizeFragment();
+
+									cellContent.contentEditable = 'false';
+									this.editor.focus();
+									this.logger.projectionBoxExit();
+									this.includedTimes.clear();
+									this.logger.exampleReset();
+								}
+							});
 						}
 						break;
 					case 'Tab':
