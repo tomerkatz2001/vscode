@@ -43,6 +43,8 @@ export interface IRTVController extends IEditorContribution {
 	getLineContent(lineno: number): string;
 	getProgram(): string;
 	getModelForce(): ITextModel;
+	envs: { [k: string]: any[]; };
+	pythonProcess?: Process;
 
 	// Functions for running the program
 	runProgram(): Promise<any>;

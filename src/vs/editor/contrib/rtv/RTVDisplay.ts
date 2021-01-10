@@ -1644,6 +1644,7 @@ export class RTVController implements IRTVController {
 	public _configBox: HTMLDivElement | null = null;
 	public tableCellsByLoop: MapLoopsToCells = {};
 	public logger: IRTVLogger;
+	public pythonProcess?: Process = undefined;
 	private _config: ConfigurationServiceCache;
 	private _makeNewBoxesVisible: boolean = true;
 	private _loopFocusController: LoopFocusController | null = null;
@@ -1652,7 +1653,6 @@ export class RTVController implements IRTVController {
 	private _peekCounter: number = 0;
 	private _peekTimer: ReturnType<typeof setTimeout> | null = null;
 	private _globalDeltaVarSet: DeltaVarSet = new DeltaVarSet();
-	private _pythonProcess?: Process = undefined;
 	private _runProgramDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 	private _showErrorDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 	private _outputBox: RTVOutputDisplayBox| null = null;
@@ -2656,13 +2656,13 @@ export class RTVController implements IRTVController {
 		this.hideOutputBox();
 		const program = this.getProgram();
 
-		if (this._pythonProcess !== undefined) {
-			this._pythonProcess.kill();
+		if (this.pythonProcess !== undefined) {
+			this.pythonProcess.kill();
 		}
 
 		this.logger.projectionBoxUpdateStart(program);
 		let c = utils.runProgram(program);
-		this._pythonProcess = c;
+		this.pythonProcess = c;
 
 		let errorMsg: string = '';
 		c.onStderr((msg) => {
@@ -2695,7 +2695,7 @@ export class RTVController implements IRTVController {
 			return;
 		}
 
-		this._pythonProcess = undefined;
+		this.pythonProcess = undefined;
 
 		let parsedResult = JSON.parse(result!);
 		let returnCode = parsedResult[0];

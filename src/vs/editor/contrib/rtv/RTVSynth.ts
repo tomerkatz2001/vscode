@@ -90,10 +90,12 @@ export class RTVSynth {
 		let range = new Range(lineno, startCol, lineno, endCol);
 		let txt = '';
 
+		let defaultValue = await this.defaultValue(l_operand, r_operand);
+
 		if (l_operand === 'rv') {
-			txt = 'return ' + this.defaultValue(l_operand, r_operand);
+			txt = `return ${defaultValue}`;
 		} else {
-			txt = l_operand + ' = ' + this.defaultValue(l_operand, r_operand);
+			txt = `${l_operand} = ${defaultValue}`;
 		}
 
 		this.editor.executeEdits(this.controller.getId(), [
@@ -564,39 +566,41 @@ export class RTVSynth {
 		return undefined;
 	}
 
-	private defaultValue(varname: string, currentVal: string): string {
+	private async defaultValue(varname: string, currentVal: string): Promise<string> {
 		// If the user specified a default value, use that.
 		if (currentVal !== '') {
 			return currentVal;
 		}
 
+		// We need to check the latest envs, so let's make sure it's up to date.
+		await this.controller.pythonProcess?.toPromise();
+
+		// See if the variable was defined before this statement.
+		// If yes, we can set the default value to itself!
+		const boxEnvs = this.controller.getBox(this.lineno!)!.getEnvs();
+
+		let earliestTime = 100000;
+		for (let env of boxEnvs!) {
+			if (env['time'] < earliestTime) {
+				earliestTime = env['time'];
+			}
+		}
+
+		earliestTime--;
+
+		for (let line in this.controller.envs) {
+			for (let env of this.controller.envs[line]) {
+				if (env['time'] === earliestTime) {
+					if (env.hasOwnProperty(varname)) {
+						return varname;
+					}
+					break;
+				}
+			}
+		}
+
+		// If not, we don't have any information, so let's go with 0.
 		return '0';
-
-		// TODO We need this.boxEnvs and this.allEnvs to be set before
-		//  we can check for this.
-
-		// // See if the variable was defined before this statement.
-		// // If yes, we can set the default value to itself!
-		// let earliestTime = 100000;
-		// for (let env of this.boxEnvs!) {
-		// 	if (env['time'] < earliestTime) {
-		// 		earliestTime = env['time'];
-		// 	}
-		// }
-
-		// earliestTime--;
-
-		// for (let env of this.allEnvs!) {
-		// 	if (env['time'] === earliestTime) {
-		// 		if (env.hasOwnProperty(varname)) {
-		// 			return varname;
-		// 		}
-		// 		break;
-		// 	}
-		// }
-
-		// // If not, we don't have any information, so let's go with 0.
-		// return '0';
 	}
 
 	private select(node: Node) {
