@@ -254,7 +254,7 @@ export class RTVSynth {
 		if (on) {
 			// Make sure the values are correct and up to date
 			// Check if value was valid
-			const error = await utils.validate(cell.textContent!);
+			let error = await utils.validate(cell.textContent!);
 
 			if (error) {
 				// Show error message if not
@@ -262,12 +262,28 @@ export class RTVSynth {
 				return false;
 			}
 
-			// Value valid, update the box env with the user's values.
-			await this.updateBoxValues();
-
 			// Toggle on
+			const oldVal = env[this.varname!];
+			const included = this.includedTimes.has(env['time']);
+
 			env[this.varname!] = cell.innerText;
 			this.includedTimes.add(env['time']);
+
+			// Now try to update the box with this value.
+			error = await this.updateBoxValues();
+
+			if (error) {
+				// The input causes an exception.
+				// Rollback the changes and show the error.
+				env[this.varname!] = oldVal;
+
+				if (!included) {
+					this.includedTimes.delete(env['time']);
+				}
+
+				this.addError(cell, error);
+				return false;
+			}
 
 			this.highlightRow(row);
 
@@ -503,19 +519,38 @@ export class RTVSynth {
 		element.addEventListener('input', removeError);
 	}
 
-	private async updateBoxValues(): Promise<void> {
+	private async updateBoxValues(): Promise<string | undefined> {
 		let values: any = {};
 		for (let env of this.boxEnvs!) {
 			if (this.includedTimes.has(env['time'])) {
 				values[`(${env['lineno']},${env['time']})`] = env;
 			}
 		}
-		const results: any = await utils.runProgram(this.controller.getProgram(), values).toPromise();
-		const parsedResults = JSON.parse(results[1]);
 
-		this.box?.updateContent(parsedResults[2]);
+		let c = utils.runProgram(this.controller.getProgram(), values);
+		let errorMsg: string = '';
+		c.onStderr((msg) => {
+			errorMsg += msg;
+		});
+
+		const results: any = await c.toPromise();
+		const result = results[1];
+
+		let parsedResult = JSON.parse(result);
+		let returnCode = parsedResult[0];
+
+		if (errorMsg && returnCode !== 0) {
+			// Extract the error message
+			const errorLines = errorMsg.split(/\n/).filter((s) => s);
+			const message = errorLines[errorLines.length - 1];
+			return message;
+		}
+
+		this.box?.updateContent(parsedResult[2]);
 		this.boxEnvs = this.box?.getEnvs();
 		this.setupTableCellContents();
+
+		return undefined;
 	}
 
 	private defaultValue(varname: string, currentVal: string): string {

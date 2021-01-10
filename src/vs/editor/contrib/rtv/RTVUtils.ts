@@ -138,7 +138,7 @@ export function runProgram(program: string, values?: any): Process {
 	let local_process;
 
 	if (values) {
-		const values_file: string = os.tmpdir() + path.sep + 'tmp_values.py';
+		const values_file: string = os.tmpdir() + path.sep + 'tmp_values.json';
 		fs.writeFileSync(values_file, JSON.stringify(values));
 		local_process = child_process.spawn(PY3, [RUNPY, file, values_file]);
 	} else {
