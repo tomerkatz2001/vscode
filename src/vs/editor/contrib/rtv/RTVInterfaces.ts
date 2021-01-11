@@ -1,5 +1,6 @@
 import { IEditorContribution } from 'vs/editor/common/editorCommon';
 import { ITextModel } from 'vs/editor/common/model';
+import { Event } from 'vs/base/common/event';
 
 export interface IRTVDisplayBox {
 	getCellContent(): { [k: string]: [HTMLElement] };
@@ -37,6 +38,14 @@ export interface IRTVDisplayBox {
 	updateContent(allEnvs?: any[], updateInPlace?: boolean): void;
 }
 
+export class BoxUpdateEvent {
+	constructor(
+		public isStart: boolean,
+		public isCancel: boolean,
+		public isFinish: boolean,
+	) {}
+}
+
 export interface IRTVController extends IEditorContribution {
 	// Utility functions for accessing the editor or PB content
 	getBox(lineno: number): IRTVDisplayBox;
@@ -45,6 +54,7 @@ export interface IRTVController extends IEditorContribution {
 	getModelForce(): ITextModel;
 	envs: { [k: string]: any[]; };
 	pythonProcess?: Process;
+	onUpdateEvent: Event<BoxUpdateEvent>;
 
 	// Functions for running the program
 	runProgram(): Promise<any>;

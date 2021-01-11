@@ -2,19 +2,74 @@ import { Range } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
-import { IRTVLogger, IRTVController, RowColMode, IRTVDisplayBox } from './RTVInterfaces';
+import { IRTVLogger, IRTVController, RowColMode, IRTVDisplayBox, BoxUpdateEvent } from './RTVInterfaces';
 import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
+import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
+
+const SYNTHESIZING_MESSAGE: string = '# Synthesizing. Please wait...';
+
+class RTVSynthBackup {
+	includedTimes: Set<number>;
+	allEnvs?: any[];
+	boxEnvs?: any[];
+	varname?: string;
+	lineno?: number;
+	box?: IRTVDisplayBox;
+	lastRunResults?: any[];
+
+	constructor(readonly synth: RTVSynth) {
+		this.includedTimes = new Set(synth.includedTimes);
+		this.allEnvs = synth.allEnvs;
+		this.boxEnvs = new Array(synth.boxEnvs);
+		this.varname = synth.varname;
+		this.lineno = synth.lineno;
+		this.box = synth.box;
+		this.lastRunResults = synth.lastRunResults;
+	}
+
+	restore(synth: RTVSynth) {
+		synth.includedTimes = new Set(this.includedTimes);
+		synth.allEnvs = this.allEnvs;
+		synth.boxEnvs = this.boxEnvs;
+		synth.varname = this.varname;
+		synth.lineno = this.lineno;
+		synth.box = this.box;
+		synth.lastRunResults = this.lastRunResults;
+	}
+}
+
+
+/**
+ * For manually keeping track of the undo state and
+ * the state of the Projection Boxes.
+ * Wait for message
+ * --[See SYNTHESIZING_MESSAGE in Undo event]--> WaitForUndo
+ * --[See another Undp event right after]--> WaitForUpdateStart
+ * --[See the next PB update start event]--> WaitForUpdateFinish
+ * --[See the PB update finish event]--> Restore the projection box!
+ */
+enum UndoState {
+	WaitForMessage,
+	WaitForUndo,
+	WaitForUpdateStart,
+	WaitForUpdateFinish
+}
 
 export class RTVSynth {
 	private logger: IRTVLogger;
-	private enabled: boolean;
-	private includedTimes: Set<number>;
-	private allEnvs?: any[] = undefined; // TODO Can we do better than any?
-	private boxEnvs?: any[] = undefined;
-	private varname?: string = undefined;
-	private lineno?: number = undefined;
-	private box?: IRTVDisplayBox = undefined;
+	enabled: boolean;
+	includedTimes: Set<number>;
+	allEnvs?: any[] = undefined; // TODO Can we do better than any?
+	boxEnvs?: any[] = undefined;
+	varname?: string = undefined;
+	lineno?: number = undefined;
+	box?: IRTVDisplayBox = undefined;
+
+	// For restoring the PBs on Undo
+	private backup?: RTVSynthBackup = undefined;
+	private undoState: UndoState = UndoState.WaitForMessage;
+	public lastRunResults?: any[] = undefined;
 
 	constructor(
 		private readonly editor: ICodeEditor,
@@ -29,6 +84,66 @@ export class RTVSynth {
 		editor.onDidFocusEditorText(() => {
 			this.stopSynthesis();
 		});
+
+		// TODO Is there a better way to capture undo events?
+		editor.onDidChangeModelContent((e) => this.handleUndoEvent(e));
+		controller.onUpdateEvent((e) => this.handleBoxUpdateEvent(e));
+	}
+
+	private handleBoxUpdateEvent(e: BoxUpdateEvent) {
+		if (e.isStart && this.undoState === UndoState.WaitForUpdateStart) {
+			this.undoState = UndoState.WaitForUpdateFinish;
+		} else if (e.isFinish && this.undoState === UndoState.WaitForUpdateFinish) {
+			Promise.resolve().then(async () => {
+				// Time to undo!
+				this.backup!.restore(this);
+
+				await this.controller.pythonProcess?.toPromise();
+
+				let error = await this.updateBoxValues(this.lastRunResults);
+
+				if (!error) {
+					let cellContents = this.box!.getCellContent()[this.varname!];
+
+					if (cellContents) {
+						cellContents.forEach((cellContent) => {
+							cellContent.contentEditable = 'true';
+						});
+
+						let selection = window.getSelection()!;
+						let range = selection.getRangeAt(0)!;
+
+						range.selectNodeContents(cellContents[0]);
+						selection.removeAllRanges();
+						selection.addRange(range);
+
+						// TODO Log events!
+					}
+				}
+
+				this.undoState = UndoState.WaitForUndo;
+			});
+		}
+	}
+
+	private handleUndoEvent(e: IModelContentChangedEvent) {
+		if (!this.backup ||
+			!e.isUndoing ||
+			e.changes.length !== 1 ||
+			e.changes[0].range.startLineNumber !== e.changes[0].range.endLineNumber ||
+			e.changes[0].range.startLineNumber !== this.lineno) {
+			// Not relevant to us.
+			this.undoState = UndoState.WaitForMessage;
+			return;
+		}
+
+		// e is an undo event for this line.
+
+		if (e.changes[0].text === SYNTHESIZING_MESSAGE) {
+			this.undoState = UndoState.WaitForUndo;
+		} else if (this.undoState === UndoState.WaitForUndo) {
+			this.undoState = UndoState.WaitForUpdateStart;
+		}
 	}
 
 	/**
@@ -145,16 +260,18 @@ export class RTVSynth {
 
 	public stopSynthesis() {
 		if (this.enabled) {
-			this.enabled = false;
-			this.logger.projectionBoxExit();
+			// First take a backup
+			this.backup = new RTVSynthBackup(this);
 
-			// Update the Proejection Boxes again
-			this.editor.focus();
-			this.controller.runProgram();
-
-			// Reset the synth state
+			// Then clear the state
 			this.includedTimes.clear();
 			this.logger.exampleReset();
+			this.enabled = false;
+
+			// Finally reset the Projection Boxes
+			this.editor.focus();
+			this.logger.projectionBoxExit();
+			this.controller.runProgram();
 		}
 	}
 
@@ -385,10 +502,7 @@ export class RTVSynth {
 
 		const c = utils.synthesizeSnippet(JSON.stringify(problem));
 		this.logger.synthStart(problem, exampleCount, lineno);
-		this.insertSynthesizedFragment(
-			'# Synthesizing. Please wait...',
-			this.lineno!
-		);
+		this.insertSynthesizedFragment(SYNTHESIZING_MESSAGE, this.lineno!);
 
 		c.onStdout((data) => this.logger.synthOut(String(data)));
 		c.onStderr((data) => this.logger.synthErr(String(data)));
@@ -532,34 +646,40 @@ export class RTVSynth {
 		element.addEventListener('input', removeError);
 	}
 
-	private async updateBoxValues(): Promise<string | undefined> {
-		let values: any = {};
-		for (let env of this.boxEnvs!) {
-			if (this.includedTimes.has(env['time'])) {
-				values[`(${env['lineno']},${env['time']})`] = env;
+	private async updateBoxValues(content?: any[]): Promise<string | undefined> {
+		if (!content) {
+			let values: any = {};
+			for (let env of this.boxEnvs!) {
+				if (this.includedTimes.has(env['time'])) {
+					values[`(${env['lineno']},${env['time']})`] = env;
+				}
 			}
+
+			let c = utils.runProgram(this.controller.getProgram(), values);
+			let errorMsg: string = '';
+			c.onStderr((msg) => {
+				errorMsg += msg;
+			});
+
+			const results: any = await c.toPromise();
+			const result = results[1];
+
+			let parsedResult = JSON.parse(result);
+			let returnCode = parsedResult[0];
+
+			if (errorMsg && returnCode !== 0) {
+				// Extract the error message
+				const errorLines = errorMsg.split(/\n/).filter((s) => s);
+				const message = errorLines[errorLines.length - 1];
+				return message;
+			}
+
+			this.lastRunResults = parsedResult;
+			content = parsedResult;
 		}
 
-		let c = utils.runProgram(this.controller.getProgram(), values);
-		let errorMsg: string = '';
-		c.onStderr((msg) => {
-			errorMsg += msg;
-		});
 
-		const results: any = await c.toPromise();
-		const result = results[1];
-
-		let parsedResult = JSON.parse(result);
-		let returnCode = parsedResult[0];
-
-		if (errorMsg && returnCode !== 0) {
-			// Extract the error message
-			const errorLines = errorMsg.split(/\n/).filter((s) => s);
-			const message = errorLines[errorLines.length - 1];
-			return message;
-		}
-
-		this.box?.updateContent(parsedResult[2]);
+		this.box?.updateContent(content![2]);
 		this.boxEnvs = this.box?.getEnvs();
 		this.setupTableCellContents();
 

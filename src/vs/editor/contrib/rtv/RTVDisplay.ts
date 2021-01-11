@@ -43,11 +43,12 @@ import {
 	widgetShadow
 } from 'vs/platform/theme/common/colorRegistry';
 import { IIdentifiedSingleEditOperation, IModelDecorationOptions, ITextModel } from 'vs/editor/common/model';
-import { Process, IRTVController, IRTVLogger, ViewMode, RowColMode, IRTVDisplayBox } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { Process, IRTVController, IRTVLogger, ViewMode, RowColMode, IRTVDisplayBox, BoxUpdateEvent } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
 import { Button } from 'vs/base/browser/ui/button/button';
 import { attachButtonStyler } from 'vs/platform/theme/common/styler';
 import { RTVSynth } from './RTVSynth';
+import { Emitter, Event } from 'vs/base/common/event';
 
 function indent(s: string): number {
 	return s.length - s.trimLeft().length;
@@ -1637,14 +1638,16 @@ function visibilityCursorAndReturn(b: RTVDisplayBox, cursorLineNumber: number) {
 export class RTVController implements IRTVController {
 	public envs: { [k: string]: any[]; } = {};
 	public writes: { [k: string]: string[]; } = {};
-	private _boxes: RTVDisplayBox[] = [];
-	private _maxPixelCol = 0;
-	private _prevModel: string[] = [];
 	public changedLinesWhenOutOfDate: Set<number> | null = null;
 	public _configBox: HTMLDivElement | null = null;
 	public tableCellsByLoop: MapLoopsToCells = {};
 	public logger: IRTVLogger;
 	public pythonProcess?: Process = undefined;
+	public runProgramDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
+	private _eventEmitter: Emitter<BoxUpdateEvent> = new Emitter<BoxUpdateEvent>();
+	private _boxes: RTVDisplayBox[] = [];
+	private _maxPixelCol = 0;
+	private _prevModel: string[] = [];
 	private _config: ConfigurationServiceCache;
 	private _makeNewBoxesVisible: boolean = true;
 	private _loopFocusController: LoopFocusController | null = null;
@@ -1653,11 +1656,14 @@ export class RTVController implements IRTVController {
 	private _peekCounter: number = 0;
 	private _peekTimer: ReturnType<typeof setTimeout> | null = null;
 	private _globalDeltaVarSet: DeltaVarSet = new DeltaVarSet();
-	private _runProgramDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 	private _showErrorDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 	private _outputBox: RTVOutputDisplayBox| null = null;
 	private _runButton: RTVRunButton | null = null;
 	private _synthesis: RTVSynth;
+
+	get onUpdateEvent(): Event<BoxUpdateEvent> {
+		return this._eventEmitter.event;
+	}
 
 	public static readonly ID = 'editor.contrib.rtv';
 
@@ -2647,11 +2653,14 @@ export class RTVController implements IRTVController {
 
 		try {
 			// Just delay
-			await this._runProgramDelay.run(delay, () => {});
+			await this.runProgramDelay.run(delay, () => {});
 		} catch (_err) {
 			// The timer was cancelled. Just return.
+			this._eventEmitter.fire(new BoxUpdateEvent(false, true, false));
 			return;
 		}
+
+		this._eventEmitter.fire(new BoxUpdateEvent(true, false, false));
 
 		this.hideOutputBox();
 		const program = this.getProgram();
@@ -2712,6 +2721,8 @@ export class RTVController implements IRTVController {
 		// Wait for the layout to finish
 		await this.updateContentAndLayout();
 		this.getOutputBox().setOutAndErrMsg(outputMsg, errorMsg);
+
+		this._eventEmitter.fire(new BoxUpdateEvent(false, false, true));
 
 		return parsedResult;
 	}
