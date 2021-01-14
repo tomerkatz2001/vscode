@@ -249,7 +249,6 @@ class RTVLine {
 }
 
 class TableElement {
-	public readonly nonEmpty: boolean;
 	constructor(
 		public content: string,
 		public loopID: string,
@@ -257,9 +256,7 @@ class TableElement {
 		public controllingLineNumber: number,
 		public vname?: string,
 		public env?: any
-	) {
-		this.nonEmpty = content !== '';
-	}
+	) {}
 }
 
 type MapLoopsToCells = { [k: string]: HTMLTableDataCellElement[]; };
@@ -777,30 +774,6 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		return envs2;
 	}
 
-	/* private adjustToNextTimeStep(envs: any[]): any[] {
-		if (this.isBreakLine()) {
-			return envs;
-		}
-		let envs2: any[] = [];
-		let isLoop = this.isLoopLine();
-		let currIndent = this.indentAtLine(this.lineNumber);
-		envs.forEach((env) => {
-			if (env.begin_loop !== undefined) {
-				envs2.push(env);
-			} else if (env.end_loop !== undefined) {
-				envs2.push(env);
-			} else if (env.next_lineno !== undefined) {
-				if (!isLoop || this.indentAtLine(env.next_lineno + 1) > currIndent) {
-					let nextEnv = this._controller.getEnvAtNextTimeStep(env);
-					if (nextEnv !== null) {
-						envs2.push(nextEnv);
-					}
-				}
-			}
-		});
-		return envs2;
-	} */
-
 	private filterLoops(envs: any[]): any[] {
 		if (this._controller.loopFocusController === null) {
 			return envs;
@@ -892,14 +865,6 @@ class RTVDisplayBox implements IRTVDisplayBox {
 				// Get the cell
 				let cell = this.getCell(rowIdx - 1, colIdx - 1)!;
 				this.addCellContent(cell, elmt, renderer);
-
-				// TODO (How) Do we need to do this?
-				// if (elmt.iter !== '') {
-				// 	if (tableCellsByLoop[elmt.iter] === undefined) {
-				// 		tableCellsByLoop[elmt.iter] = [];
-				// 	}
-				// 	tableCellsByLoop[elmt.iter].push(newCell);
-				// }
 			}
 		}
 	}
@@ -914,14 +879,6 @@ class RTVDisplayBox implements IRTVDisplayBox {
 				// Get the cell
 				let cell = this.getCell(rowIdx - 1, colIdx - 1)!;
 				this.addCellContent(cell, elmt, renderer);
-
-				// TODO (How) Do we need to do this?
-				// if (elmt.iter !== '') {
-				// 	if (tableCellsByLoop[elmt.iter] === undefined) {
-				// 		tableCellsByLoop[elmt.iter] = [];
-				// 	}
-				// 	tableCellsByLoop[elmt.iter].push(newCell);
-				// }
 			});
 		});
 	}
