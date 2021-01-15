@@ -11,7 +11,8 @@ import { RunOnceScheduler } from 'vs/base/common/async';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import * as dom from 'vs/base/browser/dom';
 import { IDisposable } from 'vs/base/common/lifecycle';
-import { IHoverService, IHoverOptions } from 'vs/workbench/contrib/hover/browser/hover';
+import { IHoverService, IHoverOptions } from 'vs/workbench/services/hover/browser/hover';
+import { ThemeIcon } from 'vs/platform/theme/common/themeService';
 
 export class EnvironmentVariableInfoWidget extends Widget implements ITerminalWidget {
 	readonly id = 'env-var-info';
@@ -34,7 +35,7 @@ export class EnvironmentVariableInfoWidget extends Widget implements ITerminalWi
 	attach(container: HTMLElement): void {
 		this._container = container;
 		this._domNode = document.createElement('div');
-		this._domNode.classList.add('terminal-env-var-info', 'codicon', `codicon-${this._info.getIcon()}`);
+		this._domNode.classList.add('terminal-env-var-info', ...ThemeIcon.asClassNameArray(this._info.getIcon()));
 		if (this.requiresAction) {
 			this._domNode.classList.add('requires-action');
 		}

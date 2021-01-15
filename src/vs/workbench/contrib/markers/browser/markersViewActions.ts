@@ -5,17 +5,17 @@
 
 import { Delayer } from 'vs/base/common/async';
 import * as DOM from 'vs/base/browser/dom';
-import { Action, IAction, IActionRunner } from 'vs/base/common/actions';
+import { Action, IAction, IActionRunner, Separator } from 'vs/base/common/actions';
 import { HistoryInputBox } from 'vs/base/browser/ui/inputbox/inputBox';
 import { KeyCode } from 'vs/base/common/keyCodes';
 import { StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { IContextViewService, IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import Messages from 'vs/workbench/contrib/markers/browser/messages';
 import Constants from 'vs/workbench/contrib/markers/browser/constants';
-import { IThemeService, registerThemingParticipant, ICssStyleCollector, IColorTheme } from 'vs/platform/theme/common/themeService';
+import { IThemeService, registerThemingParticipant, ICssStyleCollector, IColorTheme, ThemeIcon } from 'vs/platform/theme/common/themeService';
 import { attachInputBoxStyler, attachStylerCallback } from 'vs/platform/theme/common/styler';
 import { toDisposable, Disposable } from 'vs/base/common/lifecycle';
-import { BaseActionViewItem, ActionViewItem, ActionBar, Separator } from 'vs/base/browser/ui/actionbar/actionbar';
+import { ActionBar } from 'vs/base/browser/ui/actionbar/actionbar';
 import { badgeBackground, badgeForeground, contrastBorder, inputActiveOptionBorder, inputActiveOptionBackground, inputActiveOptionForeground } from 'vs/platform/theme/common/colorRegistry';
 import { localize } from 'vs/nls';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
@@ -23,10 +23,12 @@ import { ContextScopedHistoryInputBox } from 'vs/platform/browser/contextScopedH
 import { Marker } from 'vs/workbench/contrib/markers/browser/markersModel';
 import { IContextKey, IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 import { Event, Emitter } from 'vs/base/common/event';
-import { DropdownMenuActionViewItem } from 'vs/base/browser/ui/dropdown/dropdown';
 import { AnchorAlignment } from 'vs/base/browser/ui/contextview/contextview';
 import { IViewsService } from 'vs/workbench/common/views';
 import { Codicon } from 'vs/base/common/codicons';
+import { BaseActionViewItem, ActionViewItem } from 'vs/base/browser/ui/actionbar/actionViewItems';
+import { DropdownMenuActionViewItem } from 'vs/base/browser/ui/dropdown/dropdownActionViewItem';
+import { registerIcon } from 'vs/platform/theme/common/iconRegistry';
 
 export class ShowProblemsPanelAction extends Action {
 
@@ -179,11 +181,13 @@ class FiltersDropdownMenuActionViewItem extends DropdownMenuActionViewItem {
 		super(action,
 			{ getActions: () => this.getActions() },
 			contextMenuService,
-			action => undefined,
-			actionRunner!,
-			undefined,
-			action.class,
-			() => { return AnchorAlignment.RIGHT; });
+			{
+				actionRunner,
+				classNames: action.class,
+				anchorAlignmentProvider: () => AnchorAlignment.RIGHT,
+				menuAsChild: true
+			}
+		);
 	}
 
 	render(container: HTMLElement): void {
@@ -248,10 +252,13 @@ class FiltersDropdownMenuActionViewItem extends DropdownMenuActionViewItem {
 	}
 
 	updateChecked(): void {
-		DOM.toggleClass(this.element!, 'checked', this._action.checked);
+		this.element!.classList.toggle('checked', this._action.checked);
 	}
 
 }
+
+
+const filterIcon = registerIcon('markers-view-filter', Codicon.filter, localize('filterIcon', 'Icon for the filter configuration in the markers view.'));
 
 export class MarkersFilterActionViewItem extends BaseActionViewItem {
 
@@ -272,18 +279,18 @@ export class MarkersFilterActionViewItem extends BaseActionViewItem {
 	) {
 		super(null, action);
 		this.focusContextKey = Constants.MarkerViewFilterFocusContextKey.bindTo(contextKeyService);
-		this.delayedFilterUpdate = new Delayer<void>(200);
+		this.delayedFilterUpdate = new Delayer<void>(400);
 		this._register(toDisposable(() => this.delayedFilterUpdate.cancel()));
 		this._register(filterController.onDidFocusFilter(() => this.focus()));
 		this._register(filterController.onDidClearFilterText(() => this.clearFilterText()));
-		this.filtersAction = new Action('markersFiltersAction', Messages.MARKERS_PANEL_ACTION_TOOLTIP_MORE_FILTERS, 'markers-filters codicon-filter');
+		this.filtersAction = new Action('markersFiltersAction', Messages.MARKERS_PANEL_ACTION_TOOLTIP_MORE_FILTERS, 'markers-filters ' + ThemeIcon.asClassName(filterIcon));
 		this.filtersAction.checked = this.hasFiltersChanged();
 		this._register(filterController.filters.onDidChange(e => this.onDidFiltersChange(e)));
 	}
 
 	render(container: HTMLElement): void {
 		this.container = container;
-		DOM.addClass(this.container, 'markers-panel-action-filter-container');
+		this.container.classList.add('markers-panel-action-filter-container');
 
 		this.element = DOM.append(this.container, DOM.$(''));
 		this.element.className = this.class;
@@ -390,7 +397,7 @@ export class MarkersFilterActionViewItem extends BaseActionViewItem {
 	private updateBadge(): void {
 		if (this.filterBadge) {
 			const { total, filtered } = this.filterController.getFilterStats();
-			DOM.toggleClass(this.filterBadge, 'hidden', total === filtered || filtered === 0);
+			this.filterBadge.classList.toggle('hidden', total === filtered || total === 0);
 			this.filterBadge.textContent = localize('showing filtered problems', "Showing {0} of {1}", filtered, total);
 			this.adjustInputBox();
 		}
@@ -398,7 +405,7 @@ export class MarkersFilterActionViewItem extends BaseActionViewItem {
 
 	private adjustInputBox(): void {
 		if (this.element && this.filterInputBox && this.filterBadge) {
-			this.filterInputBox.inputElement.style.paddingRight = DOM.hasClass(this.element, 'small') || DOM.hasClass(this.filterBadge, 'hidden') ? '25px' : '150px';
+			this.filterInputBox.inputElement.style.paddingRight = this.element.classList.contains('small') || this.filterBadge.classList.contains('hidden') ? '25px' : '150px';
 		}
 	}
 
@@ -428,7 +435,7 @@ export class MarkersFilterActionViewItem extends BaseActionViewItem {
 	protected updateClass(): void {
 		if (this.element && this.container) {
 			this.element.className = this.class;
-			DOM.toggleClass(this.container, 'grow', DOM.hasClass(this.element, 'grow'));
+			this.container.classList.toggle('grow', this.element.classList.contains('grow'));
 			this.adjustInputBox();
 		}
 	}

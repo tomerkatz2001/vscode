@@ -7,11 +7,11 @@ import 'vs/css!./media/markers';
 
 import { URI } from 'vs/base/common/uri';
 import * as dom from 'vs/base/browser/dom';
-import { IAction, IActionViewItem, Action } from 'vs/base/common/actions';
+import { IAction, IActionViewItem, Action, Separator } from 'vs/base/common/actions';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IEditorService, SIDE_GROUP, ACTIVE_GROUP } from 'vs/workbench/services/editor/common/editorService';
 import Constants from 'vs/workbench/contrib/markers/browser/constants';
-import { Marker, ResourceMarkers, RelatedInformation, MarkerChangesEvent } from 'vs/workbench/contrib/markers/browser/markersModel';
+import { Marker, ResourceMarkers, RelatedInformation, MarkerChangesEvent, MarkersModel, compareMarkersByUri } from 'vs/workbench/contrib/markers/browser/markersModel';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { MarkersFilterActionViewItem, MarkersFilters, IMarkersFiltersChangeEvent, IMarkerFilterController } from 'vs/workbench/contrib/markers/browser/markersViewActions';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
@@ -19,8 +19,7 @@ import Messages from 'vs/workbench/contrib/markers/browser/messages';
 import { RangeHighlightDecorations } from 'vs/workbench/browser/parts/editor/rangeDecorations';
 import { IThemeService, registerThemingParticipant, IColorTheme, ICssStyleCollector } from 'vs/platform/theme/common/themeService';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
-import { IMarkersWorkbenchService } from 'vs/workbench/contrib/markers/browser/markers';
-import { IStorageService, StorageScope } from 'vs/platform/storage/common/storage';
+import { IStorageService, StorageScope, StorageTarget } from 'vs/platform/storage/common/storage';
 import { localize } from 'vs/nls';
 import { IContextKey, IContextKeyService, ContextKeyEqualsExpr, ContextKeyExpr } from 'vs/platform/contextkey/common/contextkey';
 import { Iterable } from 'vs/base/common/iterator';
@@ -33,13 +32,13 @@ import { deepClone } from 'vs/base/common/objects';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
 import { FilterData, Filter, VirtualDelegate, ResourceMarkersRenderer, MarkerRenderer, RelatedInformationRenderer, TreeElement, MarkersTreeAccessibilityProvider, MarkersViewModel, ResourceDragAndDrop } from 'vs/workbench/contrib/markers/browser/markersTreeViewer';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
-import { Separator, ActionViewItem, ActionBar } from 'vs/base/browser/ui/actionbar/actionbar';
+import { ActionBar } from 'vs/base/browser/ui/actionbar/actionbar';
 import { IMenuService, MenuId, registerAction2, Action2 } from 'vs/platform/actions/common/actions';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { StandardKeyboardEvent, IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { domEvent } from 'vs/base/browser/event';
 import { ResourceLabels } from 'vs/workbench/browser/labels';
-import { IMarker } from 'vs/platform/markers/common/markers';
+import { IMarker, IMarkerService, MarkerSeverity } from 'vs/platform/markers/common/markers';
 import { withUndefinedAsNull } from 'vs/base/common/types';
 import { MementoObject, Memento } from 'vs/workbench/common/memento';
 import { IListVirtualDelegate } from 'vs/base/browser/ui/list/list';
@@ -50,6 +49,12 @@ import { ViewPane, IViewPaneOptions } from 'vs/workbench/browser/parts/views/vie
 import { IViewDescriptorService } from 'vs/workbench/common/views';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
 import { Codicon } from 'vs/base/common/codicons';
+import { ActionViewItem } from 'vs/base/browser/ui/actionbar/actionViewItems';
+import { IUriIdentityService } from 'vs/workbench/services/uriIdentity/common/uriIdentity';
+import { DisposableStore, IDisposable, toDisposable } from 'vs/base/common/lifecycle';
+import { groupBy } from 'vs/base/common/arrays';
+import { ResourceMap } from 'vs/base/common/map';
+import { EditorResourceAccessor, SideBySideEditor } from 'vs/workbench/common/editor';
 
 function createResourceMarkersIterator(resourceMarkers: ResourceMarkers): Iterable<ITreeElement<TreeElement>> {
 	return Iterable.map(resourceMarkers.markers, m => {
@@ -66,7 +71,9 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 	private currentActiveResource: URI | null = null;
 
 	private readonly rangeHighlightDecorations: RangeHighlightDecorations;
+	private readonly markersModel: MarkersModel;
 	private readonly filter: Filter;
+	private readonly onVisibleDisposables = this._register(new DisposableStore());
 
 	private tree: MarkersTree | undefined;
 	private filterActionBar: ActionBar | undefined;
@@ -101,11 +108,12 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 		@IEditorService private readonly editorService: IEditorService,
 		@IConfigurationService configurationService: IConfigurationService,
 		@ITelemetryService telemetryService: ITelemetryService,
-		@IMarkersWorkbenchService private readonly markersWorkbenchService: IMarkersWorkbenchService,
+		@IMarkerService private readonly markerService: IMarkerService,
 		@IContextKeyService contextKeyService: IContextKeyService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
 		@IContextMenuService contextMenuService: IContextMenuService,
 		@IMenuService private readonly menuService: IMenuService,
+		@IUriIdentityService private readonly uriIdentityService: IUriIdentityService,
 		@IKeybindingService keybindingService: IKeybindingService,
 		@IStorageService storageService: IStorageService,
 		@IOpenerService openerService: IOpenerService,
@@ -113,17 +121,15 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, telemetryService);
 		this.smallLayoutContextKey = Constants.MarkersViewSmallLayoutContextKey.bindTo(this.contextKeyService);
-		this.panelState = new Memento(Constants.MARKERS_VIEW_STORAGE_ID, storageService).getMemento(StorageScope.WORKSPACE);
+		this.panelState = new Memento(Constants.MARKERS_VIEW_STORAGE_ID, storageService).getMemento(StorageScope.WORKSPACE, StorageTarget.USER);
 
+		this.markersModel = this._register(instantiationService.createInstance(MarkersModel));
 		this.markersViewModel = this._register(instantiationService.createInstance(MarkersViewModel, this.panelState['multiline']));
-		for (const resourceMarker of this.markersWorkbenchService.markersModel.resourceMarkers) {
-			resourceMarker.markers.forEach(marker => this.markersViewModel.add(marker));
-		}
-		this._register(this.markersViewModel.onDidChange(marker => this.onDidChangeViewState(marker)));
+		this._register(this.onDidChangeVisibility(visible => this.onDidChangeMarkersViewVisibility(visible)));
 
 		this.setCurrentActiveEditor();
 
-		this.filter = new Filter(new FilterOptions());
+		this.filter = new Filter(FilterOptions.EMPTY(uriIdentityService));
 		this.rangeHighlightDecorations = this._register(this.instantiationService.createInstance(RangeHighlightDecorations));
 
 		// actions
@@ -143,7 +149,7 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 	public renderBody(parent: HTMLElement): void {
 		super.renderBody(parent);
 
-		dom.addClass(parent, 'markers-panel');
+		parent.classList.add('markers-panel');
 
 		const container = dom.append(parent, dom.$('.markers-panel-container'));
 
@@ -151,17 +157,8 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 		this.createArialLabelElement(container);
 		this.createMessageBox(container);
 		this.createTree(container);
-		this.createListeners();
 
 		this.updateFilter();
-
-		this._register(this.onDidChangeVisibility(visible => {
-			if (visible) {
-				this.refreshPanel();
-			} else {
-				this.rangeHighlightDecorations.removeHighlightRange();
-			}
-		}));
 
 		this.filterActionBar!.push(new Action(`workbench.actions.treeView.${this.id}.filter`));
 		this.renderContent();
@@ -177,7 +174,7 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 		this.smallLayout = width < 600 && height > 100;
 		if (this.smallLayout !== wasSmallLayout) {
 			if (this.filterActionBar) {
-				dom.toggleClass(this.filterActionBar.getContainer(), 'hide', !this.smallLayout);
+				this.filterActionBar.getContainer().classList.toggle('hide', !this.smallLayout);
 			}
 		}
 		const contentHeight = this.smallLayout ? height - 44 : height;
@@ -224,7 +221,7 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 						group: 'navigation',
 						order: Number.MAX_SAFE_INTEGER,
 					},
-					icon: { id: 'codicon/collapse-all' }
+					icon: Codicon.collapseAll
 				});
 			}
 			async run(): Promise<void> {
@@ -331,11 +328,15 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 	}
 
 	private setTreeSelection(): void {
-		if (this.tree && this.tree.getSelection().length === 0) {
-			const firstMarker = this.markersWorkbenchService.markersModel.resourceMarkers[0].markers[0];
-			if (firstMarker) {
-				this.tree.setFocus([firstMarker]);
-				this.tree.setSelection([firstMarker]);
+		if (this.tree && this.tree.isVisible() && this.tree.getSelection().length === 0) {
+			const firstVisibleElement = this.tree.firstVisibleElement;
+			const marker = firstVisibleElement ?
+				firstVisibleElement instanceof ResourceMarkers ? firstVisibleElement.markers[0] :
+					firstVisibleElement instanceof Marker ? firstVisibleElement : undefined
+				: undefined;
+			if (marker) {
+				this.tree.setFocus([marker]);
+				this.tree.setSelection([marker]);
 			}
 		}
 	}
@@ -351,20 +352,20 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 		let resourceMarkers: ResourceMarkers[] = [];
 		if (this.filters.activeFile) {
 			if (this.currentActiveResource) {
-				const activeResourceMarkers = this.markersWorkbenchService.markersModel.getResourceMarkers(this.currentActiveResource);
+				const activeResourceMarkers = this.markersModel.getResourceMarkers(this.currentActiveResource);
 				if (activeResourceMarkers) {
 					resourceMarkers = [activeResourceMarkers];
 				}
 			}
 		} else {
-			resourceMarkers = this.markersWorkbenchService.markersModel.resourceMarkers;
+			resourceMarkers = this.markersModel.resourceMarkers;
 		}
 		this.tree.setChildren(null, Iterable.map(resourceMarkers, m => ({ element: m, children: createResourceMarkersIterator(m) })));
 	}
 
 	private updateFilter() {
 		this.cachedFilterStats = undefined;
-		this.filter.options = new FilterOptions(this.filters.filterText, this.getFilesExcludeExpressions(), this.filters.showWarnings, this.filters.showErrors, this.filters.showInfos);
+		this.filter.options = new FilterOptions(this.filters.filterText, this.getFilesExcludeExpressions(), this.filters.showWarnings, this.filters.showErrors, this.filters.showInfos, this.uriIdentityService);
 		if (this.tree) {
 			this.tree.refilter();
 		}
@@ -394,8 +395,8 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 
 	private createFilterActionBar(parent: HTMLElement): void {
 		this.filterActionBar = this._register(new ActionBar(parent, { actionViewItemProvider: action => this.getActionViewItem(action) }));
-		dom.addClass(this.filterActionBar.getContainer(), 'markers-panel-filter-container');
-		dom.toggleClass(this.filterActionBar.getContainer(), 'hide', !this.smallLayout);
+		this.filterActionBar.getContainer().classList.add('markers-panel-filter-container');
+		this.filterActionBar.getContainer().classList.toggle('hide', !this.smallLayout);
 	}
 
 	private createMessageBox(parent: HTMLElement): void {
@@ -496,6 +497,8 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 				}
 			}
 		}));
+
+		this._register(this.tree.onDidChangeSelection(() => this.onSelected()));
 	}
 
 	private collapseAll(): void {
@@ -508,18 +511,45 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 		}
 	}
 
-	private createListeners(): void {
-		this._register(Event.any<MarkerChangesEvent | void>(this.markersWorkbenchService.markersModel.onDidChange, this.editorService.onDidActiveEditorChange)(changes => {
+	private onDidChangeMarkersViewVisibility(visible: boolean): void {
+		this.onVisibleDisposables.clear();
+		if (visible) {
+			for (const disposable of this.reInitialize()) {
+				this.onVisibleDisposables.add(disposable);
+			}
+			this.refreshPanel();
+		}
+	}
+
+	private reInitialize(): IDisposable[] {
+		const disposables = [];
+
+		// Markers Model
+		const readMarkers = (resource?: URI) => this.markerService.read({ resource, severities: MarkerSeverity.Error | MarkerSeverity.Warning | MarkerSeverity.Info });
+		this.markersModel.setResourceMarkers(groupBy(readMarkers(), compareMarkersByUri).map(group => [group[0].resource, group]));
+		disposables.push(Event.debounce<readonly URI[], ResourceMap<URI>>(this.markerService.onMarkerChanged, (resourcesMap, resources) => {
+			resourcesMap = resourcesMap || new ResourceMap<URI>();
+			resources.forEach(resource => resourcesMap!.set(resource, resource));
+			return resourcesMap;
+		}, 64)(resourcesMap => {
+			this.markersModel.setResourceMarkers([...resourcesMap.values()].map(resource => [resource, readMarkers(resource)]));
+		}));
+		disposables.push(Event.any<MarkerChangesEvent | void>(this.markersModel.onDidChange, this.editorService.onDidActiveEditorChange)(changes => {
 			if (changes) {
 				this.onDidChangeModel(changes);
 			} else {
 				this.onActiveEditorChanged();
 			}
 		}));
-		if (this.tree) {
-			this._register(this.tree.onDidChangeSelection(() => this.onSelected()));
-		}
-		this._register(this.filters.onDidChange((event: IMarkersFiltersChangeEvent) => {
+		disposables.push(toDisposable(() => this.markersModel.reset()));
+
+		// Markers View Model
+		this.markersModel.resourceMarkers.forEach(resourceMarker => resourceMarker.markers.forEach(marker => this.markersViewModel.add(marker)));
+		disposables.push(this.markersViewModel.onDidChange(marker => this.onDidChangeViewState(marker)));
+		disposables.push(toDisposable(() => this.markersModel.resourceMarkers.forEach(resourceMarker => this.markersViewModel.remove(resourceMarker.resource))));
+
+		// Markers Filters
+		disposables.push(this.filters.onDidChange((event: IMarkersFiltersChangeEvent) => {
 			this.reportFilteringUsed();
 			if (event.activeFile) {
 				this.refreshPanel();
@@ -527,14 +557,19 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 				this.updateFilter();
 			}
 		}));
+		disposables.push(toDisposable(() => { this.cachedFilterStats = undefined; }));
+
+		disposables.push(toDisposable(() => this.rangeHighlightDecorations.removeHighlightRange()));
+
+		return disposables;
 	}
 
-	private onDidChangeModel(change: MarkerChangesEvent) {
+	private onDidChangeModel(change: MarkerChangesEvent): void {
 		const resourceMarkers = [...change.added, ...change.removed, ...change.updated];
 		const resources: URI[] = [];
 		for (const { resource } of resourceMarkers) {
 			this.markersViewModel.remove(resource);
-			const resourceMarkers = this.markersWorkbenchService.markersModel.getResourceMarkers(resource);
+			const resourceMarkers = this.markersModel.getResourceMarkers(resource);
 			if (resourceMarkers) {
 				for (const marker of resourceMarkers.markers) {
 					this.markersViewModel.add(marker);
@@ -573,7 +608,7 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 
 	private setCurrentActiveEditor(): void {
 		const activeEditor = this.editorService.activeEditor;
-		this.currentActiveResource = activeEditor ? withUndefinedAsNull(activeEditor.resource) : null;
+		this.currentActiveResource = activeEditor ? withUndefinedAsNull(EditorResourceAccessor.getOriginalUri(activeEditor, { supportSideBySide: SideBySideEditor.PRIMARY })) : null;
 	}
 
 	private onSelected(): void {
@@ -630,7 +665,7 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 	}
 
 	private renderFilterMessageForActiveFile(container: HTMLElement): void {
-		if (this.currentActiveResource && this.markersWorkbenchService.markersModel.getResourceMarkers(this.currentActiveResource)) {
+		if (this.currentActiveResource && this.markersModel.getResourceMarkers(this.currentActiveResource)) {
 			this.renderFilteredByFilterMessage(container);
 		} else {
 			this.renderNoProblemsMessageForActiveFile(container);
@@ -691,18 +726,20 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 		if (typeof autoReveal === 'boolean' && autoReveal) {
 			let currentActiveResource = this.getResourceForCurrentActiveResource();
 			if (currentActiveResource) {
-				if (this.tree.hasElement(currentActiveResource) && !this.tree.isCollapsed(currentActiveResource) && this.hasSelectedMarkerFor(currentActiveResource)) {
-					this.tree.reveal(this.tree.getSelection()[0], this.lastSelectedRelativeTop);
-					if (focus) {
-						this.tree.setFocus(this.tree.getSelection());
-					}
-				} else {
-					this.tree.expand(currentActiveResource);
-					this.tree.reveal(currentActiveResource, 0);
+				if (this.tree.hasElement(currentActiveResource)) {
+					if (!this.tree.isCollapsed(currentActiveResource) && this.hasSelectedMarkerFor(currentActiveResource)) {
+						this.tree.reveal(this.tree.getSelection()[0], this.lastSelectedRelativeTop);
+						if (focus) {
+							this.tree.setFocus(this.tree.getSelection());
+						}
+					} else {
+						this.tree.expand(currentActiveResource);
+						this.tree.reveal(currentActiveResource, 0);
 
-					if (focus) {
-						this.tree.setFocus([currentActiveResource]);
-						this.tree.setSelection([currentActiveResource]);
+						if (focus) {
+							this.tree.setFocus([currentActiveResource]);
+							this.tree.setSelection([currentActiveResource]);
+						}
 					}
 				}
 			} else if (focus) {
@@ -713,7 +750,7 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 	}
 
 	private getResourceForCurrentActiveResource(): ResourceMarkers | null {
-		return this.currentActiveResource ? this.markersWorkbenchService.markersModel.getResourceMarkers(this.currentActiveResource) : null;
+		return this.currentActiveResource ? this.markersModel.getResourceMarkers(this.currentActiveResource) : null;
 	}
 
 	private hasSelectedMarkerFor(resource: ResourceMarkers): boolean {
@@ -841,7 +878,7 @@ export class MarkersView extends ViewPane implements IMarkerFilterController {
 			}
 		}
 
-		return { total: this.markersWorkbenchService.markersModel.total, filtered };
+		return { total: this.markersModel.total, filtered };
 	}
 
 	private getTelemetryData({ source, code }: IMarker): any {
@@ -911,7 +948,11 @@ class MarkersTree extends WorkbenchObjectTree<TreeElement, FilterData> {
 	}
 
 	toggleVisibility(hide: boolean): void {
-		dom.toggleClass(this.container, 'hidden', hide);
+		this.container.classList.toggle('hidden', hide);
+	}
+
+	isVisible(): boolean {
+		return !this.container.classList.contains('hidden');
 	}
 
 }

@@ -5,7 +5,6 @@
 
 import 'vs/css!./media/explorerviewlet';
 import { localize } from 'vs/nls';
-import * as DOM from 'vs/base/browser/dom';
 import { VIEWLET_ID, ExplorerViewletVisibleContext, IFilesConfiguration, OpenEditorsVisibleContext, VIEW_ID } from 'vs/workbench/contrib/files/common/files';
 import { IViewletViewOptions } from 'vs/workbench/browser/parts/views/viewsViewlet';
 import { IConfigurationService, IConfigurationChangeEvent } from 'vs/platform/configuration/common/configuration';
@@ -20,7 +19,7 @@ import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { ServiceCollection } from 'vs/platform/instantiation/common/serviceCollection';
 import { IContextKeyService, IContextKey, ContextKeyExpr } from 'vs/platform/contextkey/common/contextkey';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
-import { IViewsRegistry, IViewDescriptor, Extensions, ViewContainer, IViewContainersRegistry, ViewContainerLocation, IViewDescriptorService } from 'vs/workbench/common/views';
+import { IViewsRegistry, IViewDescriptor, Extensions, ViewContainer, IViewContainersRegistry, ViewContainerLocation, IViewDescriptorService, ViewContentGroups } from 'vs/workbench/common/views';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { IWorkbenchContribution } from 'vs/workbench/common/contributions';
@@ -39,6 +38,9 @@ import { IsWebContext } from 'vs/platform/contextkey/common/contextkeys';
 import { AddRootFolderAction, OpenFolderAction, OpenFileFolderAction } from 'vs/workbench/browser/actions/workspaceActions';
 import { isMacintosh } from 'vs/base/common/platform';
 import { Codicon } from 'vs/base/common/codicons';
+import { registerIcon } from 'vs/platform/theme/common/iconRegistry';
+
+const explorerViewIcon = registerIcon('explorer-view-icon', Codicon.files, localize('explorerViewIcon', 'View icon of the explorer view.'));
 
 export class ExplorerViewletViewsContribution extends Disposable implements IWorkbenchContribution {
 
@@ -109,7 +111,7 @@ export class ExplorerViewletViewsContribution extends Disposable implements IWor
 			id: OpenEditorsView.ID,
 			name: OpenEditorsView.NAME,
 			ctorDescriptor: new SyncDescriptor(OpenEditorsView),
-			containerIcon: 'codicon-files',
+			containerIcon: explorerViewIcon,
 			order: 0,
 			when: OpenEditorsVisibleContext,
 			canToggleVisibility: true,
@@ -126,7 +128,7 @@ export class ExplorerViewletViewsContribution extends Disposable implements IWor
 		return {
 			id: EmptyView.ID,
 			name: EmptyView.NAME,
-			containerIcon: Codicon.files.classNames,
+			containerIcon: explorerViewIcon,
 			ctorDescriptor: new SyncDescriptor(EmptyView),
 			order: 1,
 			canToggleVisibility: true,
@@ -140,7 +142,7 @@ export class ExplorerViewletViewsContribution extends Disposable implements IWor
 		return {
 			id: VIEW_ID,
 			name: localize('folders', "Folders"),
-			containerIcon: Codicon.files.classNames,
+			containerIcon: explorerViewIcon,
 			ctorDescriptor: new SyncDescriptor(ExplorerView),
 			order: 1,
 			canToggleVisibility: false,
@@ -189,7 +191,7 @@ export class ExplorerViewPaneContainer extends ViewPaneContainer {
 
 	create(parent: HTMLElement): void {
 		super.create(parent);
-		DOM.addClass(parent, 'explorer-viewlet');
+		parent.classList.add('explorer-viewlet');
 	}
 
 	protected createView(viewDescriptor: IViewDescriptor, options: IViewletViewOptions): ViewPane {
@@ -247,6 +249,9 @@ export class ExplorerViewPaneContainer extends ViewPaneContainer {
 
 	focus(): void {
 		const explorerView = this.getView(VIEW_ID);
+		if (explorerView && this.panes.every(p => !p.isExpanded())) {
+			explorerView.setExpanded(true);
+		}
 		if (explorerView?.isExpanded()) {
 			explorerView.focus();
 		} else {
@@ -265,7 +270,7 @@ export const VIEW_CONTAINER: ViewContainer = viewContainerRegistry.registerViewC
 	name: localize('explore', "Explorer"),
 	ctorDescriptor: new SyncDescriptor(ExplorerViewPaneContainer),
 	storageId: 'workbench.explorer.views.state',
-	icon: Codicon.files.classNames,
+	icon: explorerViewIcon,
 	alwaysUseContainerInfo: true,
 	order: 0
 }, ViewContainerLocation.Sidebar, true);
@@ -274,18 +279,24 @@ const viewsRegistry = Registry.as<IViewsRegistry>(Extensions.ViewsRegistry);
 viewsRegistry.registerViewWelcomeContent(EmptyView.ID, {
 	content: localize({ key: 'noWorkspaceHelp', comment: ['Please do not translate the word "commmand", it is part of our internal syntax which must not change'] },
 		"You have not yet added a folder to the workspace.\n[Add Folder](command:{0})", AddRootFolderAction.ID),
-	when: WorkbenchStateContext.isEqualTo('workspace')
+	when: WorkbenchStateContext.isEqualTo('workspace'),
+	group: ViewContentGroups.Open,
+	order: 1
 });
 
 const commandId = isMacintosh ? OpenFileFolderAction.ID : OpenFolderAction.ID;
 viewsRegistry.registerViewWelcomeContent(EmptyView.ID, {
 	content: localize({ key: 'remoteNoFolderHelp', comment: ['Please do not translate the word "commmand", it is part of our internal syntax which must not change'] },
 		"Connected to remote.\n[Open Folder](command:{0})", commandId),
-	when: ContextKeyExpr.and(WorkbenchStateContext.notEqualsTo('workspace'), RemoteNameContext.notEqualsTo(''), IsWebContext.toNegated())
+	when: ContextKeyExpr.and(WorkbenchStateContext.notEqualsTo('workspace'), RemoteNameContext.notEqualsTo(''), IsWebContext.toNegated()),
+	group: ViewContentGroups.Open,
+	order: 1
 });
 
 viewsRegistry.registerViewWelcomeContent(EmptyView.ID, {
 	content: localize({ key: 'noFolderHelp', comment: ['Please do not translate the word "commmand", it is part of our internal syntax which must not change'] },
 		"You have not yet opened a folder.\n[Open Folder](command:{0})", commandId),
-	when: ContextKeyExpr.or(ContextKeyExpr.and(WorkbenchStateContext.notEqualsTo('workspace'), RemoteNameContext.isEqualTo('')), ContextKeyExpr.and(WorkbenchStateContext.notEqualsTo('workspace'), IsWebContext))
+	when: ContextKeyExpr.or(ContextKeyExpr.and(WorkbenchStateContext.notEqualsTo('workspace'), RemoteNameContext.isEqualTo('')), ContextKeyExpr.and(WorkbenchStateContext.notEqualsTo('workspace'), IsWebContext)),
+	group: ViewContentGroups.Open,
+	order: 1
 });

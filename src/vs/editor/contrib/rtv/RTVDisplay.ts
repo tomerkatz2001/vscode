@@ -19,7 +19,7 @@ import { IRange, Range } from 'vs/editor/common/core/range';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
 import { IModeService } from 'vs/editor/common/services/modeService';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
-import { MarkdownRenderer } from 'vs/editor/contrib/markdown/markdownRenderer';
+import { MarkdownRenderer } from 'vs/editor/browser/core/markdownRenderer';
 import { IPosition, Position } from 'vs/editor/common/core/position';
 import { MarkdownString } from 'vs/base/common/htmlContent';
 import { IConfigurationChangeEvent, IConfigurationService } from 'vs/platform/configuration/common/configuration';
@@ -27,9 +27,7 @@ import { Registry } from 'vs/platform/registry/common/platform';
 import { Extensions, IConfigurationNode, IConfigurationRegistry } from 'vs/platform/configuration/common/configurationRegistry';
 import { localize } from 'vs/nls';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
-import { Action, IAction } from 'vs/base/common/actions';
-import { Separator } from 'vs/base/browser/ui/actionbar/actionbar';
-import { ContextSubMenu } from 'vs/base/browser/contextmenu';
+import { Action, IAction, Separator, SubmenuAction} from 'vs/base/common/actions';
 import { IMouseWheelEvent } from 'vs/base/browser/mouseEvent';
 import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
@@ -55,7 +53,7 @@ function indent(s: string): number {
 }
 
 function isHtmlEscape(s: string): boolean {
-	return strings.startsWith(s, '```html\n') && strings.endsWith(s, '```');
+	return s.startsWith('```html\n') && s.endsWith('```');
 }
 
 function removeHtmlEscape(s: string): string {
@@ -92,9 +90,8 @@ function isSeedLine(str: string) {
 
 function isLoopStr(str: string) {
 	let trimmed = str.trim();
-	return strings.endsWith(trimmed, ':') &&
-		(strings.startsWith(trimmed, 'for') ||
-			strings.startsWith(trimmed, 'while'));
+	return trimmed.endsWith(':') &&
+		(trimmed.startsWith('for') || trimmed.startsWith('while'));
 }
 
 function strNumsToArray(s: string): number[] {
@@ -253,7 +250,6 @@ class RTVLine {
 }
 
 class TableElement {
-	public readonly nonEmpty: boolean;
 	constructor(
 		public content: string,
 		public loopID: string,
@@ -261,9 +257,7 @@ class TableElement {
 		public controllingLineNumber: number,
 		public vname?: string,
 		public env?: any
-	) {
-		this.nonEmpty = content !== '';
-	}
+	) {}
 }
 
 type MapLoopsToCells = { [k: string]: HTMLTableDataCellElement[]; };
@@ -300,6 +294,16 @@ class RTVOutputDisplayBox {
 		this._box.style.transitionDelay = '0s';
 		this._box.style.transitionTimingFunction = 'ease-in';
 
+		this._box.addEventListener('transitionend', (e: TransitionEvent) => {
+			if (e.propertyName !== 'opacity') {
+				return;
+			}
+
+			if (this._box.style.opacity === '0') {
+				this._box.style.display = 'none';
+			}
+		});
+
 		this._box.onmouseenter = (e) => {
 			this.onMouseEnter(e);
 		};
@@ -332,18 +336,17 @@ class RTVOutputDisplayBox {
 			throw new Error('Cannot find Monaco Editor');
 		}
 
+		this._box.style.display = 'inline-block';
 		this._box.style.opacity = '1';
-		this._box.style.display = '';
 		editor_div.appendChild(this._box);
-
 	}
 
 	public hide(): void {
-		this._box.style.display = 'none';
+		this._box.style.opacity = '0';
 	}
 
 	public isHidden() : boolean {
-		return this._box.style.display === 'none';
+		return this._box.style.opacity === '0';
 	}
 
 	private onMouseEnter(e: MouseEvent): void {
@@ -362,11 +365,11 @@ class RTVOutputDisplayBox {
 
 		function escapeHTML(unsafe: string) : string {
 			return unsafe
-				.replace(/&/g, "&amp;")
-				.replace(/</g, "&lt;")
-				.replace(/>/g, "&gt;")
-				.replace(/"/g, "&quot;")
-				.replace(/'/g, "&#039;");
+				.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;')
+				.replace(/"/g, '&quot;')
+				.replace(/'/g, '&#039;');
 		}
 
 		setTimeout(() => {
@@ -450,7 +453,8 @@ class RTVRunButton {
 	}
 
 	public isHidden() : boolean {
-		return this._box.style.display === 'none';
+		return this._box.style.display === 'none' ||
+			this._box.style.opacity === '0';
 	}
 
 	private onClick(): void {
@@ -503,6 +507,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		this._box.style.maxHeight = '500px';
 		this._box.style.zIndex = '1'; // Prevents it from covering the error dialog.
 		this._box.style.paddingLeft = '13px';
+		this._box.style.paddingRight = '13px';
 		this._box.className = 'monaco-hover';
 		this._box.id = 'rtv-display-box';
 
@@ -693,7 +698,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 					c.restoreAllBoxesToDefault();
 				}),
 				new Separator(),
-				new ContextSubMenu('Appearance of All Boxes', viewModeActions),
+				new SubmenuAction('id', 'Appearance of All Boxes', viewModeActions, ''),
 				new Separator(),
 				this.newAction('See All Loop Iterations', () => {
 					c.loopFocusController = null;
@@ -706,31 +711,31 @@ class RTVDisplayBox implements IRTVDisplayBox {
 
 	private isEmptyLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
-		return lineContent.trim().length === 0
+		return lineContent.trim().length === 0;
 	}
 
 	private isConditionalLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
-		return strings.endsWith(lineContent, ':') &&
-			(strings.startsWith(lineContent, 'if') ||
-				strings.startsWith(lineContent, 'else'));
+		return lineContent.endsWith(':') &&
+			(lineContent.startsWith('if') ||
+				lineContent.startsWith('else'));
 	}
 
 	private isLoopLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
-		return strings.endsWith(lineContent, ':') &&
-			(strings.startsWith(lineContent, 'for') ||
-				strings.startsWith(lineContent, 'while'));
+		return lineContent.endsWith(':') &&
+			(lineContent.startsWith('for') ||
+				lineContent.startsWith('while'));
 	}
 
 	public isBreakLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
-		return strings.startsWith(lineContent, 'break');
+		return lineContent.startsWith('break');
 	}
 
 	public isReturnLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
-		return strings.startsWith(lineContent, 'return');
+		return lineContent.startsWith('return');
 	}
 
 	private bringToLoopCount(envs: any[], active_loop_iters: number[], loopId: string, iterCount: number) {
@@ -770,30 +775,6 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		return envs2;
 	}
 
-	/* private adjustToNextTimeStep(envs: any[]): any[] {
-		if (this.isBreakLine()) {
-			return envs;
-		}
-		let envs2: any[] = [];
-		let isLoop = this.isLoopLine();
-		let currIndent = this.indentAtLine(this.lineNumber);
-		envs.forEach((env) => {
-			if (env.begin_loop !== undefined) {
-				envs2.push(env);
-			} else if (env.end_loop !== undefined) {
-				envs2.push(env);
-			} else if (env.next_lineno !== undefined) {
-				if (!isLoop || this.indentAtLine(env.next_lineno + 1) > currIndent) {
-					let nextEnv = this._controller.getEnvAtNextTimeStep(env);
-					if (nextEnv !== null) {
-						envs2.push(nextEnv);
-					}
-				}
-			}
-		});
-		return envs2;
-	} */
-
 	private filterLoops(envs: any[]): any[] {
 		if (this._controller.loopFocusController === null) {
 			return envs;
@@ -813,6 +794,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		cell.style.paddingRight = padding;
 		cell.style.paddingTop = '0';
 		cell.style.paddingBottom = '0';
+		cell.style.boxSizing = 'content-box';
 
 		cell.align = 'center';
 
@@ -884,14 +866,6 @@ class RTVDisplayBox implements IRTVDisplayBox {
 				// Get the cell
 				let cell = this.getCell(rowIdx - 1, colIdx - 1)!;
 				this.addCellContent(cell, elmt, renderer);
-
-				// TODO (How) Do we need to do this?
-				// if (elmt.iter !== '') {
-				// 	if (tableCellsByLoop[elmt.iter] === undefined) {
-				// 		tableCellsByLoop[elmt.iter] = [];
-				// 	}
-				// 	tableCellsByLoop[elmt.iter].push(newCell);
-				// }
 			}
 		}
 	}
@@ -906,14 +880,6 @@ class RTVDisplayBox implements IRTVDisplayBox {
 				// Get the cell
 				let cell = this.getCell(rowIdx - 1, colIdx - 1)!;
 				this.addCellContent(cell, elmt, renderer);
-
-				// TODO (How) Do we need to do this?
-				// if (elmt.iter !== '') {
-				// 	if (tableCellsByLoop[elmt.iter] === undefined) {
-				// 		tableCellsByLoop[elmt.iter] = [];
-				// 	}
-				// 	tableCellsByLoop[elmt.iter].push(newCell);
-				// }
 			});
 		});
 	}
@@ -986,11 +952,11 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		if (this._controller.showBoxWhenNotExecuted) {
 			this._allEnvs = [];
 			this._hasContent = true;
-			this._box.textContent = "Line not executed";
-			this._box.style.paddingLeft = "8px";
-			this._box.style.paddingRight = "8px";
-			this._box.style.paddingBottom = "0px";
-			this._box.style.paddingTop = "0px";
+			this._box.textContent = 'Line not executed';
+			this._box.style.paddingLeft = '8px';
+			this._box.style.paddingRight = '8px';
+			this._box.style.paddingBottom = '0px';
+			this._box.style.paddingTop = '0px';
 		} else {
 			this.setContentFalse();
 		}
@@ -1032,7 +998,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 			(!this._controller.showBoxAtLoopStmt && this.isLoopLine())) {
 			let exception = false;
 			envs.forEach((env: any) => {
-				if (env["Exception Thrown"] !== undefined) {
+				if (env['Exception Thrown'] !== undefined) {
 					exception = true;
 				}
 			});
@@ -1043,7 +1009,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		}
 
 
-		let count_countent_envs = 0
+		let count_countent_envs = 0;
 		envs.forEach((env: any) => {
 			if (env.end_loop === undefined && env.begin_loop === undefined) {
 				count_countent_envs++;
@@ -1171,7 +1137,10 @@ class RTVDisplayBox implements IRTVDisplayBox {
 			this._box.style.border = '0';
 		}
 
-		const renderer = new MarkdownRenderer(this._editor, this._modeService, this._openerService);
+		const renderer = new MarkdownRenderer(
+			{ 'editor': this._editor },
+			this._modeService,
+			this._openerService);
 
 		if (updateInPlace) {
 			if (this._controller.byRowOrCol === RowColMode.ByRow) {
@@ -1186,8 +1155,10 @@ class RTVDisplayBox implements IRTVDisplayBox {
 			// Create html table from rows
 			let table = document.createElement('table');
 			table.style.borderSpacing = '0px';
-			table.style.paddingLeft = '13px';
-			table.style.paddingRight = '13px';
+
+			// TODO Delete me: We do this for the whole box now.
+			// table.style.paddingLeft = '13px';
+			// table.style.paddingRight = '13px';
 
 			this._cellDictionary = {};
 			if (this._controller.byRowOrCol === RowColMode.ByRow) {
@@ -1285,7 +1256,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 	private newAction(label: string, actionCallBack: () => void): Action {
 		return new Action('id', label, '', true, (event?) => {
 			actionCallBack();
-			return new Promise((resolve, reject) => {
+			return new Promise<void>((resolve, reject) => {
 				resolve();
 			});
 		});
@@ -1381,10 +1352,10 @@ class RTVDisplayBox implements IRTVDisplayBox {
 
 	}
 
-	private createActionsForPlusMenu(): (IAction | ContextSubMenu)[] {
-		let res: (IAction | ContextSubMenu)[] = [];
+	private createActionsForPlusMenu(): (IAction )[] {
+		let res: IAction[] = [];
 		this.notDisplayedVars().forEach((v) => {
-			res.push(new ContextSubMenu('Add ' + v, [
+			res.push(new SubmenuAction('id', 'Add ' + v, [
 				this.newAction('to This Box', () => {
 					this._controller.varAddInThisBox(v, this);
 				}),
@@ -1393,7 +1364,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 				})
 			]));
 		});
-		res.push(new ContextSubMenu('Add All Vars ', [
+		res.push(new SubmenuAction('id', 'Add All Vars ', [
 			this.newAction('to This Box', () => {
 				this._controller.varAddAllInThisBox(this);
 			}),
@@ -1699,7 +1670,7 @@ export class RTVController implements IRTVController {
 		this._config.onDidUserChangeConfiguration = (e) => {
 			this.onUserChangeConfiguration(e);
 		};
-		this.changeViewMode(this.viewMode);
+		// this.changeViewMode(this.viewMode);
 
 		//this._modVarsInputField.getDomNode().style.width = '300px';
 		this.logger.projectionBoxCreated();
@@ -1878,7 +1849,7 @@ export class RTVController implements IRTVController {
 	private onUserChangeConfiguration(e: IConfigurationChangeEvent) {
 		if (e.affectedKeys.indexOf(viewModeKey) !== -1) {
 			this.changeViewMode(this.viewMode);
-		} else if (e.affectedKeys.some((s) => strings.startsWith(s, 'rtv'))) {
+		} else if (e.affectedKeys.some((s) => s.startsWith('rtv'))) {
 			this.viewMode = ViewMode.Custom;
 		}
 	}
@@ -2231,7 +2202,7 @@ export class RTVController implements IRTVController {
 			for (let j = 0; j < i; j++) {
 				let child_loop = loops[j];
 				if (child_loop.split(',').length === 1 + parent_loop.split(',').length &&
-					strings.startsWith(child_loop, parent_loop)) {
+					child_loop.startsWith(parent_loop)) {
 					width = width + widths[child_loop];
 					//width = width + widths[child_loop] + spaceBetweenCells;
 				}
@@ -3133,102 +3104,6 @@ export class RTVController implements IRTVController {
 		}
 	}
 
-	public editingVar() {
-		let d = this._editor.getPosition();
-		let controller = RTVController.get(this._editor);
-		let s: string = '';
-		let line: number = -1;
-
-		if (d) {
-			line = d.lineNumber;
-		}
-
-		if (controller) {
-			s = controller.getLineContent(line).trim();
-		}
-
-		if (line > -1) {
-			this.getDictionaryMakeEdit(s, line, controller);
-		}
-	}
-
-	private getDictionaryMakeEdit(s: string, line: number, controller: RTVController) {
-		let l_operand: string = '';
-		let r_operand: string = '';
-		s = s.trim();
-
-		if (s.startsWith('return ')) {
-			l_operand = 'return';
-			r_operand = s.substr('return '.length);
-		} else {
-			let listOfElems = s.split('=');
-
-			if (listOfElems.length !== 2) {
-			// TODO Can we inform the user of this?
-				console.error('Invalid input format. Must be of the form <varname> = ??');
-			} else {
-				l_operand = listOfElems[0].trim();
-				r_operand = listOfElems[1].trim();
-			}
-		}
-
-		if (l_operand === '' || r_operand === '') {
-			return;
-		}
-
-		if (r_operand.endsWith('??')) {
-			r_operand = r_operand.substr(0, r_operand.length - 2).trim();
-
-			let model = this.getModelForce();
-			let cursorPos = this._editor.getPosition();
-			let startCol: number;
-			let endCol: number;
-
-			if (model.getLineContent(line).trim() === '' && cursorPos !== null && cursorPos.lineNumber === line) {
-				startCol = cursorPos.column;
-				endCol = cursorPos.column;
-			} else {
-				startCol = model.getLineFirstNonWhitespaceColumn(line);
-				endCol = model.getLineMaxColumn(line);
-			}
-
-			let range = new Range(line, startCol, line, endCol);
-			let txt = '';
-
-			if (l_operand === 'return') {
-				txt = 'return ' + (r_operand ? r_operand : '0');
-			} else {
-				txt = l_operand + ' = ' + (r_operand ? r_operand : '0');
-			}
-
-			this._editor.executeEdits(this.getId(), [{ range: range, text: txt }]);
-			this.runProgram();
-
-			setTimeout(() => {
-				let cellKey = l_operand == 'return' ? 'rv' : l_operand;
-				let cellContents = controller._boxes[line - 1].getCellContent()[cellKey];
-
-				if (cellContents) {
-					cellContents.forEach(function (cellContent) {
-						cellContent.contentEditable = 'true';
-					});
-					cellContents[0].focus();
-
-					// TODO Is there a faster/cleaner way to select the content?
-					let selection = window.getSelection()!;
-					let range = selection.getRangeAt(0)!;
-					range.selectNodeContents(selection.focusNode!);
-					selection.addRange(range);
-
-					this.logger.projectionBoxFocus(s, r_operand !== '');
-					this.logger.exampleFocus(0, cellContents[0]!.textContent!);
-				} else {
-					console.error(`No cell found with key "${cellKey}"`);
-				}
-			}, 300);
-		}
-	}
-
 	public setVisiblityToSelectionOnly() {
 		let selection = this._editor.getSelection();
 		if (selection === null) {
@@ -3556,7 +3431,7 @@ class ConfigurationServiceCache {
 
 	private onChangeConfiguration(e: IConfigurationChangeEvent) {
 		e.affectedKeys.forEach((key: string) => {
-			if (strings.startsWith(key, 'rtv')) {
+			if (key.startsWith('rtv')) {
 				let v = this.configurationService.getValue(key);
 				if (v !== this._vals[key]) {
 					this._vals[key] = v;
@@ -3795,16 +3670,6 @@ createRTVAction(
 // 		c.scrollLoopFocusIter(1);
 // 	}
 // );
-
-createRTVAction(
-	'rtv.editVar',
-	'Start Editing the Var',
-	KeyMod.Shift | KeyCode.Space,
-	localize('rtv.editVar', 'Start Editing the Var'),
-	(c) => {
-		c.editingVar();
-	}
-);
 
 createRTVAction(
 	'rtv.addDelay',

@@ -3,7 +3,7 @@ import ast
 import bdb
 import json
 import re
-import core
+from core import *
 import time
 import numpy as np
 from PIL import Image
@@ -22,16 +22,15 @@ class ImgRecorder:
 
 	def record_img(self, im):
 		if self.in_stage_count == self.stage_size:
-			print("Going to next stage: ", self.all_count, self.every)
 			self.in_stage_count = 0
 			self.every = self.every * 2
 		if self.all_count % self.every == 0:
 			self.in_stage_count = self.in_stage_count + 1
 			self.visualized_count = self.visualized_count + 1
-			if core.is_list_img(im):
-				im = core.list_to_ndarray(im)
-			if core.is_ndarray_img(im):
-				to_append = core.ndarray_to_pil(im, 60, 150)
+			if is_list_img(im):
+				im = list_to_ndarray(im)
+			if is_ndarray_img(im):
+				to_append = ndarray_to_pil(im, 60, 150)
 				self.images.append(to_append)
 			else:
 				raise ValueError()
@@ -40,17 +39,12 @@ class ImgRecorder:
 	def finish(self, filename):
 		if (len(self.images) == 0):
 			raise ValueError()
-
-		print("All count:" + str(self.all_count))
-		print("Visualized count: " + str(self.visualized_count))
-		print("Converting to html")
-		s = core.pil_to_html(self.images[0], format='png',
+		s = pil_to_html(self.images[0], format='png',
 					save_all=True, append_images=self.images[1:], optimize=False, duration=100, loop=0)
 		# self.images[0].save("out.gif", format='GIF',
 		#			 save_all=True, append_images=self.images[1:], optimize=False, duration=40, loop=0)
 		# self.images[0].save("out.apng", format='PNG',
 		#			 save_all=True, append_images=self.images[1:], optimize=False, duration=40, loop=0)
-		print("Writing to file")
 		f = open(filename, "w")
 		f.write(s)
 		f.close()
@@ -85,24 +79,15 @@ class ImgLogger(bdb.Bdb):
 		self.recorder.record_img(frame.f_locals[self.varname])
 
 
-def main():
-
-	start = time.time()
-	if len(sys.argv) != 4:
-		print("Usage: img-summary <file-name> <line-number> <var-name>")
-		exit(-1)
-
-	with open(sys.argv[1]) as f:
+def main(file, line, varname):
+	with open(file) as f:
 		lines = f.readlines()
 
 	code = "".join(lines)
-	print(code)
 
-	l = ImgLogger(code, int(sys.argv[2]), sys.argv[3])
+	l = ImgLogger(code, int(line), varname)
 	l.run(code)
-	l.recorder.finish(sys.argv[1] + ".out")
+	l.recorder.finish(file + ".out")
 
-	end = time.time()
-	print("Time: " + str(end - start))
-
-main()
+if __name__ == '__main__':
+	main(sys.argv[1], sys.argv[2], sys.argv[3])

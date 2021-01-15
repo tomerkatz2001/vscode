@@ -11,13 +11,11 @@ import * as objects from 'vs/base/common/objects';
 import * as extpath from 'vs/base/common/extpath';
 import { fuzzyContains, getNLines } from 'vs/base/common/strings';
 import { URI, UriComponents } from 'vs/base/common/uri';
-import { IFilesConfiguration, FILES_EXCLUDE_CONFIG } from 'vs/platform/files/common/files';
-import { createDecorator, IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
+import { IFilesConfiguration } from 'vs/platform/files/common/files';
+import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { ITelemetryData } from 'vs/platform/telemetry/common/telemetry';
 import { Event } from 'vs/base/common/event';
 import { relative } from 'vs/base/common/path';
-import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
-import { ResourceGlobMatcher } from 'vs/workbench/common/resources';
 import { isPromiseCanceledError } from 'vs/base/common/errors';
 
 export const VIEWLET_ID = 'workbench.view.search';
@@ -25,6 +23,12 @@ export const PANEL_ID = 'workbench.panel.search';
 export const VIEW_ID = 'workbench.view.search';
 
 export const SEARCH_EXCLUDE_CONFIG = 'search.exclude';
+
+// Warning: this pattern is used in the search editor to detect offsets. If you
+// change this, also change the search-result built-in extension
+const SEARCH_ELIDED_PREFIX = '⟪ ';
+const SEARCH_ELIDED_SUFFIX = ' characters skipped ⟫';
+const SEARCH_ELIDED_MIN_LEN = (SEARCH_ELIDED_PREFIX.length + SEARCH_ELIDED_SUFFIX.length + 5) * 2;
 
 export const ISearchService = createDecorator<ISearchService>('searchService');
 
@@ -262,24 +266,32 @@ export class TextSearchMatch implements ITextSearchMatch {
 		// Trim preview if this is one match and a single-line match with a preview requested.
 		// Otherwise send the full text, like for replace or for showing multiple previews.
 		// TODO this is fishy.
-		if (previewOptions && previewOptions.matchLines === 1 && (!Array.isArray(range) || range.length === 1) && isSingleLineRange(range)) {
-			const oneRange = Array.isArray(range) ? range[0] : range;
-
+		const ranges = Array.isArray(range) ? range : [range];
+		if (previewOptions && previewOptions.matchLines === 1 && isSingleLineRangeList(ranges)) {
 			// 1 line preview requested
 			text = getNLines(text, previewOptions.matchLines);
+
+			let result = '';
+			let shift = 0;
+			let lastEnd = 0;
 			const leadingChars = Math.floor(previewOptions.charsPerLine / 5);
-			const previewStart = Math.max(oneRange.startColumn - leadingChars, 0);
-			const previewText = text.substring(previewStart, previewOptions.charsPerLine + previewStart);
+			const matches: ISearchRange[] = [];
+			for (const range of ranges) {
+				const previewStart = Math.max(range.startColumn - leadingChars, 0);
+				const previewEnd = range.startColumn + previewOptions.charsPerLine;
+				if (previewStart > lastEnd + leadingChars + SEARCH_ELIDED_MIN_LEN) {
+					const elision = SEARCH_ELIDED_PREFIX + (previewStart - lastEnd) + SEARCH_ELIDED_SUFFIX;
+					result += elision + text.slice(previewStart, previewEnd);
+					shift += previewStart - (lastEnd + elision.length);
+				} else {
+					result += text.slice(lastEnd, previewEnd);
+				}
 
-			const endColInPreview = (oneRange.endLineNumber - oneRange.startLineNumber + 1) <= previewOptions.matchLines ?
-				Math.min(previewText.length, oneRange.endColumn - previewStart) :  // if number of match lines will not be trimmed by previewOptions
-				previewText.length; // if number of lines is trimmed
+				matches.push(new OneLineRange(0, range.startColumn - shift, range.endColumn - shift));
+				lastEnd = previewEnd;
+			}
 
-			const oneLineRange = new OneLineRange(0, oneRange.startColumn - previewStart, endColInPreview);
-			this.preview = {
-				text: previewText,
-				matches: Array.isArray(range) ? [oneLineRange] : oneLineRange
-			};
+			this.preview = { text: result, matches: Array.isArray(this.ranges) ? matches : matches[0] };
 		} else {
 			const firstMatchLine = Array.isArray(range) ? range[0].startLineNumber : range.startLineNumber;
 
@@ -291,10 +303,15 @@ export class TextSearchMatch implements ITextSearchMatch {
 	}
 }
 
-function isSingleLineRange(range: ISearchRange | ISearchRange[]): boolean {
-	return Array.isArray(range) ?
-		range[0].startLineNumber === range[0].endLineNumber :
-		range.startLineNumber === range.endLineNumber;
+function isSingleLineRangeList(ranges: ISearchRange[]): boolean {
+	const line = ranges[0].startLineNumber;
+	for (const r of ranges) {
+		if (r.startLineNumber !== line || r.endLineNumber !== line) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 export class SearchRange implements ISearchRange {
@@ -382,14 +399,6 @@ export function getExcludes(configuration: ISearchConfiguration, includeSearchEx
 	allExcludes = objects.mixin(allExcludes, objects.deepClone(searchExcludes), true);
 
 	return allExcludes;
-}
-
-export function createResourceExcludeMatcher(instantiationService: IInstantiationService, configurationService: IConfigurationService): ResourceGlobMatcher {
-	return instantiationService.createInstance(
-		ResourceGlobMatcher,
-		root => getExcludes(root ? configurationService.getValue<ISearchConfiguration>({ resource: root }) : configurationService.getValue<ISearchConfiguration>()) || Object.create(null),
-		event => event.affectsConfiguration(FILES_EXCLUDE_CONFIG) || event.affectsConfiguration(SEARCH_EXCLUDE_CONFIG)
-	);
 }
 
 export function pathIncludedInQuery(queryProps: ICommonQueryProps<URI>, fsPath: string): boolean {

@@ -7,7 +7,8 @@
 
 .file-icon-themable-tree.align-icons-and-twisties .monaco-tl-twistie:not(.force-twistie):not(.collapsible),
 .file-icon-themable-tree .align-icon-with-twisty .monaco-tl-twistie:not(.force-twistie):not(.collapsible),
-.file-icon-themable-tree.hide-arrows .monaco-tl-twistie:not(.force-twistie) {
+.file-icon-themable-tree.hide-arrows .monaco-tl-twistie:not(.force-twistie),
+.file-icon-themable-tree .monaco-tl-twistie.force-no-twistie {
 	background-image: none !important;
 	width: 0 !important;
 	padding-right: 0 !important;
@@ -63,9 +64,13 @@
 }
 
 .monaco-workbench .pane > .pane-body > .welcome-view .monaco-button {
-	max-width: 260px;
 	margin-left: auto;
 	margin-right: auto;
+}
+
+.monaco-workbench .pane > .pane-body.wide > .welcome-view .monaco-button {
+	margin-left: inherit;
+	max-width: 260px;
 }
 
 .monaco-workbench .pane > .pane-body .welcome-view-content {

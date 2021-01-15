@@ -121,7 +121,7 @@ export class EmptyProcess implements Process {
 	kill(): void {}
 	toPromise(): Promise<any> {
 		return new Promise((resolve) => {
-			resolve();
+			resolve('[]');
 		});
 	}
 }

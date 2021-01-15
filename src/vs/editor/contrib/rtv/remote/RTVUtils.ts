@@ -199,7 +199,7 @@ class PyodideProcess<R extends PyodideRequest> implements Process {
 				console.log(rs);
 
 				resolve(rs);
-			}
+			};
 
 			if (this.result) {
 				this.resolve(this.result);
@@ -232,47 +232,45 @@ class SynthProcess implements Process {
 				body: problem,
 				mode: 'same-origin',
 				signal: signal
-			}).
-			then(response => {
-				if (response && response.status < 200 || response.status >= 300 || response.redirected) {
-					// TODO Error handling
-					this.error = response.statusText;
-
-					if (this.onError) {
-						this.onError(this.error);
-					}
-
-					return Promise.reject();
-				} else {
-					return response.text();
-				}
-			}).
-			then(result => {
-				this.result = result;
-
-				if (this.onResult) {
-					this.onResult(0, this.result);
-				}
-
-				return result;
-			}).
-			catch(error => {
+			}).then(response => {
+			if (response && response.status < 200 || response.status >= 300 || response.redirected) {
 				// TODO Error handling
-				this.error = error;
+				this.error = response.statusText;
 
 				if (this.onError) {
-					this.onError(error);
+					this.onError(this.error);
 				}
 
-				if (this.onResult) {
-					this.onResult(1, error);
-				}
+				return Promise.reject();
+			} else {
+				return response.text();
+			}
+		}).then(result => {
+			this.result = result;
 
-				return error;
-			});
+			if (this.onResult) {
+				this.onResult(0, this.result);
+			}
+
+			return result;
+		}).catch(error => {
+			// TODO Error handling
+			this.error = error;
+
+			if (this.onError) {
+				this.onError(error);
+			}
+
+			if (this.onResult) {
+				this.onResult(1, error);
+			}
+
+			return error;
+		});
 	}
 
-	onStdout(_fn: (data: any) => void): void {}
+	onStdout(_fn: (data: any) => void): void {
+	}
 
 	onStderr(fn: (data: any) => void): void {
 		this.onStderr = fn;
@@ -300,14 +298,44 @@ class SynthProcess implements Process {
 	}
 }
 
+function saveProgram(program: string) {
+	// We need this for CSRF protection on the server
+	const csrfInput = document.getElementById('csrf-parameter') as HTMLInputElement;
+	const csrfToken = csrfInput.value;
+	const csrfHeaderName = csrfInput.name;
+
+	const headers = new Headers();
+	headers.append('Content-Type', 'text/plain;charset=UTF-8');
+	headers.append(csrfHeaderName, csrfToken);
+
+	fetch(
+		'/save',
+		{
+			method: 'POST',
+			body: program,
+			mode: 'same-origin',
+			headers: headers
+		}).
+		then(response => {
+			if (response && response.status < 200 || response.status >= 300 || response.redirected) {
+				// Lab time must have ended.
+				document.location.reload();
+			}
+		}).
+		catch(_ => {
+			document.location.reload();
+		});
+}
+
 export function runProgram(program: string, values?: any): Process {
 	if (!pyodideLoaded) {
 		// @Hack: We want to ignore this call until pyodide has loaded.
 		return new EmptyProcess();
 	}
 
-	values = JSON.stringify(values)
-	// values = undefined;
+	saveProgram(program);
+
+	values = JSON.stringify(values);
 	return new PyodideProcess(new RunpyRequest(program, values));
 }
 
@@ -323,17 +351,11 @@ export function runImgSummary(program: string, line: number, varname: string): P
 
 	return new PyodideProcess(new ImgSumRequest(program, line, varname));
 }
-
 /**
  * Runs the SnipPy helper python code with a request to validate the
  * given user input.
  */
 export async function validate(input: string): Promise<string | undefined> {
-	if (!pyodideLoaded) {
-		// @Hack: We want to ignore this call until pyodide has loaded.
-		return new EmptyProcess().toPromise();
-	}
-
 	let process = new PyodideProcess(new SnipPyRequest('validate', input));
 	let results = (await process.toPromise())[1];
 
@@ -351,11 +373,48 @@ export const EOL: string = '\n';
  * Don't allow switching views unless we find the set cookie
  */
 export function isViewModeAllowed(m: ViewMode): boolean {
-	return true;
+	let rs: boolean = false;
+
+	if (!studyGroup) {
+		for (let cookie of document.cookie.split(';')) {
+			cookie = cookie.trim();
+			if (cookie.startsWith('USER_STUDY_GROUP')) {
+				studyGroup = cookie.slice('USER_STUDY_GROUP'.length + 1);
+			}
+		}
+	}
+
+	switch (studyGroup) {
+		case 'None':
+			rs = true;
+			break;
+		case 'GroupOne':
+			rs = m === ViewMode.Full || m === ViewMode.CursorAndReturn;
+			break;
+		case 'GroupTwo':
+			rs = m === ViewMode.Stealth;
+			break;
+		default:
+			console.error('USER_STUDY_GROUP cookie not recognized: ' + studyGroup);
+			rs = m === ViewMode.Stealth;
+			break;
+	}
+
+	if (rs) {
+		// Set the expiration to one hour
+		let time: Date = new Date();
+		time.setTime(time.getTime() + 60 * 60 * 1000);
+		document.cookie = `PROJECTION_BOX_VIEW=${m.toString()};expires=${time.toUTCString()};`;
+	}
+
+	return rs;
 }
 
+// Used to cache the results
+let studyGroup: string | undefined = undefined;
+
 // Start the web worker
-const pyodideWorker = new Worker('pyodide/webworker.js');
+const pyodideWorker = new Worker('/pyodide/webworker.js');
 let pyodideLoaded = false;
 
 const pyodideWorkerInitListener = (event: MessageEvent) =>

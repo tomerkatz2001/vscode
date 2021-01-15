@@ -8,6 +8,28 @@
 	height: 100%;
 }
 
+.monaco-workbench .activitybar.bordered::before {
+	content: '';
+	float: left;
+	position: absolute;
+	box-sizing: border-box;
+	height: 100%;
+	width: 0px;
+	border-color: inherit;
+}
+
+.monaco-workbench .activitybar.left.bordered::before {
+	right: 0;
+	border-right-style: solid;
+	border-right-width: 1px;
+}
+
+.monaco-workbench .activitybar.right.bordered::before {
+	left: 0;
+	border-left-style: solid;
+	border-left-width: 1px;
+}
+
 .monaco-workbench .activitybar > .content {
 	height: 100%;
 	display: flex;
@@ -29,10 +51,6 @@
 	position: relative;
 	width: 100%;
 	height: 48px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	order: -1;
 }
 
 .monaco-workbench .activitybar > .content > .home-bar > .home-bar-icon-badge {
@@ -64,10 +82,6 @@
 
 .monaco-workbench .activitybar > .content > .composite-bar {
 	margin-bottom: auto;
-}
-
-.monaco-workbench .activitybar > .content > .composite-bar-excess {
-	height: 100%;
 }
 
 /** Menu Bar */
