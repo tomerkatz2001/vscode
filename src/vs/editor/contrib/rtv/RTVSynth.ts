@@ -2,7 +2,7 @@ import { Range } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
-import { IRTVLogger, IRTVController, RowColMode, IRTVDisplayBox, BoxUpdateEvent } from './RTVInterfaces';
+import { IRTVLogger, IRTVController, IRTVDisplayBox, BoxUpdateEvent } from './RTVInterfaces';
 import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
@@ -13,7 +13,8 @@ class RTVSynthBackup {
 	includedTimes: Set<number>;
 	allEnvs?: any[];
 	boxEnvs?: any[];
-	varname?: string;
+	varnames?: string[];
+	row?: number;
 	lineno?: number;
 	box?: IRTVDisplayBox;
 	lastRunResults?: any[];
@@ -22,7 +23,8 @@ class RTVSynthBackup {
 		this.includedTimes = new Set(synth.includedTimes);
 		this.allEnvs = synth.allEnvs;
 		this.boxEnvs = new Array(synth.boxEnvs);
-		this.varname = synth.varname;
+		this.varnames = synth.varnames;
+		this.row = synth.row;
 		this.lineno = synth.lineno;
 		this.box = synth.box;
 		this.lastRunResults = synth.lastRunResults;
@@ -32,7 +34,8 @@ class RTVSynthBackup {
 		synth.includedTimes = new Set(this.includedTimes);
 		synth.allEnvs = this.allEnvs;
 		synth.boxEnvs = this.boxEnvs;
-		synth.varname = this.varname;
+		synth.varnames = this.varnames;
+		synth.row = this.row;
 		synth.lineno = this.lineno;
 		synth.box = this.box;
 		synth.lastRunResults = this.lastRunResults;
@@ -62,7 +65,8 @@ export class RTVSynth {
 	includedTimes: Set<number>;
 	allEnvs?: any[] = undefined; // TODO Can we do better than any?
 	boxEnvs?: any[] = undefined;
-	varname?: string = undefined;
+	varnames?: string[] = undefined;
+	row?: number = undefined;
 	lineno?: number = undefined;
 	box?: IRTVDisplayBox = undefined;
 
@@ -103,21 +107,23 @@ export class RTVSynth {
 				let error = await this.updateBoxValues(this.lastRunResults);
 
 				if (!error) {
-					let cellContents = this.box!.getCellContent()[this.varname!];
+					for (let varname of this.varnames!) {
+						let cellContents = this.box!.getCellContent()[varname];
 
-					if (cellContents) {
-						cellContents.forEach((cellContent) => {
-							cellContent.contentEditable = 'true';
-						});
+						if (cellContents) {
+							cellContents.forEach((cellContent) => {
+								cellContent.contentEditable = 'true';
+							});
 
-						let selection = window.getSelection()!;
-						let range = selection.getRangeAt(0)!;
+							let selection = window.getSelection()!;
+							let range = selection.getRangeAt(0)!;
 
-						range.selectNodeContents(cellContents[0]);
-						selection.removeAllRanges();
-						selection.addRange(range);
+							range.selectNodeContents(cellContents[0]);
+							selection.removeAllRanges();
+							selection.addRange(range);
 
-						// TODO Log events!
+							// TODO Log events!
+						}
 					}
 				}
 
@@ -194,7 +200,8 @@ export class RTVSynth {
 		// Okay, we are definitely using SnipPy here!
 		// ------------------------------------------
 		this.lineno = lineno;
-		this.varname = l_operand;
+		this.varnames = this.extractVarnames();
+		this.row = 0;
 
 		r_operand = r_operand.substr(0, r_operand.length - 2).trim();
 
@@ -205,7 +212,7 @@ export class RTVSynth {
 		let range = new Range(lineno, startCol, lineno, endCol);
 		let txt = '';
 
-		let defaultValue = await this.defaultValue(l_operand, r_operand);
+		let defaultValue = await this.defaultValue(r_operand);
 
 		if (l_operand === 'rv') {
 			txt = `return ${defaultValue}`;
@@ -223,29 +230,30 @@ export class RTVSynth {
 		this.box = this.controller.getBox(lineno);
 		this.boxEnvs = this.box.getEnvs();
 
-		let cellKey = l_operand;
-		let cellContents = this.box.getCellContent()[cellKey];
+		this.varnames.forEach((varname, idx) => {
+			let cellContents = this.box!.getCellContent()[varname];
 
-		if (cellContents) {
-			cellContents.forEach(function (cellContent) {
-				cellContent.contentEditable = 'true';
-			});
+			if (cellContents) {
+				cellContents.forEach((cellContent) => cellContent.contentEditable = 'true');
 
-			// TODO Is there a faster/cleaner way to select the content?
-			let selection = window.getSelection()!;
-			let range = selection.getRangeAt(0)!;
+				if (idx === 0) {
+					// TODO Is there a faster/cleaner way to select the content?
+					let selection = window.getSelection()!;
+					let range = selection.getRangeAt(0)!;
 
-			range.selectNodeContents(cellContents[0]);
-			selection.removeAllRanges();
-			selection.addRange(range);
+					range.selectNodeContents(cellContents[0]);
+					selection.removeAllRanges();
+					selection.addRange(range);
 
-			this.logger.projectionBoxFocus(line, r_operand !== '');
-			this.logger.exampleFocus(0, cellContents[0]!.textContent!);
-		} else {
-			console.error(`No cell found with key "${cellKey}"`);
-			this.stopSynthesis();
-			return;
-		}
+					this.logger.projectionBoxFocus(line, r_operand !== '');
+					this.logger.exampleFocus(0, cellContents[0]!.textContent!);
+				}
+			} else {
+				console.error(`No cell found with key "${varname}"`);
+				this.stopSynthesis();
+				return;
+			}
+		});
 
 		// TODO Cleanup all available envs
 		this.allEnvs = [];
@@ -302,16 +310,17 @@ export class RTVSynth {
 		cell = cell!;
 
 		// Extract the info from the cell ID, skip the first, which is the lineno
-		let [col, row]: number[] = cell.id.split('_').map((num) => parseInt(num)).slice(1);
+		const [varname, idxStr]: string[] = cell.id.split('_').slice(1);
+		const idx: number = parseInt(idxStr);
 
 		const currentValue = cell!.textContent!;
 
 		if (trackChanges) {
 			// Keep track of changes!
-			const env = this.boxEnvs![(this.controller.byRowOrCol === RowColMode.ByRow) ? col : row];
-			if (env[this.varname!] !== currentValue) {
-				this.logger.exampleChanged(row, env[this.varname!], currentValue);
-				const success = await this.toggleElement(env, cell, true);
+			const env = this.boxEnvs![idx];
+			if (env[varname] !== currentValue) {
+				this.logger.exampleChanged(idx, env[varname], currentValue);
+				const success = await this.toggleElement(env, cell, varname, true);
 
 				if (!success) {
 					return;
@@ -320,43 +329,34 @@ export class RTVSynth {
 		}
 
 		// Finally, select the next value.
-		this.logger.exampleBlur(row, cell!.textContent!);
+		this.logger.exampleBlur(idx, cell!.textContent!);
 
-		if (this.controller.byRowOrCol === RowColMode.ByCol) {
-			// Find the next row
-			let nextRowId = backwards ? row - 1 : row + 1;
-			let nextCell = this.box!.getCell(nextRowId, col);
-
-			if (!nextCell) {
-				// The cell doesn't exist, so wrap around!
-				nextRowId = backwards ? (this.boxEnvs!.length - 1) : 0;
-				nextCell = this.box!.getCell(nextRowId, col);
-			}
-
-			this.select(nextCell!.childNodes[0]);
-			this.logger.exampleFocus(nextRowId, nextCell!.textContent!);
-		} else {
-			// Find the next col
-			let nextColId = backwards ? col - 1 : col + 1;
-			let nextCell = document.getElementById(this.box!.getCellId(row, nextColId));
-
-			if (!nextCell) {
-				// The cell doesn't exist, so wrap around!
-				nextColId = backwards ? this.boxEnvs!.length : 0;
-				nextCell = document.getElementById(this.box!.getCellId(row, nextColId));
-			}
-
-			this.select(nextCell!.childNodes[0]);
-			this.logger.exampleFocus(
-				nextColId,
-				nextCell!.textContent!
-			);
+		let varIdx = this.varnames!.indexOf(varname) + (backwards ? -1 : +1);
+		if (varIdx < 0) {
+			varIdx = this.varnames!.length - 1;
+			this.row! -= 1;
+		} else if (varIdx >= this.varnames!.length) {
+			varIdx = 0;
+			this.row! += 1;
 		}
+
+		// Find the next row
+		let nextCell = this.box!.getCell(this.varnames![varIdx], this.row!);
+
+		if (!nextCell) {
+			// The cell doesn't exist, so wrap around!
+			this.row = (this.row! < 0) ? this.boxEnvs!.length - 1 : 0;
+			nextCell = this.box!.getCell(this.varnames![varIdx], this.row!);
+		}
+
+		this.select(nextCell!.childNodes[0]);
+		this.logger.exampleFocus(idx, nextCell!.textContent!);
 	}
 
 	private async toggleElement(
 		env: any,
 		cell: HTMLElement,
+		varname: string,
 		force: boolean | null = null
 	): Promise<boolean> {
 		let time = env['time'];
@@ -383,10 +383,10 @@ export class RTVSynth {
 			}
 
 			// Toggle on
-			const oldVal = env[this.varname!];
+			const oldVal = env[varname];
 			const included = this.includedTimes.has(env['time']);
 
-			env[this.varname!] = cell.innerText;
+			env[varname] = cell.innerText;
 			this.includedTimes.add(env['time']);
 
 			// Now try to update the box with this value.
@@ -395,7 +395,7 @@ export class RTVSynth {
 			if (error) {
 				// The input causes an exception.
 				// Rollback the changes and show the error.
-				env[this.varname!] = oldVal;
+				env[varname] = oldVal;
 
 				if (!included) {
 					this.includedTimes.delete(env['time']);
@@ -444,8 +444,6 @@ export class RTVSynth {
 	// -----------------------------------------------------------------------------------
 
 	public synthesizeFragment() {
-		let varName = this.getVarAssignmentAtLine(this.lineno!);
-
 		// Build and write the synth_example.json file content
 		let prev_time: number = Number.MAX_VALUE;
 
@@ -487,7 +485,7 @@ export class RTVSynth {
 		}
 
 		let problem = {
-			varName: varName,
+			varNames: this.varnames!,
 			previous_env: previous_env,
 			envs: envs,
 			program: this.controller.getProgram(),
@@ -576,22 +574,15 @@ export class RTVSynth {
 		return rs as HTMLTableRowElement;
 	}
 
-	private getVarAssignmentAtLine(lineNo: number): null | string {
-		let line = this.controller.getLineContent(lineNo).trim();
-		if (!line) {
-			return null;
-		}
-
-		let rs = null;
+	private extractVarnames(): string[] {
+		let line = this.controller.getLineContent(this.lineno!).trim();
+		let rs = undefined;
 
 		if (line.startsWith('return ')) {
-			rs = 'rv';
+			rs = ['rv'];
 		} else {
 			let content = line.split('=');
-			if (content.length !== 2) {
-				return null;
-			}
-			rs = content[0].trim();
+			rs = content[0].trim().split(',').map((varname) => varname.trim());
 		}
 
 		return rs;
@@ -686,14 +677,18 @@ export class RTVSynth {
 		return undefined;
 	}
 
-	private async defaultValue(varname: string, currentVal: string): Promise<string> {
+	private async defaultValue(currentVal: string): Promise<string> {
 		// If the user specified a default value, use that.
 		if (currentVal !== '') {
 			return currentVal;
 		}
 
+		// Otherwise, find the best default for each variable
+		let defaults: string[] = [];
+
 		// We need to check the latest envs, so let's make sure it's up to date.
-		await this.controller.pythonProcess?.toPromise();
+		// await this.controller.pythonProcess?.toPromise();
+		await this.controller.runProgram();
 
 		// See if the variable was defined before this statement.
 		// If yes, we can set the default value to itself!
@@ -708,19 +703,25 @@ export class RTVSynth {
 
 		earliestTime--;
 
-		for (let line in this.controller.envs) {
-			for (let env of this.controller.envs[line]) {
-				if (env['time'] === earliestTime) {
-					if (env.hasOwnProperty(varname)) {
-						return varname;
+		for (const varname of this.varnames!) {
+			let val = '0';
+
+			for (let line in this.controller.envs) {
+				for (let env of this.controller.envs[line]) {
+					if (env['time'] === earliestTime) {
+						if (env.hasOwnProperty(varname)) {
+							val = varname;
+						}
+						break;
 					}
-					break;
 				}
 			}
+
+			// If not, we don't have any information, so let's go with 0.
+			defaults.push(val);
 		}
 
-		// If not, we don't have any information, so let's go with 0.
-		return '0';
+		return defaults.join(', ');
 	}
 
 	private select(node: Node) {
@@ -739,77 +740,79 @@ export class RTVSynth {
 	}
 
 	private setupTableCellContents() {
-		let contents = this.box!.getCellContent()[this.varname!];
+		for (const varname of this.varnames!) {
+			let contents = this.box!.getCellContent()[varname];
 
-		for (let i in contents) {
-			const cellContent = contents[i];
-			const env = this.boxEnvs![i];
+			for (let i in contents) {
+				const cellContent = contents[i];
+				const env = this.boxEnvs![i];
 
-			cellContent.contentEditable = 'true';
-			cellContent.onkeydown = (e: KeyboardEvent) => {
-				let rs: boolean = true;
+				cellContent.contentEditable = 'true';
+				cellContent.onkeydown = (e: KeyboardEvent) => {
+					let rs: boolean = true;
 
-				switch (e.key) {
-					case 'Enter':
-						e.preventDefault();
+					switch (e.key) {
+						case 'Enter':
+							e.preventDefault();
 
-						if (e.shiftKey) {
-							this.toggleElement(env, cellContent)
-								.then((success) => {
+							if (e.shiftKey) {
+								this.toggleElement(env, cellContent, varname)
+									.then((success) => {
+										if (success) {
+											// We're already tracked changes, so this should
+											// not do that!
+											this.focusNextRow(cellContent, false, false);
+										}
+									});
+							} else {
+								let togglePromise;
+
+								if (env[varname] !== cellContent.innerText) {
+									this.logger.exampleChanged(
+										this.findParentRow(cellContent).rowIndex,
+										env[varname],
+										cellContent.innerText
+									);
+
+									togglePromise = this.toggleElement(env, cellContent, varname, true);
+								} else {
+									togglePromise = Promise.resolve(true);
+								}
+
+								togglePromise.then((success: boolean) => {
 									if (success) {
-										// We're already tracked changes, so this should
-										// not do that!
-										this.focusNextRow(cellContent, false, false);
+										this.synthesizeFragment();
+
+										cellContent.contentEditable = 'false';
+										this.editor.focus();
+										this.logger.projectionBoxExit();
+										this.includedTimes.clear();
+										this.logger.exampleReset();
 									}
 								});
-						} else {
-							let togglePromise;
-
-							if (env[this.varname!] !== cellContent.innerText) {
-								this.logger.exampleChanged(
-									this.findParentRow(cellContent).rowIndex,
-									env[this.varname!],
-									cellContent.innerText
-								);
-
-								togglePromise = this.toggleElement(env, cellContent, true);
-							} else {
-								togglePromise = Promise.resolve(true);
 							}
+							break;
+						case 'Tab':
+							// ----------------------------------------------------------
+							// Use Tabs to go over values of the same variable
+							// ----------------------------------------------------------
+							e.preventDefault();
+							this.focusNextRow(cellContent, e.shiftKey);
+							break;
+						case 'Escape':
+							rs = false;
+							this.editor.focus();
+							this.stopSynthesis();
+							break;
+					}
 
-							togglePromise.then((success: boolean) => {
-								if (success) {
-									this.synthesizeFragment();
+					return rs;
+				};
 
-									cellContent.contentEditable = 'false';
-									this.editor.focus();
-									this.logger.projectionBoxExit();
-									this.includedTimes.clear();
-									this.logger.exampleReset();
-								}
-							});
-						}
-						break;
-					case 'Tab':
-						// ----------------------------------------------------------
-						// Use Tabs to go over values of the same variable
-						// ----------------------------------------------------------
-						e.preventDefault();
-						this.focusNextRow(cellContent, e.shiftKey);
-						break;
-					case 'Escape':
-						rs = false;
-						this.editor.focus();
-						this.stopSynthesis();
-						break;
+				// Re-highlight the rows
+				if (this.includedTimes.has(env['time'])) {
+					this.highlightRow(this.findParentRow(cellContent));
 				}
-
-				return rs;
-			};
-
-			// Re-highlight the rows
-			if (this.includedTimes.has(env['time'])) {
-				this.highlightRow(this.findParentRow(cellContent));
 			}
 		}
 	}

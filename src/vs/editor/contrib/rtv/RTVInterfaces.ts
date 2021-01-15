@@ -17,12 +17,12 @@ export interface IRTVDisplayBox {
 	 * Return the ID of the HTML <TD> element at the
 	 * given row and column.
 	 */
-	getCellId(row: number, col: number): string;
+	getCellId(varname: string, idx: number): string;
 
 	/**
 	 * Return the HTML <TD> element at the given row and column.
 	 */
-	getCell(row: number, col: number): HTMLTableCellElement | null;
+	getCell(varname: string, idx: number): HTMLTableCellElement | null;
 
 	/**
 	 * Updates the box's values, destroys the existing

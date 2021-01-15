@@ -851,20 +851,24 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		cell.appendChild(cellContent);
 	}
 
-	public getCellId(row: number, col: number): string {
-		return `${this.lineNumber}_${col}_${row}`;
+	public getCellId(varname: string, idx: number): string {
+		return `${this.lineNumber}_${varname}_${idx}`;
 	}
 
-	public getCell(row: number, col: number): HTMLTableCellElement | null {
-		return document.getElementById(this.getCellId(row, col)) as HTMLTableCellElement;
+	public getCell(varname: string, idx: number): HTMLTableCellElement | null {
+		return document.getElementById(this.getCellId(varname, idx)) as HTMLTableCellElement;
 	}
 
 	private updateTableByRows(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
 		for (let colIdx = 0; colIdx < rows[0].length; colIdx++) {
+			// The first row (header) has the varname!
+			let varname = rows[0][colIdx].content;
+			varname = varname.substr(2, varname.length - 4);
+
 			for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
 				let elmt = rows[rowIdx][colIdx];
 				// Get the cell
-				let cell = this.getCell(rowIdx - 1, colIdx - 1)!;
+				let cell = this.getCell(varname, rowIdx - 1)!;
 				this.addCellContent(cell, elmt, renderer);
 			}
 		}
@@ -877,8 +881,12 @@ class RTVDisplayBox implements IRTVDisplayBox {
 				return;
 			}
 			row.forEach((elmt: TableElement, colIdx: number) => {
+				// The first row (header) has the varname!
+				let varname = rows[0][colIdx].content;
+				varname = varname.substr(2, varname.length - 4);
+
 				// Get the cell
-				let cell = this.getCell(rowIdx - 1, colIdx - 1)!;
+				let cell = this.getCell(varname, rowIdx - 1)!;
 				this.addCellContent(cell, elmt, renderer);
 			});
 		});
@@ -892,7 +900,10 @@ class RTVDisplayBox implements IRTVDisplayBox {
 
 				// Skip the headers
 				if (rowIdx > 0) {
-					newCell.id = this.getCellId(rowIdx - 1, colIdx - 1);
+					// The first row (header) has the varname!
+					let varname = rows[0][colIdx].content;
+					varname = varname.substr(2, varname.length - 4);
+					newCell.id = this.getCellId(varname, rowIdx - 1);
 				}
 
 				this.addCellContentAndStyle(newCell, elmt, renderer);
@@ -909,7 +920,9 @@ class RTVDisplayBox implements IRTVDisplayBox {
 				let newCell = newRow.insertCell(-1);
 
 				if (rowIdx > 0 && colIdx > 0) {
-					newCell.id = this.getCellId(rowIdx - 1, colIdx - 1);
+					let varname = rows[0][colIdx].content;
+					varname = varname.substr(2, varname.length - 4);
+					newCell.id = this.getCellId(varname, rowIdx - 1);
 				}
 
 				this.addCellContentAndStyle(newCell, elmt, renderer);
