@@ -3,7 +3,7 @@
 #  Licensed under the MIT License. See License.txt in the project root for license information.
 # ---------------------------------------------------------------------------------------------
 
-# import ctypes
+import ctypes
 import sys
 import ast
 import bdb
@@ -96,14 +96,12 @@ class Logger(bdb.Bdb):
 			env = self.values[line_time]
 
 			for varname in frame.f_locals:
-				# if varname in self.preexisting_locals: continue
+				if varname in self.preexisting_locals: continue
 				if varname in env:
 					new_value = eval(env[varname])
 					print("\t'%s': '%s' -> '%s'" % (varname, repr(frame.f_locals[varname]), repr(new_value)))
 					frame.f_locals.update({ varname: new_value })
-					# ctypes.pythonapi.PyFrame_LocalsToFast(ctypes.py_object(frame), ctypes.c_int(0))
-
-			frame.f_locals.clear()
+					ctypes.pythonapi.PyFrame_LocalsToFast(ctypes.py_object(frame), ctypes.c_int(0))
 
 		self.record_loop_end(frame, adjusted_lineno)
 		self.record_env(frame, adjusted_lineno)
