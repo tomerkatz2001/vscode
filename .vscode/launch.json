@@ -219,9 +219,9 @@
 				"VSCODE_EXTHOST_WILL_SEND_SOCKET": null,
 				"VSCODE_SKIP_PRELAUNCH": "1",
 				"PYTHON3": "/usr/bin/python3",
-				"RUNPY": "/home/kas/projects/ProjectionBoxes/vscode/src/run.py",
-				"IMGSUM": "/home/kas/projects/ProjectionBoxes/vscode/src/img-summary.py",
-				"SNIPPY_UTILS": "/home/kas/projects/ProjectionBoxes/vscode/src/snippy.py",
+				"RUNPY": "/home/kas/projects/LooPy/vscode/src/run.py",
+				"IMGSUM": "/home/kas/projects/LooPy/vscode/src/img-summary.py",
+				"SNIPPY_UTILS": "/home/kas/projects/LooPy/vscode/src/snippy.py",
 				"SCALA": "/usr/bin/scala",
 				"SYNTH": "/home/kas/projects/LooPy/synthesizer/target/snippy-server-0.1-SNAPSHOT-jar-with-dependencies.jar"
 			},
