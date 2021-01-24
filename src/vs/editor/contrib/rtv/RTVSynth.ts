@@ -548,6 +548,11 @@ export class RTVSynth {
 		}
 		let range = new Range(lineno, startCol, lineno, endCol);
 
+		// Add spaces for multiline results
+		if (fragment.includes('\n')) {
+			fragment = fragment.replace('\n', '\n' + ' '.repeat(startCol - 1));
+		}
+
 		this.editor.pushUndoStop();
 		let selection = new Selection(
 			lineno,
