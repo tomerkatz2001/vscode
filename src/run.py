@@ -87,22 +87,7 @@ class Logger(bdb.Bdb):
 			return
 
 		self.exception = None
-
 		adjusted_lineno = frame.f_lineno-1
-
-		line_time = "(%d,%d)" % (adjusted_lineno, self.time)
-		if line_time in self.values:
-			# Replace the current values with the given ones first
-			env = self.values[line_time]
-
-			for varname in frame.f_locals:
-				if varname in self.preexisting_locals: continue
-				if varname in env:
-					new_value = eval(env[varname])
-					print("\t'%s': '%s' -> '%s'" % (varname, repr(frame.f_locals[varname]), repr(new_value)))
-					frame.f_locals.update({ varname: new_value })
-					ctypes.pythonapi.PyFrame_LocalsToFast(ctypes.py_object(frame), ctypes.c_int(0))
-
 		self.record_loop_end(frame, adjusted_lineno)
 		self.record_env(frame, adjusted_lineno)
 		self.record_loop_begin(frame, adjusted_lineno)
@@ -187,6 +172,21 @@ class Logger(bdb.Bdb):
 			return add_html_escape(html)
 
 	def record_env(self, frame, lineno):
+		line_time = "(%s,%d)" % (lineno, self.time)
+		if line_time in self.values:
+			# Replace the current values with the given ones first
+			print('%s:' % line_time)
+			env = self.values[line_time]
+			print(frame.f_locals)
+
+			for varname in frame.f_locals:
+				if varname in self.preexisting_locals: continue
+				if varname in env:
+					new_value = eval(env[varname])
+					print("\t'%s': '%s' -> '%s'" % (varname, repr(frame.f_locals[varname]), repr(new_value)))
+					frame.f_locals.update({ varname: new_value })
+					ctypes.pythonapi.PyFrame_LocalsToFast(ctypes.py_object(frame), ctypes.c_int(0))
+
 		if self.time >= 100:
 			self.set_quit()
 			return
