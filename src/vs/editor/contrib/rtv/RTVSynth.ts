@@ -174,6 +174,16 @@ export class RTVSynth {
 		let l_operand: string = '';
 		let r_operand: string = '';
 
+		// TODO Handling `return ??` with the environment update is broken
+		// Consider:
+		// def f(x): return ??
+		// rs = f(f(1))
+		// The `rv` value is never updated. This however works fine:
+		// def f(x):
+		//     y = ??
+		//     return y
+		// rs = f(f(1))
+
 		if (line.startsWith('return ')) {
 			l_operand = 'rv';
 			r_operand = line.substr('return '.length);
@@ -550,7 +560,7 @@ export class RTVSynth {
 
 		// Add spaces for multiline results
 		if (fragment.includes('\n')) {
-			fragment = fragment.replace('\n', '\n' + ' '.repeat(startCol - 1));
+			fragment = fragment.split('\n').join('\n' + ' '.repeat(startCol - 1));
 		}
 
 		this.editor.pushUndoStop();
