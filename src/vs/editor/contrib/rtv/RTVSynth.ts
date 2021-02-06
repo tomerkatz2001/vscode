@@ -89,9 +89,11 @@ export class RTVSynth {
 			this.stopSynthesis();
 		});
 
+		// -- LooPy only --
 		// TODO Is there a better way to capture undo events?
-		editor.onDidChangeModelContent((e) => this.handleUndoEvent(e));
-		controller.onUpdateEvent((e) => this.handleBoxUpdateEvent(e));
+		// editor.onDidChangeModelContent((e) => this.handleUndoEvent(e));
+		//controller.onUpdateEvent((e) => this.handleBoxUpdateEvent(e));
+		// -- End of LooPy only --
 	}
 
 	private handleBoxUpdateEvent(e: BoxUpdateEvent) {
