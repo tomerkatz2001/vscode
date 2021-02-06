@@ -152,14 +152,6 @@ export class RTVSynth {
 		}
 	}
 
-	/**
-	 * Stages of synthesis:
-	 *  1. User enters '??' -> Listen for this, get the correct environment, move selection
-	 *  2. User 'Tab's -> Record changes where appropriate, move selection
-	 *  3. User 'Enter's -> Indicate synthesis started, synthesize
-	 *  4. Synthesis ended -> Inform user of the results
-	 */
-
 	// -----------------------------------------------------------------------------------
 	// Interface
 	// -----------------------------------------------------------------------------------
@@ -206,11 +198,18 @@ export class RTVSynth {
 			return;
 		}
 
+		const varnames = this.extractVarnames();
+
+		if (varnames.length != 1) {
+			this.stopSynthesis();
+			return;
+		}
+
 		// ------------------------------------------
 		// Okay, we are definitely using SnipPy here!
 		// ------------------------------------------
 		this.lineno = lineno;
-		this.varnames = this.extractVarnames();
+		this.varnames = varnames;
 		this.row = 0;
 
 		r_operand = r_operand.substr(0, r_operand.length - 2).trim();
@@ -383,14 +382,17 @@ export class RTVSynth {
 
 		if (on) {
 			// Make sure the values are correct and up to date
-			// Check if value was valid
-			let error = await utils.validate(cell.textContent!);
 
-			if (error) {
-				// Show error message if not
-				this.addError(cell, error);
-				return false;
-			}
+			// -- LooPy only --
+			// Check if value was valid
+			// let error = await utils.validate(cell.textContent!);
+
+			// if (error) {
+			// 	// Show error message if not
+			// 	this.addError(cell, error);
+			// 	return false;
+			// }
+			// ---------------
 
 			// Toggle on
 			const oldVal = env[varname];
@@ -400,7 +402,7 @@ export class RTVSynth {
 			this.includedTimes.add(env['time']);
 
 			// Now try to update the box with this value.
-			error = await this.updateBoxValues();
+			let error = await this.updateBoxValues();
 
 			if (error) {
 				// The input causes an exception.
@@ -653,41 +655,44 @@ export class RTVSynth {
 	}
 
 	private async updateBoxValues(content?: any[]): Promise<string | undefined> {
-		if (!content) {
-			let values: any = {};
-			for (let env of this.boxEnvs!) {
-				if (this.includedTimes.has(env['time'])) {
-					values[`(${env['lineno']},${env['time']})`] = env;
-				}
-			}
 
-			let c = utils.runProgram(this.controller.getProgram(), values);
-			let errorMsg: string = '';
-			c.onStderr((msg) => {
-				errorMsg += msg;
-			});
+		// -- LooPy Only --
+		// if (!content) {
+		// 	let values: any = {};
+		// 	for (let env of this.boxEnvs!) {
+		// 		if (this.includedTimes.has(env['time'])) {
+		// 			values[`(${env['lineno']},${env['time']})`] = env;
+		// 		}
+		// 	}
 
-			const results: any = await c.toPromise();
-			const result = results[1];
+		// 	let c = utils.runProgram(this.controller.getProgram(), values);
+		// 	let errorMsg: string = '';
+		// 	c.onStderr((msg) => {
+		// 		errorMsg += msg;
+		// 	});
 
-			let parsedResult = JSON.parse(result);
-			let returnCode = parsedResult[0];
+		// 	const results: any = await c.toPromise();
+		// 	const result = results[1];
 
-			if (errorMsg && returnCode !== 0) {
-				// Extract the error message
-				const errorLines = errorMsg.split(/\n/).filter((s) => s);
-				const message = errorLines[errorLines.length - 1];
-				return message;
-			}
+		// 	let parsedResult = JSON.parse(result);
+		// 	let returnCode = parsedResult[0];
 
-			this.lastRunResults = parsedResult;
-			content = parsedResult;
-		}
+		// 	if (errorMsg && returnCode !== 0) {
+		// 		// Extract the error message
+		// 		const errorLines = errorMsg.split(/\n/).filter((s) => s);
+		// 		const message = errorLines[errorLines.length - 1];
+		// 		return message;
+		// 	}
+
+		// 	this.lastRunResults = parsedResult;
+		// 	content = parsedResult;
+		// }
 
 
-		this.box?.updateContent(content![2]);
-		this.boxEnvs = this.box?.getEnvs();
-		this.setupTableCellContents();
+		// this.box?.updateContent(content![2]);
+		// this.boxEnvs = this.box?.getEnvs();
+		// this.setupTableCellContents();
+		// -- End of LooPy Only --
 
 		return undefined;
 	}
@@ -698,43 +703,47 @@ export class RTVSynth {
 			return currentVal;
 		}
 
-		// Otherwise, find the best default for each variable
-		let defaults: string[] = [];
+		// -- PopPy Only
+		const defaults = this.varnames!.map(_ => '0');
+		// -- LooPy Only --
+		// // Otherwise, find the best default for each variable
+		// let defaults: string[] = [];
 
-		// We need to check the latest envs, so let's make sure it's up to date.
-		// await this.controller.pythonProcess?.toPromise();
-		await this.controller.runProgram();
+		// // We need to check the latest envs, so let's make sure it's up to date.
+		// // await this.controller.pythonProcess?.toPromise();
+		// await this.controller.runProgram();
 
-		// See if the variable was defined before this statement.
-		// If yes, we can set the default value to itself!
-		const boxEnvs = this.controller.getBox(this.lineno!)!.getEnvs();
+		// // See if the variable was defined before this statement.
+		// // If yes, we can set the default value to itself!
+		// const boxEnvs = this.controller.getBox(this.lineno!)!.getEnvs();
 
-		let earliestTime = 100000;
-		for (let env of boxEnvs!) {
-			if (env['time'] < earliestTime) {
-				earliestTime = env['time'];
-			}
-		}
+		// let earliestTime = 100000;
+		// for (let env of boxEnvs!) {
+		// 	if (env['time'] < earliestTime) {
+		// 		earliestTime = env['time'];
+		// 	}
+		// }
 
-		earliestTime--;
+		// earliestTime--;
 
-		for (const varname of this.varnames!) {
-			let val = '0';
+		// for (const varname of this.varnames!) {
+		// 	let val = '0';
 
-			for (let line in this.controller.envs) {
-				for (let env of this.controller.envs[line]) {
-					if (env['time'] === earliestTime) {
-						if (env.hasOwnProperty(varname)) {
-							val = varname;
-						}
-						break;
-					}
-				}
-			}
+		// 	for (let line in this.controller.envs) {
+		// 		for (let env of this.controller.envs[line]) {
+		// 			if (env['time'] === earliestTime) {
+		// 				if (env.hasOwnProperty(varname)) {
+		// 					val = varname;
+		// 				}
+		// 				break;
+		// 			}
+		// 		}
+		// 	}
 
-			// If not, we don't have any information, so let's go with 0.
-			defaults.push(val);
-		}
+		// 	// If not, we don't have any information, so let's go with 0.
+		// 	defaults.push(val);
+		// }
+		// -- End of LooPy Only --
 
 		return defaults.join(', ');
 	}
@@ -816,7 +825,6 @@ export class RTVSynth {
 							break;
 						case 'Escape':
 							rs = false;
-							this.editor.focus();
 							this.stopSynthesis();
 							break;
 					}
