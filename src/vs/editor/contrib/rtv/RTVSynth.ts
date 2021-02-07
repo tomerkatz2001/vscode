@@ -2,77 +2,117 @@ import { Range } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
-import { IRTVLogger, IRTVController, IRTVDisplayBox, BoxUpdateEvent } from './RTVInterfaces';
+import { IRTVLogger, IRTVController, IRTVDisplayBox, Process } from './RTVInterfaces';
 import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
-import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
 
-const SYNTHESIZING_MESSAGE: string = '# Synthesizing. Please wait...';
-
-class RTVSynthBackup {
-	includedTimes: Set<number>;
-	allEnvs?: any[];
-	boxEnvs?: any[];
-	varnames?: string[];
-	row?: number;
-	lineno?: number;
-	box?: IRTVDisplayBox;
-	lastRunResults?: any[];
-
-	constructor(readonly synth: RTVSynth) {
-		this.includedTimes = new Set(synth.includedTimes);
-		this.allEnvs = synth.allEnvs;
-		this.boxEnvs = new Array(synth.boxEnvs);
-		this.varnames = synth.varnames;
-		this.row = synth.row;
-		this.lineno = synth.lineno;
-		this.box = synth.box;
-		this.lastRunResults = synth.lastRunResults;
-	}
-
-	restore(synth: RTVSynth) {
-		synth.includedTimes = new Set(this.includedTimes);
-		synth.allEnvs = this.allEnvs;
-		synth.boxEnvs = this.boxEnvs;
-		synth.varnames = this.varnames;
-		synth.row = this.row;
-		synth.lineno = this.lineno;
-		synth.box = this.box;
-		synth.lastRunResults = this.lastRunResults;
-	}
+class SynthResult {
+	constructor(
+		public done: boolean,
+		public program?: string,
+		public outputs?: string[]
+	) {}
 }
 
+class SynthProblem {
+	constructor(
+		public varNames: string[],
+		public previous_env: any,
+		public envs: any[],
+		public program: string,
+		public line_no: number,
+	) {}
+}
 
-/**
- * For manually keeping track of the undo state and
- * the state of the Projection Boxes.
- * Wait for message
- * --[See SYNTHESIZING_MESSAGE in Undo event]--> WaitForUndo
- * --[See another Undp event right after]--> WaitForUpdateStart
- * --[See the next PB update start event]--> WaitForUpdateFinish
- * --[See the PB update finish event]--> Restore the projection box!
- */
-enum UndoState {
-	WaitForMessage,
-	WaitForUndo,
-	WaitForUpdateStart,
-	WaitForUpdateFinish
+class SynthInstance {
+	private process?: Process;
+	private done: boolean = false;
+	private program?: string;
+	private outputs?: string[];
+	private waitingOnNext: boolean = false;
+
+	private onNextFn?: (output?: string[]) => void;
+	private onProgramFn?: (result?: string) => void;
+
+	constructor(
+		public problem: SynthProblem,
+		private logger: IRTVLogger,
+	) { }
+
+	start() {
+		// Bad name, but reset everything, since we're done;
+		const lineno = this.problem.line_no!;
+		const exampleCount = this.problem.envs.length;
+
+		this.waitingOnNext = true;
+		this.process = utils.synthesizeSnippet(JSON.stringify(this.problem));
+		this.logger.synthStart(this.problem, exampleCount, lineno);
+
+		this.process.onStdout((data) => {
+			this.logger.synthOut(String(data));
+
+			const result = JSON.parse(data) as SynthResult;
+			this.program = result.program;
+			this.outputs = result.outputs;
+			this.done = result.done;
+			this.waitingOnNext = false;
+
+			if (result.done && this.onProgramFn) {
+				this.onProgramFn(result.program);
+			} else if (this.onNextFn) {
+				this.onNextFn(result.outputs);
+			}
+		});
+
+		this.process.onStderr((data) => this.logger.synthErr(String(data)));
+		this.process.onExit(() => {
+			this.done = true;
+			if (this.onProgramFn) {
+				this.onProgramFn(this.program);
+			}
+		});
+	}
+
+	next(): void {
+		if (!this.waitingOnNext) {
+			this.waitingOnNext = true;
+			this.process?.toStdin('next\n');
+		}
+	}
+
+	onProgram(fn: (program?: string) => void) {
+		if (this.done) {
+			fn(this.program);
+		}
+		this.onProgramFn = fn;
+	}
+
+	onNext(fn: (output?: string[]) => void) {
+		if (this.outputs) {
+			fn(this.outputs);
+		}
+		this.onNextFn = fn;
+	}
+
+	public dispose() {
+		this.onNextFn = this.onProgramFn = undefined;
+		this.process?.kill();
+	}
 }
 
 export class RTVSynth {
 	private logger: IRTVLogger;
 	enabled: boolean;
-	includedTimes: Set<number>;
+	includedRows: Set<number>;
 	allEnvs?: any[] = undefined; // TODO Can we do better than any?
 	boxEnvs?: any[] = undefined;
 	varnames?: string[] = undefined;
 	row?: number = undefined;
 	lineno?: number = undefined;
 	box?: IRTVDisplayBox = undefined;
+	instance?: SynthInstance;
 
 	// For restoring the PBs on Undo
-	private backup?: RTVSynthBackup = undefined;
-	private undoState: UndoState = UndoState.WaitForMessage;
 	public lastRunResults?: any[] = undefined;
 
 	constructor(
@@ -81,7 +121,7 @@ export class RTVSynth {
 		@IThemeService readonly _themeService: IThemeService
 	) {
 		this.logger = utils.getLogger(editor);
-		this.includedTimes = new Set();
+		this.includedRows = new Set();
 		this.enabled = false;
 
 		// In case the user click's out of the boxes.
@@ -94,64 +134,6 @@ export class RTVSynth {
 		// editor.onDidChangeModelContent((e) => this.handleUndoEvent(e));
 		//controller.onUpdateEvent((e) => this.handleBoxUpdateEvent(e));
 		// -- End of LooPy only --
-	}
-
-	private handleBoxUpdateEvent(e: BoxUpdateEvent) {
-		if (e.isStart && this.undoState === UndoState.WaitForUpdateStart) {
-			this.undoState = UndoState.WaitForUpdateFinish;
-		} else if (e.isFinish && this.undoState === UndoState.WaitForUpdateFinish) {
-			Promise.resolve().then(async () => {
-				// Time to undo!
-				this.backup!.restore(this);
-
-				await this.controller.pythonProcess?.toPromise();
-
-				let error = await this.updateBoxValues(this.lastRunResults);
-
-				if (!error) {
-					for (let varname of this.varnames!) {
-						let cellContents = this.box!.getCellContent()[varname];
-
-						if (cellContents) {
-							cellContents.forEach((cellContent) => {
-								cellContent.contentEditable = 'true';
-							});
-
-							let selection = window.getSelection()!;
-							let range = selection.getRangeAt(0)!;
-
-							range.selectNodeContents(cellContents[0]);
-							selection.removeAllRanges();
-							selection.addRange(range);
-
-							// TODO Log events!
-						}
-					}
-				}
-
-				this.undoState = UndoState.WaitForUndo;
-			});
-		}
-	}
-
-	private handleUndoEvent(e: IModelContentChangedEvent) {
-		if (!this.backup ||
-			!e.isUndoing ||
-			e.changes.length !== 1 ||
-			e.changes[0].range.startLineNumber !== e.changes[0].range.endLineNumber ||
-			e.changes[0].range.startLineNumber !== this.lineno) {
-			// Not relevant to us.
-			this.undoState = UndoState.WaitForMessage;
-			return;
-		}
-
-		// e is an undo event for this line.
-
-		if (e.changes[0].text === SYNTHESIZING_MESSAGE) {
-			this.undoState = UndoState.WaitForUndo;
-		} else if (this.undoState === UndoState.WaitForUndo) {
-			this.undoState = UndoState.WaitForUpdateStart;
-		}
 	}
 
 	// -----------------------------------------------------------------------------------
@@ -200,9 +182,9 @@ export class RTVSynth {
 			return;
 		}
 
-		const varnames = this.extractVarnames();
+		const varnames = this.extractVarnames(lineno);
 
-		if (varnames.length != 1) {
+		if (varnames.length !== 1) {
 			this.stopSynthesis();
 			return;
 		}
@@ -236,7 +218,8 @@ export class RTVSynth {
 		]);
 
 		// Update the projection box with the new value
-		const runResults: any = await this.controller.runProgram();
+		const runResults: any = await this.controller.updateBoxes();
+		this.controller.disable();
 
 		this.box = this.controller.getBox(lineno);
 		this.boxEnvs = this.box.getEnvs();
@@ -279,18 +262,27 @@ export class RTVSynth {
 
 	public stopSynthesis() {
 		if (this.enabled) {
-			// First take a backup
-			this.backup = new RTVSynthBackup(this);
-
-			// Then clear the state
-			this.includedTimes.clear();
-			this.logger.exampleReset();
 			this.enabled = false;
 
-			// Finally reset the Projection Boxes
+			// Clear the state
+			this.includedRows = new Set();
+			this.logger.exampleReset();
+
+			this.instance?.dispose();
+			this.instance = undefined;
+
+			this.lineno = undefined;
+			this.varnames = [];
+			this.box = undefined;
+			this.boxEnvs = undefined;
+			this.allEnvs = undefined;
+			this.row = undefined;
+
+			// Then reset the Projection Boxes
 			this.editor.focus();
 			this.logger.projectionBoxExit();
-			this.controller.runProgram();
+			this.controller.enable();
+			this.controller.updateBoxes();
 		}
 	}
 
@@ -379,7 +371,7 @@ export class RTVSynth {
 		} else if (force !== null) {
 			on = force;
 		} else {
-			on = !this.includedTimes.has(time);
+			on = !this.includedRows.has(this.row!);
 		}
 
 		if (on) {
@@ -397,28 +389,8 @@ export class RTVSynth {
 			// ---------------
 
 			// Toggle on
-			const oldVal = env[varname];
-			const included = this.includedTimes.has(env['time']);
-
 			env[varname] = cell.innerText;
-			this.includedTimes.add(env['time']);
-
-			// Now try to update the box with this value.
-			let error = await this.updateBoxValues();
-
-			if (error) {
-				// The input causes an exception.
-				// Rollback the changes and show the error.
-				env[varname] = oldVal;
-
-				if (!included) {
-					this.includedTimes.delete(env['time']);
-				}
-
-				this.addError(cell, error);
-				return false;
-			}
-
+			this.includedRows.add(this.row!);
 			this.highlightRow(row);
 
 			this.logger.exampleInclude(
@@ -429,17 +401,7 @@ export class RTVSynth {
 			// TODO Check if we need to remove else case
 
 			// Toggle off
-			this.includedTimes.delete(time);
-
-			// Update box values
-			let error = await this.updateBoxValues();
-			if (error) {
-				// Undoing this causes an exception.
-				// Rollback the changes and show the error.
-				this.includedTimes.add(time);
-				this.addError(cell, error);
-				return false;
-			}
+			this.includedRows.delete(this.row!);
 
 			// Remove row highlight
 			row.style.fontWeight = row.style.backgroundColor = '';
@@ -457,20 +419,12 @@ export class RTVSynth {
 	// Synthesize from current data
 	// -----------------------------------------------------------------------------------
 
-	public synthesizeFragment() {
+	public async synthesizeFragment(): Promise<void> {
 		// Build and write the synth_example.json file content
-		let prev_time: number = Number.MAX_VALUE;
+		let rows = Array.from(this.includedRows).sort();
+		let prev_time: number = this.boxEnvs![rows[0]] - 1;
 
-		this.includedTimes.forEach((time, _) => {
-			if (time < prev_time) {
-				prev_time = time;
-			}
-		});
-
-		prev_time -= 1;
-
-		let previous_env = {};
-		let envs: any[] = [];
+		let previous_env: any = {};
 
 		// Look for the previous env in allEnvs
 		for (let env of this.allEnvs!) {
@@ -483,59 +437,28 @@ export class RTVSynth {
 			}
 		}
 
-		// Read the user's values from this box's envs
-		for (let env of this.boxEnvs!) {
-			if (!env['time']) {
-				continue;
-			}
+		let envs: any[] = rows.map(i => this.boxEnvs![i]);
 
-			if (env['time'] === prev_time) {
-				previous_env = env;
-			}
+		let problem = new SynthProblem(
+			this.varnames!,
+			previous_env,
+			envs,
+			this.controller.getProgram(),
+			this.lineno!
+		);
 
-			if (this.includedTimes.has(env['time'])) {
-				envs.push(env);
-			}
-		}
-
-		let problem = {
-			varNames: this.varnames!,
-			previous_env: previous_env,
-			envs: envs,
-			program: this.controller.getProgram(),
-			line_no: this.lineno,
-		};
-
-
-		// Bad name, but reset everything, since we're done;
-		const lineno = this.lineno!;
-		const exampleCount = this.includedTimes.size;
-		this.stopSynthesis();
-
-		const c = utils.synthesizeSnippet(JSON.stringify(problem));
-		this.logger.synthStart(problem, exampleCount, lineno);
-		this.insertSynthesizedFragment(SYNTHESIZING_MESSAGE, this.lineno!);
-
-		c.onStdout((data) => this.logger.synthOut(String(data)));
-		c.onStderr((data) => this.logger.synthErr(String(data)));
-
-		c.onExit((exitCode, result) => {
-			let error: boolean = exitCode !== 0;
-
-			if (!error) {
-				this.logger.synthEnd(exitCode, result);
-				error = result === undefined || result === 'None';
-				if (!error) {
-					this.insertSynthesizedFragment(result!!, lineno);
-				}
-			} else {
-				this.logger.synthEnd(exitCode);
-			}
-
-			if (error) {
-				this.insertSynthesizedFragment('# Synthesis failed', lineno);
-			}
+		this.instance = new SynthInstance(problem, this.logger);
+		this.instance.onNext((outputs?: string[]) => {
+			outputs?.forEach((output, i) => {
+				this.box!.getCell(this.varnames![0], rows[i])!.childNodes[0].textContent = output;
+			});
 		});
+		this.instance.onProgram((program?: string) => {
+			this.insertSynthesizedFragment(program? program : '# Synthesis failed', this.lineno!);
+			this.stopSynthesis();
+		});
+		this.instance.start();
+		this.insertSynthesizedFragment('# Please wait. Synthesizing...', this.lineno!);
 	}
 
 	private insertSynthesizedFragment(fragment: string, lineno: number) {
@@ -593,8 +516,8 @@ export class RTVSynth {
 		return rs as HTMLTableRowElement;
 	}
 
-	private extractVarnames(): string[] {
-		let line = this.controller.getLineContent(this.lineno!).trim();
+	private extractVarnames(lineno: number): string[] {
+		let line = this.controller.getLineContent(lineno).trim();
 		let rs = undefined;
 
 		if (line.startsWith('return ')) {
@@ -607,147 +530,13 @@ export class RTVSynth {
 		return rs;
 	}
 
-	private addError(element: HTMLElement, msg: string) {
-		// First, squiggly lines!
-		element.className += 'squiggly-error';
-
-		// Use monaco's monaco-hover class to keep the style the same
-		const hover = document.createElement('div');
-		hover.className = 'monaco-hover visible';
-		hover.id = 'snippy-example-hover';
-
-		const scrollable = document.createElement('div');
-		scrollable.className = 'monaco-scrollable-element';
-		scrollable.style.position = 'relative';
-		scrollable.style.overflow = 'hidden';
-
-		const row = document.createElement('row');
-		row.className = 'hover-row markdown-hover';
-
-		const content = document.createElement('div');
-		content.className = 'monaco-hover-content';
-
-		const div = document.createElement('div');
-		const p = document.createElement('p');
-		p.innerText = msg;
-
-		div.appendChild(p);
-		content.appendChild(div);
-		row.appendChild(content);
-		scrollable.appendChild(row);
-		hover.appendChild(scrollable);
-
-		let position = element.getBoundingClientRect();
-		hover.style.position = 'fixed';
-		hover.style.top = position.bottom.toString() + 'px';
-		hover.style.left = position.right.toString() + 'px';
-
-		// Add it to the DOM
-		let editorNode = this.editor.getDomNode()!;
-		editorNode.appendChild(hover);
-
-		// Finally, add a listener to remove the hover and annotation
-		let removeError = (ev: Event) => {
-			element.removeEventListener('input', removeError);
-			editorNode.removeChild(hover);
-			element.className = element.className.replace('squiggly-error', '');
-		};
-
-		element.addEventListener('input', removeError);
-	}
-
-	private async updateBoxValues(content?: any[]): Promise<string | undefined> {
-
-		// -- LooPy Only --
-		// if (!content) {
-		// 	let values: any = {};
-		// 	for (let env of this.boxEnvs!) {
-		// 		if (this.includedTimes.has(env['time'])) {
-		// 			values[`(${env['lineno']},${env['time']})`] = env;
-		// 		}
-		// 	}
-
-		// 	let c = utils.runProgram(this.controller.getProgram(), values);
-		// 	let errorMsg: string = '';
-		// 	c.onStderr((msg) => {
-		// 		errorMsg += msg;
-		// 	});
-
-		// 	const results: any = await c.toPromise();
-		// 	const result = results[1];
-
-		// 	let parsedResult = JSON.parse(result);
-		// 	let returnCode = parsedResult[0];
-
-		// 	if (errorMsg && returnCode !== 0) {
-		// 		// Extract the error message
-		// 		const errorLines = errorMsg.split(/\n/).filter((s) => s);
-		// 		const message = errorLines[errorLines.length - 1];
-		// 		return message;
-		// 	}
-
-		// 	this.lastRunResults = parsedResult;
-		// 	content = parsedResult;
-		// }
-
-
-		// this.box?.updateContent(content![2]);
-		// this.boxEnvs = this.box?.getEnvs();
-		// this.setupTableCellContents();
-		// -- End of LooPy Only --
-
-		return undefined;
-	}
-
 	private async defaultValue(currentVal: string): Promise<string> {
 		// If the user specified a default value, use that.
 		if (currentVal !== '') {
 			return currentVal;
 		}
 
-		// -- PopPy Only
-		const defaults = this.varnames!.map(_ => '0');
-		// -- LooPy Only --
-		// // Otherwise, find the best default for each variable
-		// let defaults: string[] = [];
-
-		// // We need to check the latest envs, so let's make sure it's up to date.
-		// // await this.controller.pythonProcess?.toPromise();
-		// await this.controller.runProgram();
-
-		// // See if the variable was defined before this statement.
-		// // If yes, we can set the default value to itself!
-		// const boxEnvs = this.controller.getBox(this.lineno!)!.getEnvs();
-
-		// let earliestTime = 100000;
-		// for (let env of boxEnvs!) {
-		// 	if (env['time'] < earliestTime) {
-		// 		earliestTime = env['time'];
-		// 	}
-		// }
-
-		// earliestTime--;
-
-		// for (const varname of this.varnames!) {
-		// 	let val = '0';
-
-		// 	for (let line in this.controller.envs) {
-		// 		for (let env of this.controller.envs[line]) {
-		// 			if (env['time'] === earliestTime) {
-		// 				if (env.hasOwnProperty(varname)) {
-		// 					val = varname;
-		// 				}
-		// 				break;
-		// 			}
-		// 		}
-		// 	}
-
-		// 	// If not, we don't have any information, so let's go with 0.
-		// 	defaults.push(val);
-		// }
-		// -- End of LooPy Only --
-
-		return defaults.join(', ');
+		return this.varnames!.map(_ => '0').join(', ');
 	}
 
 	private select(node: Node) {
@@ -769,8 +558,7 @@ export class RTVSynth {
 		for (const varname of this.varnames!) {
 			let contents = this.box!.getCellContent()[varname];
 
-			for (let i in contents) {
-				const cellContent = contents[i];
+			contents.forEach((cellContent, i) => {
 				const env = this.boxEnvs![i];
 
 				cellContent.contentEditable = 'true';
@@ -808,12 +596,6 @@ export class RTVSynth {
 								togglePromise.then((success: boolean) => {
 									if (success) {
 										this.synthesizeFragment();
-
-										cellContent.contentEditable = 'false';
-										this.editor.focus();
-										this.logger.projectionBoxExit();
-										this.includedTimes.clear();
-										this.logger.exampleReset();
 									}
 								});
 							}
@@ -829,16 +611,21 @@ export class RTVSynth {
 							rs = false;
 							this.stopSynthesis();
 							break;
+						case 'ArrowRight':
+							if (e.altKey) {
+								rs = false;
+								this.instance?.next();
+							}
+							break;
 					}
-
 					return rs;
 				};
 
 				// Re-highlight the rows
-				if (this.includedTimes.has(env['time'])) {
+				if (this.includedRows.has(i)) {
 					this.highlightRow(this.findParentRow(cellContent));
 				}
-			}
+			});
 		}
 	}
 }

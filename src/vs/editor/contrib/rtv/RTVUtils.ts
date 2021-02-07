@@ -23,31 +23,42 @@ const SYNTH = getOSEnvVariable('SYNTH');
 const SCALA = getOSEnvVariable('SCALA');
 const SNIPPY_UTILS = getOSEnvVariable('SNIPPY_UTILS');
 
-class RunpyProcess implements Process {
-	private _reject?: () => void;
-
-	constructor(private file: string,
-		private p: child_process.ChildProcessWithoutNullStreams) {
-	}
+abstract class NativeProcess implements Process {
+	protected _reject?: () => void;
+	constructor(protected process: child_process.ChildProcessWithoutNullStreams) {}
 
 	onStdout(fn: (data: any) => void): void {
-		this.p.stdout.on('data', fn);
+		this.process.stdout.on('data', fn);
 	}
 
 	onStderr(fn: (data: any) => void): void {
-		this.p.stderr.on('data', fn);
+		this.process.stderr.on('data', fn);
+	}
+
+	toStdin(msg: string): void {
+		this.process.stdin.write(msg);
 	}
 
 	kill() {
-		this.p.kill();
+		this.process.kill();
 		if (this._reject) {
 			this._reject();
 			this._reject = undefined;
 		}
 	}
 
+	abstract onExit(fn: (exitCode: any, result?: string) => void): void;
+	abstract toPromise(): Promise<any>;
+}
+
+class RunpyProcess extends NativeProcess {
+	constructor(private file: string,
+		p: child_process.ChildProcessWithoutNullStreams) {
+		super(p)
+	}
+
 	onExit(fn: (exitCode: any, result?: string) => void): void {
-		this.p.on('exit', (exitCode, _) => {
+		this.process.on('exit', (exitCode, _) => {
 			let result = undefined;
 
 			if (exitCode !== null) {
@@ -62,7 +73,7 @@ class RunpyProcess implements Process {
 		return new Promise(
 			(resolve, reject) => {
 				// We consider failed executions (non-zero exitCode) as resolved.
-				this.p.on('exit', (exitCode, _) => {
+				this.process.on('exit', (exitCode, _) => {
 					let result: string | undefined = undefined;
 
 					if (exitCode !== null) {
@@ -79,27 +90,10 @@ class RunpyProcess implements Process {
 	}
 }
 
-class SynthProcess implements Process {
-	private _reject?: () => void;
-
+class SynthProcess extends NativeProcess  {
 	constructor(private file: string,
-		private process: child_process.ChildProcessWithoutNullStreams) { }
-
-	onStdout(fn: (data: any) => void): void {
-		this.process.stdout.on('data', fn);
-	}
-
-	onStderr(fn: (data: any) => void): void {
-		this.process.stderr.on('data', fn);
-	}
-
-	kill() {
-		this.process.kill();
-
-		if (this._reject) {
-			this._reject();
-			this._reject = undefined;
-		}
+		p: child_process.ChildProcessWithoutNullStreams) {
+		super(p);
 	}
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {

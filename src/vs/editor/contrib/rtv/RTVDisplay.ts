@@ -1644,6 +1644,7 @@ export class RTVController implements IRTVController {
 	private _outputBox: RTVOutputDisplayBox| null = null;
 	private _runButton: RTVRunButton | null = null;
 	private _synthesis: RTVSynth;
+	private enabled: boolean = true;
 
 	get onUpdateEvent(): Event<BoxUpdateEvent> {
 		return this._eventEmitter.event;
@@ -1668,7 +1669,7 @@ export class RTVController implements IRTVController {
 		this._editor.onDidLayoutChange((e) => { this.onDidLayoutChange(e); });
 		this._editor.onDidChangeModel((e) => { this.onDidChangeModel(e); });
 		this._editor.onDidChangeModelContent((e) => { this.onDidChangeModelContent(e); });
-		this._editor.onDidChangeModelLanguage((e) => { this.runProgram(); });
+		this._editor.onDidChangeModelLanguage((e) => { this.updateBoxes(); });
 		this._editor.onMouseWheel((e) => { this.onMouseWheel(e); });
 		this._editor.onKeyUp((e) => { this.onKeyUp(e); });
 		this._editor.onKeyDown((e) => { this.onKeyDown(e); });
@@ -1695,6 +1696,18 @@ export class RTVController implements IRTVController {
 
 	public getId(): string {
 		return RTVController.ID;
+	}
+
+	public enable() {
+		this.enabled = true;
+	}
+
+	public disable() {
+		this.enabled = false;
+	}
+
+	public isEnabled(): boolean {
+		return this.enabled;
 	}
 
 	public dispose(): void {
@@ -2144,13 +2157,13 @@ export class RTVController implements IRTVController {
 			this._runButton = null;
 			this.envs = {};
 			this.writes = {};
-			this.runProgram();
+			this.updateBoxes();
 		}
 	}
 
 	private onDidChangeModelContent(e: IModelContentChangedEvent) {
 		this.updateMaxPixelCol();
-		this.runProgram(e);
+		this.updateBoxes(e);
 		let cursorPos = this._editor.getPosition();
 		if (cursorPos === null) {
 			return;
@@ -2600,7 +2613,59 @@ export class RTVController implements IRTVController {
 		return lines.join('\n');
 	}
 
-	public async runProgram(e?: IModelContentChangedEvent): Promise<any> {
+	public async runProgram(): Promise<[string, string, any?]> {
+		const program = this.getProgram();
+
+		if (this.pythonProcess !== undefined) {
+			this.pythonProcess.kill();
+		}
+
+		this.logger.projectionBoxUpdateStart(program);
+		let c = utils.runProgram(program);
+		this.pythonProcess = c;
+
+		let errorMsg: string = '';
+		c.onStderr((msg) => {
+			errorMsg += msg;
+		});
+
+		let outputMsg: string = '';
+		c.onStdout((msg) => {
+			outputMsg += msg;
+		});
+
+		let results = await c.toPromise();
+
+		if (!results) {
+			console.error('runProgram() process returned: ', results);
+			return [outputMsg, errorMsg];
+		}
+
+		const exitCode = results[0];
+		const result = results[1];
+
+		this.logger.projectionBoxUpdateEnd(result);
+
+		// onExit renders enough delay to update the positioning of the boxes
+		this.updateMaxPixelCol();
+
+		// When exitCode === null, it means the process was killed,
+		// so there is nothing else to do
+		if (exitCode === null) {
+			return [outputMsg, errorMsg];
+		}
+
+		this.pythonProcess = undefined;
+
+		return [outputMsg, errorMsg, JSON.parse(result!)];
+	}
+
+	public async updateBoxes(e?: IModelContentChangedEvent): Promise<any> {
+
+		if (!this.enabled) {
+			// We shouldn't change anything. Just return the results
+			return;
+		}
 
 		function runImmediately(e?: IModelContentChangedEvent): boolean {
 			if (e === undefined) {
@@ -2647,50 +2712,8 @@ export class RTVController implements IRTVController {
 		this._eventEmitter.fire(new BoxUpdateEvent(true, false, false));
 
 		this.hideOutputBox();
-		const program = this.getProgram();
 
-		if (this.pythonProcess !== undefined) {
-			this.pythonProcess.kill();
-		}
-
-		this.logger.projectionBoxUpdateStart(program);
-		let c = utils.runProgram(program);
-		this.pythonProcess = c;
-
-		let errorMsg: string = '';
-		c.onStderr((msg) => {
-			errorMsg += msg;
-		});
-
-		let outputMsg: string = '';
-		c.onStdout((msg) => {
-			outputMsg += msg;
-		});
-
-		let results = await c.toPromise();
-
-		if (!results) {
-			console.error('runProgram() process returned: ', results);
-			return;
-		}
-
-		const exitCode = results[0];
-		const result = results[1];
-
-		this.logger.projectionBoxUpdateEnd(result);
-
-		// onExit renders enough delay to update the positioning of the boxes
-		this.updateMaxPixelCol();
-
-		// When exitCode === null, it means the process was killed,
-		// so there is nothing else to do
-		if (exitCode === null) {
-			return;
-		}
-
-		this.pythonProcess = undefined;
-
-		let parsedResult = JSON.parse(result!);
+		let [outputMsg, errorMsg, parsedResult] = await this.runProgram();
 		let returnCode = parsedResult[0];
 
 		this.updateLinesWhenOutOfDate(returnCode, e);
@@ -2699,7 +2722,7 @@ export class RTVController implements IRTVController {
 			this.updateData(parsedResult);
 			this.clearError();
 		} else {
-			this.showErrorWithDelay(returnCode, errorMsg);
+			this.showErrorWithDelay(returnCode, errorMsg!);
 		}
 
 		// Wait for the layout to finish
@@ -3254,13 +3277,13 @@ export class RTVController implements IRTVController {
 
 	public focusOnLoopAtBox(box: RTVDisplayBox) {
 		this.loopFocusController = new LoopFocusController(this, box, box.getFirstLoopIter());
-		this.runProgram();
+		this.updateBoxes();
 		this.changeViewMode(ViewMode.Focused);
 	}
 
 	public stopFocus() {
 		this.loopFocusController = null;
-		this.runProgram();
+		this.updateBoxes();
 		this.changeViewMode(ViewMode.Full);
 	}
 

@@ -57,9 +57,14 @@ export interface IRTVController extends IEditorContribution {
 	onUpdateEvent: Event<BoxUpdateEvent>;
 
 	// Functions for running the program
+	updateBoxes(): Promise<any>;
 	runProgram(): Promise<any>;
 	getId(): string;
 	byRowOrCol: RowColMode;
+
+	enable(): void;
+	disable(): void;
+	isEnabled(): boolean;
 }
 
 /**
@@ -104,6 +109,7 @@ export interface Process {
 	onExit(fn: (exitCode: any, result?: string) => void): void;
 	onStdout(fn: (data: any) => void): void;
 	onStderr(fn: (data: any) => void): void;
+	toStdin(msg: string): void;
 	kill(): void;
 	toPromise(): Promise<any>;
 }
@@ -118,6 +124,7 @@ export class EmptyProcess implements Process {
 	onExit(_fn: (exitCode: any, result?: string) => void): void {}
 	onStdout(_fn: (data: any) => void): void {}
 	onStderr(_fn: (data: any) => void): void {}
+	toStdin(msg: string): void {}
 	kill(): void {}
 	toPromise(): Promise<any> {
 		return new Promise((resolve) => {

@@ -147,6 +147,10 @@ class PyodideProcess<R extends PyodideRequest> implements Process {
 		this.onError = fn;
 	}
 
+	toStdin(msg: string) {
+		// TODO Implement
+	}
+
 	kill() {
 		pyodideWorker.removeEventListener('message', this.eventListener);
 
@@ -270,6 +274,11 @@ class SynthProcess implements Process {
 	}
 
 	onStdout(_fn: (data: any) => void): void {
+		// TODO Implement
+	}
+
+	toStdin(msg: string): void {
+		// TODO Implement
 	}
 
 	onStderr(fn: (data: any) => void): void {
@@ -430,7 +439,7 @@ const pyodideWorkerInitListener = (event: MessageEvent) =>
 		const program = window.editor.getModel()!!.getLinesContent().join('\n');
 		runProgram(program).onExit((_code, _result) =>
 		{
-			(window.editor.getContribution('editor.contrib.rtv') as IRTVController).runProgram();
+			(window.editor.getContribution('editor.contrib.rtv') as IRTVController).updateBoxes();
 			(document.getElementById('spinner') as HTMLInputElement).style.display = 'none';
 		});
 	}
