@@ -91,35 +91,17 @@ class RunpyProcess extends NativeProcess {
 }
 
 class SynthProcess extends NativeProcess  {
-	constructor(private file: string,
-		p: child_process.ChildProcessWithoutNullStreams) {
+	constructor(p: child_process.ChildProcessWithoutNullStreams) {
 		super(p);
 	}
 
-	onExit(fn: (exitCode: any, result?: string) => void): void {
-		this.process.on('close', (exitCode) => {
-			let result = undefined;
-
-			if (exitCode === 0) {
-				result = fs.readFileSync(this.file + '.out').toString();
-			}
-
-			fn(exitCode, result);
-		});
+	onExit(fn: (exitCode: any) => void): void {
+		this.process.on('close', (exitCode) => fn(exitCode));
 	}
 
 	toPromise(): Promise<any> {
 		return new Promise((resolve, reject) => {
-			this.process.on('close', (exitCode) => {
-				let result = undefined;
-
-				if (exitCode === 0) {
-					result = fs.readFileSync(this.file + '.out').toString();
-				}
-
-				resolve([exitCode, result]);
-			});
-
+			this.process.on('close', (exitCode) => resolve(exitCode));
 			this._reject = reject;
 		});
 	}
@@ -146,7 +128,7 @@ export function synthesizeSnippet(problem: string): Process {
 	const example_fname = os.tmpdir() + path.sep + 'synth_example.json';
 	fs.writeFileSync(example_fname, problem);
 	let c = child_process.spawn(SCALA, [SYNTH, example_fname]);
-	return new SynthProcess(example_fname, c);
+	return new SynthProcess(c);
 }
 
 export function runImgSummary(program: string, line: number, varname: string): Process {

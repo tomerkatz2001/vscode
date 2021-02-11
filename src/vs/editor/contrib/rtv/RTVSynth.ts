@@ -6,11 +6,12 @@ import { IRTVLogger, IRTVController, IRTVDisplayBox, Process } from './RTVInterf
 import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 
+const SYNTHESIZING_MESSAGE: string = '# Please wait. Synthesizing...';
+
 class SynthResult {
 	constructor(
-		public done: boolean,
-		public program?: string,
-		public outputs?: string[]
+		public program: string,
+		public runpyResults?: any[]
 	) {}
 }
 
@@ -25,77 +26,105 @@ class SynthProblem {
 }
 
 class SynthInstance {
-	private process?: Process;
-	private done: boolean = false;
-	private program?: string;
-	private outputs?: string[];
-	private waitingOnNext: boolean = false;
+	private _results: SynthResult[] = [];
+	private _currIdx: number = -1;
+	private _done: boolean = false;
 
-	private onNextFn?: (output?: string[]) => void;
-	private onProgramFn?: (result?: string) => void;
+	private process?: Process;
+	private onNextFn?: (result: SynthResult) => void;
+	private onEndFn?: (results: SynthResult[]) => void;
 
 	constructor(
 		public problem: SynthProblem,
 		private logger: IRTVLogger,
 	) { }
 
-	start() {
+	get done(): boolean {
+		return this._done;
+	}
+
+	get results(): SynthResult[] {
+		return [...this._results];
+	}
+
+	public remove(elem: SynthResult) {
+		this._results.splice(this._results.findIndex((val) => val === elem), 1);
+	}
+
+	public next(): SynthResult | undefined {
+		let rs = undefined;
+		if (this.hasNext()) {
+			rs = this._results[++this._currIdx];
+		}
+		return rs;
+	}
+
+	public previous(): SynthResult | undefined {
+		let rs = undefined;
+		if (this.hasPrevious()) {
+			rs = this._results[--this._currIdx];
+		}
+		return rs;
+	}
+
+	public current(): SynthResult | undefined {
+		let rs = undefined;
+		if (this._currIdx >= 0 && this._currIdx < this._results.length) {
+			rs = this._results[this._currIdx];
+		}
+		return rs;
+	}
+
+	public hasNext(): boolean {
+		return this._currIdx + 1 < this._results.length;
+	}
+
+	public hasPrevious() {
+		return this._currIdx >= 1;
+	}
+
+	public start() {
 		// Bad name, but reset everything, since we're done;
 		const lineno = this.problem.line_no!;
 		const exampleCount = this.problem.envs.length;
 
-		this.waitingOnNext = true;
 		this.process = utils.synthesizeSnippet(JSON.stringify(this.problem));
 		this.logger.synthStart(this.problem, exampleCount, lineno);
 
 		this.process.onStdout((data) => {
-			this.logger.synthOut(String(data));
+			String.fromCharCode.apply(null, data).split('\n').filter(line => line).forEach((line: string) => {
+				const result = JSON.parse(line) as SynthResult;
+				this._results.push(result);
 
-			const result = JSON.parse(data) as SynthResult;
-			this.program = result.program;
-			this.outputs = result.outputs;
-			this.done = result.done;
-			this.waitingOnNext = false;
-
-			if (result.done && this.onProgramFn) {
-				this.onProgramFn(result.program);
-			} else if (this.onNextFn) {
-				this.onNextFn(result.outputs);
-			}
+				if (this.onNextFn) {
+					this.onNextFn(result);
+				}
+			});
 		});
 
 		this.process.onStderr((data) => this.logger.synthErr(String(data)));
 		this.process.onExit(() => {
-			this.done = true;
-			if (this.onProgramFn) {
-				this.onProgramFn(this.program);
+			this._done = true;
+			if (this.onEndFn) {
+				this.onEndFn(this.results);
 			}
 		});
 	}
 
-	next(): void {
-		if (!this.waitingOnNext) {
-			this.waitingOnNext = true;
-			this.process?.toStdin('next\n');
-		}
-	}
-
-	onProgram(fn: (program?: string) => void) {
+	onEnd(fn: (results: SynthResult[]) => void) {
 		if (this.done) {
-			fn(this.program);
+			fn(this.results);
 		}
-		this.onProgramFn = fn;
+		this.onEndFn = fn;
 	}
 
-	onNext(fn: (output?: string[]) => void) {
-		if (this.outputs) {
-			fn(this.outputs);
-		}
+	onNext(fn: (result: SynthResult) => void) {
+		this._results.forEach((result) => fn(result));
 		this.onNextFn = fn;
 	}
 
 	public dispose() {
-		this.onNextFn = this.onProgramFn = undefined;
+		this.onNextFn = this.onEndFn = undefined;
 		this.process?.kill();
 	}
 }
@@ -111,6 +140,8 @@ export class RTVSynth {
 	lineno?: number = undefined;
 	box?: IRTVDisplayBox = undefined;
 	instance?: SynthInstance;
+	waitingOnNextResult: boolean = false;
+	errorHover?: HTMLElement;
 
 	// For restoring the PBs on Undo
 	public lastRunResults?: any[] = undefined;
@@ -128,12 +159,6 @@ export class RTVSynth {
 		editor.onDidFocusEditorText(() => {
 			this.stopSynthesis();
 		});
-
-		// -- LooPy only --
-		// TODO Is there a better way to capture undo events?
-		// editor.onDidChangeModelContent((e) => this.handleUndoEvent(e));
-		//controller.onUpdateEvent((e) => this.handleBoxUpdateEvent(e));
-		// -- End of LooPy only --
 	}
 
 	// -----------------------------------------------------------------------------------
@@ -271,12 +296,18 @@ export class RTVSynth {
 			this.instance?.dispose();
 			this.instance = undefined;
 
+			if (this.errorHover) {
+				this.errorHover.remove();
+				this.errorHover = undefined;
+			}
+
 			this.lineno = undefined;
 			this.varnames = [];
 			this.box = undefined;
 			this.boxEnvs = undefined;
 			this.allEnvs = undefined;
 			this.row = undefined;
+			this.waitingOnNextResult = false;
 
 			// Then reset the Projection Boxes
 			this.editor.focus();
@@ -448,17 +479,25 @@ export class RTVSynth {
 		);
 
 		this.instance = new SynthInstance(problem, this.logger);
-		this.instance.onNext((outputs?: string[]) => {
-			outputs?.forEach((output, i) => {
-				this.box!.getCell(this.varnames![0], rows[i])!.childNodes[0].textContent = output;
-			});
+		this.instance.onNext((result: SynthResult) => {
+			if (this.waitingOnNextResult) {
+				this.updateBoxValues(result);
+			}
 		});
-		this.instance.onProgram((program?: string) => {
-			this.insertSynthesizedFragment(program? program : '# Synthesis failed', this.lineno!);
-			this.stopSynthesis();
+		this.instance.onEnd((results: SynthResult[]) => {
+			if (results.length === 0) {
+				this.insertSynthesizedFragment('# Synthesis failed', this.lineno!);
+				this.stopSynthesis();
+			} else if (this.waitingOnNextResult) {
+				this.waitingOnNextResult = false;
+				this.updateBoxValues(this.instance?.results.pop()!);
+			}
 		});
+
+		this.insertSynthesizedFragment(SYNTHESIZING_MESSAGE, this.lineno!);
+		this.nextResult();
+
 		this.instance.start();
-		this.insertSynthesizedFragment('# Please wait. Synthesizing...', this.lineno!);
 	}
 
 	private insertSynthesizedFragment(fragment: string, lineno: number) {
@@ -530,6 +569,119 @@ export class RTVSynth {
 		return rs;
 	}
 
+	private addError(element: HTMLElement, msg: string) {
+		if (this.errorHover) {
+			this.errorHover.remove();
+			this.errorHover = undefined;
+		}
+
+		// First, squiggly lines!
+		// element.className += 'squiggly-error';
+
+		// Use monaco's monaco-hover class to keep the style the same
+		this.errorHover = document.createElement('div');
+		this.errorHover.className = 'monaco-hover visible';
+		this.errorHover.id = 'snippy-example-hover';
+
+		const scrollable = document.createElement('div');
+		scrollable.className = 'monaco-scrollable-element';
+		scrollable.style.position = 'relative';
+		scrollable.style.overflow = 'hidden';
+
+		const row = document.createElement('row');
+		row.className = 'hover-row markdown-hover';
+
+		const content = document.createElement('div');
+		content.className = 'monaco-hover-content';
+
+		const div = document.createElement('div');
+		const p = document.createElement('p');
+		p.innerText = msg;
+
+		div.appendChild(p);
+		content.appendChild(div);
+		row.appendChild(content);
+		scrollable.appendChild(row);
+		this.errorHover.appendChild(scrollable);
+
+		let position = element.getBoundingClientRect();
+		this.errorHover.style.position = 'fixed';
+		this.errorHover.style.top = position.bottom.toString() + 'px';
+		this.errorHover.style.left = position.right.toString() + 'px';
+		this.errorHover.style.padding = '3px';
+
+		// Add it to the DOM
+		let editorNode = this.editor.getDomNode()!;
+		editorNode.appendChild(this.errorHover);
+
+		this.errorHover.ontransitionend = () => {
+			if (this.errorHover) {
+				if (this.errorHover.style.opacity === '0') {
+					this.errorHover.remove();
+				}
+			}
+		};
+
+		setTimeout(() => {// TODO Make the error fade over time
+			if (this.errorHover) {
+				this.errorHover.style.transitionDuration = '1s';
+				this.errorHover.style.opacity = '0';
+			}
+		}, 1000);
+
+		// Finally, add a listener to remove the hover and annotation
+		// let removeError = (ev: Event) => {
+		// 	element.removeEventListener('input', removeError);
+		// 	editorNode.removeChild(hover);
+		// 	element.className = element.className.replace('squiggly-error', '');
+		// };
+		// element.addEventListener('input', removeError);
+	}
+
+	/**
+	 * Tries to update the box values with the given synthesis results. It can fail
+	 * if the code causes an exception/error somewhere.
+	 *
+	 * @return true if it succeeds.
+	 **/
+	private async updateBoxValues(synthResult: SynthResult): Promise<boolean> {
+		let content = synthResult.runpyResults;
+
+		if (!content) {
+			// First, run `run.py` with the synthesis result to get the values
+			// TODO This only works for single-line outputs
+			const program = this.controller.getProgram().replace(SYNTHESIZING_MESSAGE, synthResult.program);
+			let c = utils.runProgram(program);
+			let errorMsg: string = '';
+			c.onStderr((msg) => { errorMsg += msg; });
+
+			const results: any = await c.toPromise();
+			const result = results[1];
+
+			let parsedResult = JSON.parse(result);
+			let returnCode = parsedResult[0];
+
+			// Return false if there were any errors
+
+			if (errorMsg && returnCode !== 0) {
+				return false;
+			}
+
+			// Update the box with the new values!
+			this.lastRunResults = parsedResult;
+			content = parsedResult;
+		}
+
+		this.box?.updateContent(content![2]);
+		this.boxEnvs = this.box?.getEnvs();
+		this.setupTableCellContents();
+
+		// Reset the selection
+		this.select(this.box?.getCell(this.varnames![0], this.row!)!.childNodes[0]!);
+
+		return true;
+	}
+
 	private async defaultValue(currentVal: string): Promise<string> {
 		// If the user specified a default value, use that.
 		if (currentVal !== '') {
@@ -578,6 +730,13 @@ export class RTVSynth {
 											this.focusNextRow(cellContent, false, false);
 										}
 									});
+							} else if (this.instance) {
+								// We are done!
+								const solution = this.instance.current();
+								if (solution) {
+									this.insertSynthesizedFragment(solution.program, this.lineno!);
+									this.stopSynthesis();
+								}
 							} else {
 								let togglePromise;
 
@@ -612,11 +771,16 @@ export class RTVSynth {
 							this.stopSynthesis();
 							break;
 						case 'ArrowRight':
-							if (e.altKey) {
+							if (this.instance) {
 								rs = false;
-								this.instance?.next();
+								this.nextResult();
 							}
 							break;
+						case 'ArrowLeft':
+							if (this.instance) {
+								rs = false;
+								this.previousResult();
+							}
 					}
 					return rs;
 				};
@@ -626,6 +790,56 @@ export class RTVSynth {
 					this.highlightRow(this.findParentRow(cellContent));
 				}
 			});
+		}
+	}
+
+	private async previousResult(): Promise<void> {
+		if (this.instance && this.instance.hasPrevious()) {
+			this.waitingOnNextResult = false;
+
+			if (this.errorHover) {
+				this.errorHover.remove();
+				this.errorHover = undefined;
+			}
+
+			let prev = this.instance.previous()!;
+			let success = await this.updateBoxValues(prev);
+
+			if (!success) {
+				this.instance.remove(prev);
+				this.previousResult();
+			}
+		}
+	}
+
+	private async nextResult(): Promise<void> {
+		if (this.instance) {
+			if (this.errorHover) {
+				this.errorHover.remove();
+				this.errorHover = undefined;
+			}
+
+			if (this.instance.hasNext()) {
+				this.waitingOnNextResult = false;
+
+				let next = this.instance.next()!;
+				let success = await this.updateBoxValues(next);
+
+				if (!success) {
+					this.instance.remove(next);
+					this.nextResult();
+				}
+			} else if (!this.instance.done) {
+				this.waitingOnNextResult = true;
+				this.includedRows.forEach(i => {
+					this.box!.getCellContent()[this.varnames![0]].forEach(cellContent => {
+						cellContent.textContent = '...';
+					});
+				});
+				this.select(this.box?.getCell(this.varnames![0], this.row!)!.childNodes[0]!);
+			} else {
+				this.addError(this.box?.getCell(this.varnames![0], this.row!)!, 'End of results');
+			}
 		}
 	}
 }
