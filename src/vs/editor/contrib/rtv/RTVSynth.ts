@@ -11,6 +11,7 @@ const SYNTHESIZING_MESSAGE: string = '# Please wait. Synthesizing...';
 class SynthResult {
 	constructor(
 		public program: string,
+		public done: boolean,
 		public runpyResults?: any[]
 	) {}
 }
@@ -29,6 +30,7 @@ class SynthInstance {
 	private _results: SynthResult[] = [];
 	private _currIdx: number = -1;
 	private _done: boolean = false;
+	private _killTimer?: ReturnType<typeof setTimeout>;
 
 	private process?: Process;
 	private onNextFn?: (result: SynthResult) => void;
@@ -47,14 +49,27 @@ class SynthInstance {
 		return [...this._results];
 	}
 
+	private restartTimer() {
+		this._killTimer = setTimeout(() =>
+		{
+			this.process?.kill();
+		}, 7000);
+	}
+
 	public remove(elem: SynthResult) {
 		this._results.splice(this._results.findIndex((val) => val === elem), 1);
 	}
 
 	public next(): SynthResult | undefined {
-		let rs = undefined;
+		let rs;
 		if (this.hasNext()) {
 			rs = this._results[++this._currIdx];
+		} else {
+			if (!this._killTimer) {
+				// We are at the end. Start a kill timer.
+				this.restartTimer();
+			}
+			rs = undefined;
 		}
 		return rs;
 	}
@@ -63,6 +78,11 @@ class SynthInstance {
 		let rs = undefined;
 		if (this.hasPrevious()) {
 			rs = this._results[--this._currIdx];
+
+			if (this._killTimer) {
+				clearTimeout(this._killTimer);
+				this._killTimer = undefined;
+			}
 		}
 		return rs;
 	}
@@ -92,14 +112,18 @@ class SynthInstance {
 		this.logger.synthStart(this.problem, exampleCount, lineno);
 
 		this.process.onStdout((data) => {
-			String.fromCharCode.apply(null, data).split('\n').filter(line => line).forEach((line: string) => {
-				const result = JSON.parse(line) as SynthResult;
-				this._results.push(result);
+			String.fromCharCode.apply(null, data)
+				.split('\n')
+				.filter(line => line)
+				.forEach((line: string) =>
+				{
+					const result = JSON.parse(line) as SynthResult;
+					this._results.push(result);
 
-				if (this.onNextFn) {
-					this.onNextFn(result);
-				}
-			});
+					if (this.onNextFn) {
+						this.onNextFn(result);
+					}
+				});
 		});
 
 		this.process.onStderr((data) => this.logger.synthErr(String(data)));
@@ -109,6 +133,9 @@ class SynthInstance {
 				this.onEndFn(this.results);
 			}
 		});
+
+		// Finally, start timer!
+		this.restartTimer();
 	}
 
 	onEnd(fn: (results: SynthResult[]) => void) {
@@ -488,9 +515,20 @@ export class RTVSynth {
 			if (results.length === 0) {
 				this.insertSynthesizedFragment('# Synthesis failed', this.lineno!);
 				this.stopSynthesis();
-			} else if (this.waitingOnNextResult) {
-				this.waitingOnNextResult = false;
-				this.updateBoxValues(this.instance?.results.pop()!);
+			} else if (results[results.length - 1].done) {
+				// This is not partial synth, just insert as usual
+				const solution = results[results.length - 1];
+				this.insertSynthesizedFragment(solution.program, this.lineno!);
+				this.stopSynthesis();
+			} else {
+				// Let the user know that's it
+				this.insertSynthesizedFragment('# Please select output', this.lineno!);
+
+				if (this.waitingOnNextResult) {
+					// Go to the last found solution
+					this.waitingOnNextResult = false;
+					this.updateBoxValues(this.instance?.results.pop()!);
+				}
 			}
 		});
 
