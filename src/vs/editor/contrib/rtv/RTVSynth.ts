@@ -7,6 +7,7 @@ import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 
 const SYNTHESIZING_MESSAGE: string = '# Please wait. Synthesizing...';
+const SELECT_OUTPUT_MESSAGE: string = '# Please select output';
 
 class SynthResult {
 	constructor(
@@ -33,7 +34,7 @@ class SynthInstance {
 	private _killTimer?: ReturnType<typeof setTimeout>;
 
 	private process?: Process;
-	private onNextFn?: (result: SynthResult) => void;
+	private onNextFn?: () => void;
 	private onEndFn?: (results: SynthResult[]) => void;
 
 	constructor(
@@ -52,6 +53,7 @@ class SynthInstance {
 	private restartTimer() {
 		this._killTimer = setTimeout(() =>
 		{
+			this._done = true;
 			this.process?.kill();
 		}, 7000);
 	}
@@ -112,18 +114,18 @@ class SynthInstance {
 		this.logger.synthStart(this.problem, exampleCount, lineno);
 
 		this.process.onStdout((data) => {
-			String.fromCharCode.apply(null, data)
+			const results = String.fromCharCode.apply(null, data)
 				.split('\n')
 				.filter(line => line)
-				.forEach((line: string) =>
-				{
-					const result = JSON.parse(line) as SynthResult;
-					this._results.push(result);
+				.map(line => JSON.parse(line) as SynthResult);
 
-					if (this.onNextFn) {
-						this.onNextFn(result);
-					}
-				});
+			results.forEach(rs =>{
+				this._results.push(rs);
+			});
+
+			if (this.onNextFn) {
+				this.onNextFn();
+			}
 		});
 
 		this.process.onStderr((data) => this.logger.synthErr(String(data)));
@@ -140,14 +142,17 @@ class SynthInstance {
 
 	onEnd(fn: (results: SynthResult[]) => void) {
 		if (this.done) {
-			fn(this.results);
+			fn([...this.results]);
 		}
 		this.onEndFn = fn;
 	}
 
-	onNext(fn: (result: SynthResult) => void) {
-		this._results.forEach((result) => fn(result));
+	onNext(fn: () => void) {
 		this.onNextFn = fn;
+
+		if (this._results) {
+			fn();
+		}
 	}
 
 	public dispose() {
@@ -186,6 +191,39 @@ export class RTVSynth {
 		editor.onDidFocusEditorText(() => {
 			this.stopSynthesis();
 		});
+
+		// The output selection process blocks everything!
+		window.onkeydown = (e: KeyboardEvent) => {
+			if (!this.instance) {
+				// The rest of this only applies when in "output view" mode.
+				return true;
+			}
+
+			let rs = false;
+
+			switch (e.key) {
+				case 'Enter':
+					const solution = this.instance.current();
+					if (solution) {
+						this.insertSynthesizedFragment(solution.program, this.lineno!);
+						this.stopSynthesis();
+					}
+					break;
+				case 'Escape':
+					this.stopSynthesis();
+					break;
+				case 'ArrowRight':
+					this.nextResult();
+					break;
+				case 'ArrowLeft':
+					this.previousResult();
+					break;
+				default:
+					rs = true;
+			}
+
+			return rs;
+		};
 	}
 
 	// -----------------------------------------------------------------------------------
@@ -255,9 +293,8 @@ export class RTVSynth {
 		let endCol = model.getLineMaxColumn(lineno);
 
 		let range = new Range(lineno, startCol, lineno, endCol);
-		let txt = '';
-
 		let defaultValue = await this.defaultValue(r_operand);
+		let txt: string;
 
 		if (l_operand === 'rv') {
 			txt = `return ${defaultValue}`;
@@ -320,6 +357,7 @@ export class RTVSynth {
 			this.includedRows = new Set();
 			this.logger.exampleReset();
 
+			this.waitingOnNextResult = false;
 			this.instance?.dispose();
 			this.instance = undefined;
 
@@ -462,7 +500,7 @@ export class RTVSynth {
 			this.includedRows.delete(this.row!);
 
 			// Remove row highlight
-			row.style.fontWeight = row.style.backgroundColor = '';
+			this.removeHighlight(row);
 
 			this.logger.exampleExclude(
 				this.findParentRow(cell).rowIndex,
@@ -506,9 +544,10 @@ export class RTVSynth {
 		);
 
 		this.instance = new SynthInstance(problem, this.logger);
-		this.instance.onNext((result: SynthResult) => {
+		this.instance.onNext(() => {
 			if (this.waitingOnNextResult) {
-				this.updateBoxValues(result);
+				this.waitingOnNextResult = false;
+				this.updateBoxValues(this.instance!.next()!);
 			}
 		});
 		this.instance.onEnd((results: SynthResult[]) => {
@@ -521,14 +560,23 @@ export class RTVSynth {
 				this.insertSynthesizedFragment(solution.program, this.lineno!);
 				this.stopSynthesis();
 			} else {
-				// Let the user know that's it
-				this.insertSynthesizedFragment('# Please select output', this.lineno!);
+				let p: Promise<any>;
 
 				if (this.waitingOnNextResult) {
 					// Go to the last found solution
 					this.waitingOnNextResult = false;
-					this.updateBoxValues(this.instance?.results.pop()!);
+
+					if (this.instance?.hasNext()) {
+						p = this.updateBoxValues(this.instance.next()!);
+					} else {
+						p = this.updateBoxValues(results[results.length - 1]);
+					}
+				} else {
+					// Let the user know that's it
+					p = Promise.resolve();
 				}
+
+				p.then(() => this.insertSynthesizedFragment(SELECT_OUTPUT_MESSAGE, this.lineno!));
 			}
 		});
 
@@ -688,12 +736,14 @@ export class RTVSynth {
 		if (!content) {
 			// First, run `run.py` with the synthesis result to get the values
 			// TODO This only works for single-line outputs
-			const program = this.controller.getProgram().replace(SYNTHESIZING_MESSAGE, synthResult.program);
+			const program = this.controller.getProgram()
+				.replace(SYNTHESIZING_MESSAGE, synthResult.program)
+				.replace(SELECT_OUTPUT_MESSAGE, synthResult.program);
 			let c = utils.runProgram(program);
 			let errorMsg: string = '';
 			c.onStderr((msg) => { errorMsg += msg; });
 
-			const results: any = await c.toPromise();
+			const results: any = await c.toPromise().catch((e) => console.error(e));
 			const result = results[1];
 
 			let parsedResult = JSON.parse(result);
@@ -712,10 +762,10 @@ export class RTVSynth {
 
 		this.box?.updateContent(content![2]);
 		this.boxEnvs = this.box?.getEnvs();
-		this.setupTableCellContents();
+		this.setupTableCellContents(false);
 
 		// Reset the selection
-		this.select(this.box?.getCell(this.varnames![0], this.row!)!.childNodes[0]!);
+		// this.select(this.box?.getCell(this.varnames![0], this.row!)!.childNodes[0]!);
 
 		return true;
 	}
@@ -738,20 +788,23 @@ export class RTVSynth {
 	}
 
 	private highlightRow(row: HTMLTableRowElement) {
-		// Highligh the row
 		let theme = this._themeService.getColorTheme();
 		row.style.fontWeight = '900';
 		row.style.backgroundColor = String(theme.getColor(badgeBackground) ?? '');
 	}
 
-	private setupTableCellContents() {
+	private removeHighlight(row: HTMLTableRowElement) {
+		row.style.fontWeight = row.style.backgroundColor = '';
+	}
+
+	private setupTableCellContents(editable: boolean = true) {
 		for (const varname of this.varnames!) {
 			let contents = this.box!.getCellContent()[varname];
 
 			contents.forEach((cellContent, i) => {
 				const env = this.boxEnvs![i];
 
-				cellContent.contentEditable = 'true';
+				cellContent.contentEditable = editable.toString();
 				cellContent.onkeydown = (e: KeyboardEvent) => {
 					let rs: boolean = true;
 
@@ -768,13 +821,6 @@ export class RTVSynth {
 											this.focusNextRow(cellContent, false, false);
 										}
 									});
-							} else if (this.instance) {
-								// We are done!
-								const solution = this.instance.current();
-								if (solution) {
-									this.insertSynthesizedFragment(solution.program, this.lineno!);
-									this.stopSynthesis();
-								}
 							} else {
 								let togglePromise;
 
@@ -792,6 +838,8 @@ export class RTVSynth {
 
 								togglePromise.then((success: boolean) => {
 									if (success) {
+										// Cleanup the UI
+										this.box!.getCellContent()[varname].forEach(cellContent => this.removeHighlight(this.findParentRow(cellContent)));
 										this.synthesizeFragment();
 									}
 								});
@@ -808,25 +856,9 @@ export class RTVSynth {
 							rs = false;
 							this.stopSynthesis();
 							break;
-						case 'ArrowRight':
-							if (this.instance) {
-								rs = false;
-								this.nextResult();
-							}
-							break;
-						case 'ArrowLeft':
-							if (this.instance) {
-								rs = false;
-								this.previousResult();
-							}
 					}
 					return rs;
 				};
-
-				// Re-highlight the rows
-				if (this.includedRows.has(i)) {
-					this.highlightRow(this.findParentRow(cellContent));
-				}
 			});
 		}
 	}
@@ -841,12 +873,7 @@ export class RTVSynth {
 			}
 
 			let prev = this.instance.previous()!;
-			let success = await this.updateBoxValues(prev);
-
-			if (!success) {
-				this.instance.remove(prev);
-				this.previousResult();
-			}
+			this.updateBoxValues(prev);
 		}
 	}
 
