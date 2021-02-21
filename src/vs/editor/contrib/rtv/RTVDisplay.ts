@@ -2954,6 +2954,10 @@ export class RTVController implements IRTVController {
 				this.setVisibilityCursorAndReturn();
 				this.changeToFullView(1);
 				break;
+			case ViewMode.Cursor:
+				this.setVisibilityCursor();
+				this.changeToFullView(1);
+				break;
 			case ViewMode.Compact:
 				this.setVisibilityAll();
 				this.changeToCompactView();

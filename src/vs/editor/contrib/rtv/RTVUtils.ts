@@ -54,7 +54,7 @@ abstract class NativeProcess implements Process {
 class RunpyProcess extends NativeProcess {
 	constructor(private file: string,
 		p: child_process.ChildProcessWithoutNullStreams) {
-		super(p)
+		super(p);
 	}
 
 	onExit(fn: (exitCode: any, result?: string) => void): void {

@@ -63,9 +63,14 @@ export interface IRTVController extends IEditorContribution {
 	getId(): string;
 	byRowOrCol: RowColMode;
 
+	// Disabling the controller
 	enable(): void;
 	disable(): void;
 	isEnabled(): boolean;
+
+	// Misc.
+	viewMode: ViewMode;
+	changeViewMode(m: ViewMode): void;
 }
 
 /**
@@ -268,6 +273,7 @@ export class SynthProblem {
 export enum ViewMode {
 	Full = 'Full',
 	CursorAndReturn = 'Cursor and Return',
+	Cursor = 'Cursor',
 	Compact = 'Compact',
 	Stealth = 'Stealth',
 	Focused = 'Focused',

@@ -2,7 +2,7 @@ import { Range } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
-import { SynthResult, SynthProblem, IRTVLogger, IRTVController, IRTVDisplayBox, Process } from './RTVInterfaces';
+import { SynthResult, SynthProblem, IRTVLogger, IRTVController, IRTVDisplayBox, Process, ViewMode } from './RTVInterfaces';
 import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 
@@ -169,6 +169,7 @@ export class RTVSynth {
 	instance?: SynthInstance;
 	waitingOnNextResult: boolean = false;
 	errorHover?: HTMLElement;
+	originalViewMode?: ViewMode;
 
 	// For restoring the PBs on Undo
 	public lastRunResults?: any[] = undefined;
@@ -306,6 +307,9 @@ export class RTVSynth {
 
 		// Update the projection box with the new value
 		const runResults: any = await this.controller.updateBoxes();
+
+		// Keep the view mode up to date.
+		this.originalViewMode = this.controller.viewMode;
 		this.controller.disable();
 
 		this.box = this.controller.getBox(lineno);
@@ -372,6 +376,11 @@ export class RTVSynth {
 
 			// Then reset the Projection Boxes
 			this.editor.focus();
+
+			if (this.originalViewMode) {
+				this.controller.changeViewMode(this.originalViewMode);
+			}
+
 			this.controller.enable();
 			this.controller.updateBoxes();
 		}
@@ -519,6 +528,8 @@ export class RTVSynth {
 			this.controller.getProgram(),
 			this.lineno!
 		);
+
+		this.controller.changeViewMode(ViewMode.Cursor);
 
 		this.instance = new SynthInstance(problem, this.logger);
 		this.instance.onNext(() => {
