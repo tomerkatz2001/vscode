@@ -65,6 +65,18 @@ class SynthInstance {
 		return rs;
 	}
 
+	public curr(): SynthResult | undefined {
+		let rs;
+
+		if (this._currIdx >= 0 && this._currIdx < this._results.length) {
+			rs = this._results[this._currIdx];
+		} else {
+			rs = undefined;
+		}
+
+		return rs;
+	}
+
 	public previous(): SynthResult | undefined {
 		let rs;
 		if (this.hasPrevious()) {
@@ -854,9 +866,15 @@ export class RTVSynth {
 			return;
 		}
 
-		const prev = this.instance.previous();
+		let result: SynthResult | undefined;
 
-		if (prev) {
+		if (this.waitingOnNextResult) {
+			result = this.instance.curr();
+		} else {
+			result = this.instance.previous();
+		}
+
+		if (result) {
 			this.waitingOnNextResult = false;
 
 			if (this.errorHover) {
@@ -864,7 +882,7 @@ export class RTVSynth {
 				this.errorHover = undefined;
 			}
 
-			this.updateBoxValues(prev);
+			this.updateBoxValues(result);
 		} else {
 			this.addError(this.box?.getCell(this.varnames![0], this.row!)!, 'First result');
 		}
