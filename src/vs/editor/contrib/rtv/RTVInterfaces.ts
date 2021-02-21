@@ -128,11 +128,13 @@ export abstract class ARTVLogger implements IRTVLogger {
 	}
 
 	public projectionBoxUpdateStart(program: string): void {
-		this.log('projectionBox.update.start');
+		const id = this.log('projectionBox.update.start');
+		this.write(`${id}_program.py`, program);
 	}
 
 	public projectionBoxUpdateEnd(result: string | undefined): void {
-		this.log('projectionBox.update.end');
+		const id = this.log('projectionBox.update.end');
+		this.write(`${id}_result.json`, result);
 	}
 
 	public projectionBoxModeChanged(mode: string): void {
