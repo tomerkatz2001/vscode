@@ -1,6 +1,7 @@
 import { IEditorContribution } from 'vs/editor/common/editorCommon';
 import { ITextModel } from 'vs/editor/common/model';
 import { Event } from 'vs/base/common/event';
+import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
 export interface IRTVDisplayBox {
 	getCellContent(): { [k: string]: [HTMLElement] };
@@ -87,18 +88,128 @@ export interface IRTVLogger {
 	hideOutputBox(): void;
 
 	// SnipPy
-	projectionBoxFocus(line: string, custom?: boolean): void;
-	projectionBoxExit(): void;
-	synthStart(problem: any, examples: number, lineno: number): void;
-	synthOut(msg: string): void;
-	synthErr(msg: string): void;
-	synthEnd(exitCode: number, result?: string): void;
-	exampleBlur(idx: number, content: string): void;
-	exampleFocus(idx: number, content: string): void;
-	exampleChanged(idx: number, was: string, is: string): void;
-	exampleInclude(idx: number, content: string): void;
-	exampleExclude(idx: number, content: string): void;
-	exampleReset(): void;
+	synthStart(varname: string, lineno: number): void;
+
+	synthProcessStart(problem: SynthProblem): void;
+	synthProcessErr(msg: any): void;
+	synthProcessEnd(results: SynthResult[]): void;
+
+	synthOutputNext(output: SynthResult | undefined): void;
+	synthOutputPrev(output: SynthResult | undefined): void;
+	synthOutputEnd(): void;
+
+	synthUserNext(): void;
+	synthUserPrev(): void;
+	synthUserAccept(result: SynthResult): void;
+
+	synthEnd(): void;
+}
+
+export abstract class ARTVLogger implements IRTVLogger {
+	constructor(protected readonly editor: ICodeEditor) {};
+	protected abstract log(code: string, msg?: string): number;
+	protected abstract write(file: string, content: any): void;
+
+	// ---------------------------------------------------------------
+	// General Projection Boxes
+	// ---------------------------------------------------------------
+
+	public projectionBoxCreated() {
+		this.log('projectionBox.created');
+	}
+
+	public projectionBoxDestroyed() {
+		this.log('projectionBox.destroyed');
+	}
+
+	public projectionBoxUpdateStart(program: string): void {
+		this.log('projectionBox.update.start');
+	}
+
+	public projectionBoxUpdateEnd(result: string | undefined): void {
+		this.log('projectionBox.update.end');
+	}
+
+	public projectionBoxModeChanged(mode: string): void {
+		this.log(`projectionBox.mode.${mode}`);
+	}
+
+	// ---------------------------------------------------------------
+	// Image Processing
+	// ---------------------------------------------------------------
+
+	public imgSummaryStart(lineno: number, variable: string) {
+		this.log('img.start',`${lineno},${variable}`);
+	}
+
+	public imgSummaryEnd() {
+		this.log('img.end');
+	}
+
+	// ---------------------------------------------------------------
+	// Output Box
+	// ---------------------------------------------------------------
+
+	public showOutputBox(): void {
+		this.log(`outputBox.show`);
+	}
+
+	public hideOutputBox(): void {
+		this.log(`outputBox.hide`);
+	}
+
+	// ---------------------------------------------------------------
+	// Synthesis
+	// ---------------------------------------------------------------
+
+	synthStart(varname: string, lineno: number): void {
+		this.log('synth.start', `${varname},${lineno}`);
+	}
+
+	synthProcessStart(problem: SynthProblem): void {
+		const id = this.log('synth.process.start');
+		this.write(`${id}_problem.json`, problem);
+	}
+
+	synthProcessErr(msg: any): void {
+		this.log('synth.process.err', msg.toString());
+	}
+
+	synthProcessEnd(results: SynthResult[]): void {
+		const id = this.log('synth.process.end');
+		this.write(`${id}_output.json`, results);
+	}
+
+	synthOutputNext(output: SynthResult | undefined): void {
+		const id = this.log('synth.output.next');
+		this.write(`${id}_output.json`, output);
+	}
+
+	synthOutputPrev(output: SynthResult | undefined): void {
+		const id = this.log('synth.output.prev');
+		this.write(`${id}_output.json`, output);
+	}
+
+	synthOutputEnd(): void {
+		this.log('synth.output.end');
+	}
+
+	synthUserNext(): void {
+		this.log('synth.user.next');
+	}
+
+	synthUserPrev(): void {
+		this.log('synth.user.prev');
+	}
+
+	synthUserAccept(result: any): void {
+		const id = this.log('synth.output.accept');
+		this.write(`${id}_result.json`, result);
+	}
+
+	synthEnd(): void {
+		this.log('synth.end');
+	}
 }
 
 /**
@@ -133,6 +244,23 @@ export class EmptyProcess implements Process {
 	}
 }
 
+export class SynthResult {
+	constructor(
+		public program: string,
+		public done: boolean,
+		public runpyResults?: any[]
+	) {}
+}
+
+export class SynthProblem {
+	constructor(
+		public varNames: string[],
+		public previous_env: any,
+		public envs: any[],
+		public program: string,
+		public line_no: number,
+	) {}
+}
 
 /**
  * The Projection Box view modes.

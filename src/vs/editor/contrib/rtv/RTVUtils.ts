@@ -160,8 +160,12 @@ export async function validate(input: string): Promise<string | undefined> {
 	});
 }
 
+let logger: IRTVLogger | undefined = undefined;
 export function getLogger(editor: ICodeEditor): IRTVLogger {
-	return new RTVLogger(editor);
+	if (!logger) {
+		logger = new RTVLogger(editor);
+	}
+	return logger;
 }
 
 export function isViewModeAllowed(_: ViewMode): boolean {

@@ -2,30 +2,12 @@ import { Range } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
-import { IRTVLogger, IRTVController, IRTVDisplayBox, Process } from './RTVInterfaces';
+import { SynthResult, SynthProblem, IRTVLogger, IRTVController, IRTVDisplayBox, Process } from './RTVInterfaces';
 import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 
 const SYNTHESIZING_MESSAGE: string = '# Please wait. Synthesizing...';
 const SELECT_OUTPUT_MESSAGE: string = '# Please select output';
-
-class SynthResult {
-	constructor(
-		public program: string,
-		public done: boolean,
-		public runpyResults?: any[]
-	) {}
-}
-
-class SynthProblem {
-	constructor(
-		public varNames: string[],
-		public previous_env: any,
-		public envs: any[],
-		public program: string,
-		public line_no: number,
-	) {}
-}
 
 class SynthInstance {
 	private _results: SynthResult[] = [];
@@ -66,18 +48,25 @@ class SynthInstance {
 		let rs;
 		if (this.hasNext()) {
 			rs = this._results[++this._currIdx];
+
+			if (this._killTimer) {
+				clearTimeout(this._killTimer);
+				this._killTimer = undefined;
+			}
 		} else {
+			this.logger.synthOutputEnd();
 			if (!this._killTimer) {
 				// We are at the end. Start a kill timer.
 				this.restartTimer();
 			}
 			rs = undefined;
 		}
+		this.logger.synthOutputNext(rs);
 		return rs;
 	}
 
 	public previous(): SynthResult | undefined {
-		let rs = undefined;
+		let rs;
 		if (this.hasPrevious()) {
 			rs = this._results[--this._currIdx];
 
@@ -85,7 +74,10 @@ class SynthInstance {
 				clearTimeout(this._killTimer);
 				this._killTimer = undefined;
 			}
+		} else {
+			rs = undefined;
 		}
+		this.logger.synthOutputPrev(rs);
 		return rs;
 	}
 
@@ -97,21 +89,22 @@ class SynthInstance {
 		return rs;
 	}
 
-	public hasNext(): boolean {
+	private hasNext(): boolean {
 		return this._currIdx + 1 < this._results.length;
 	}
 
-	public hasPrevious() {
+	private hasPrevious() {
 		return this._currIdx >= 1;
 	}
 
 	public start() {
 		// Bad name, but reset everything, since we're done;
-		const lineno = this.problem.line_no!;
-		const exampleCount = this.problem.envs.length;
+		// const lineno = this.problem.line_no!;
+		// const exampleCount = this.problem.envs.length;
 
 		this.process = utils.synthesizeSnippet(JSON.stringify(this.problem));
-		this.logger.synthStart(this.problem, exampleCount, lineno);
+
+		this.logger.synthProcessStart(this.problem);
 
 		this.process.onStdout((data) => {
 			const results = String.fromCharCode.apply(null, data)
@@ -128,8 +121,10 @@ class SynthInstance {
 			}
 		});
 
-		this.process.onStderr((data) => this.logger.synthErr(String(data)));
+		this.process.onStderr((e) => this.logger.synthProcessErr(e));
+
 		this.process.onExit(() => {
+			this.logger.synthProcessEnd(this._results);
 			this._done = true;
 			if (this.onEndFn) {
 				this.onEndFn(this.results);
@@ -205,6 +200,7 @@ export class RTVSynth {
 				case 'Enter':
 					const solution = this.instance.current();
 					if (solution) {
+						this.logger.synthUserAccept(solution);
 						this.insertSynthesizedFragment(solution.program, this.lineno!);
 						this.stopSynthesis();
 					}
@@ -286,6 +282,8 @@ export class RTVSynth {
 		this.varnames = varnames;
 		this.row = 0;
 
+		this.logger.synthStart(varnames[0], this.lineno);
+
 		r_operand = r_operand.substr(0, r_operand.length - 2).trim();
 
 		let model = this.controller.getModelForce();
@@ -327,9 +325,6 @@ export class RTVSynth {
 					range.selectNodeContents(cellContents[0]);
 					selection.removeAllRanges();
 					selection.addRange(range);
-
-					this.logger.projectionBoxFocus(line, r_operand !== '');
-					this.logger.exampleFocus(0, cellContents[0]!.textContent!);
 				}
 			} else {
 				console.error(`No cell found with key "${varname}"`);
@@ -350,12 +345,13 @@ export class RTVSynth {
 	}
 
 	public stopSynthesis() {
+		this.logger.synthEnd();
+
 		if (this.enabled) {
 			this.enabled = false;
 
 			// Clear the state
 			this.includedRows = new Set();
-			this.logger.exampleReset();
 
 			this.waitingOnNextResult = false;
 			this.instance?.dispose();
@@ -376,7 +372,6 @@ export class RTVSynth {
 
 			// Then reset the Projection Boxes
 			this.editor.focus();
-			this.logger.projectionBoxExit();
 			this.controller.enable();
 			this.controller.updateBoxes();
 		}
@@ -418,7 +413,6 @@ export class RTVSynth {
 			// Keep track of changes!
 			const env = this.boxEnvs![idx];
 			if (env[varname] !== currentValue) {
-				this.logger.exampleChanged(idx, env[varname], currentValue);
 				const success = await this.toggleElement(env, cell, varname, true);
 
 				if (!success) {
@@ -428,8 +422,6 @@ export class RTVSynth {
 		}
 
 		// Finally, select the next value.
-		this.logger.exampleBlur(idx, cell!.textContent!);
-
 		let varIdx = this.varnames!.indexOf(varname) + (backwards ? -1 : +1);
 		if (varIdx < 0) {
 			varIdx = this.varnames!.length - 1;
@@ -449,7 +441,6 @@ export class RTVSynth {
 		}
 
 		this.select(nextCell!.childNodes[0]);
-		this.logger.exampleFocus(idx, nextCell!.textContent!);
 	}
 
 	private async toggleElement(
@@ -488,24 +479,10 @@ export class RTVSynth {
 			env[varname] = cell.innerText;
 			this.includedRows.add(this.row!);
 			this.highlightRow(row);
-
-			this.logger.exampleInclude(
-				this.findParentRow(cell).rowIndex,
-				cell.innerText
-			);
 		} else {
-			// TODO Check if we need to remove else case
-
 			// Toggle off
 			this.includedRows.delete(this.row!);
-
-			// Remove row highlight
 			this.removeHighlight(row);
-
-			this.logger.exampleExclude(
-				this.findParentRow(cell).rowIndex,
-				cell.innerText
-			);
 		}
 
 		return true;
@@ -565,12 +542,13 @@ export class RTVSynth {
 				if (this.waitingOnNextResult) {
 					// Go to the last found solution
 					this.waitingOnNextResult = false;
+					let next = this.instance?.next();
 
-					if (this.instance?.hasNext()) {
-						p = this.updateBoxValues(this.instance.next()!);
-					} else {
-						p = this.updateBoxValues(results[results.length - 1]);
+					if (!next) {
+						next = results[results.length - 1];
 					}
+
+					p = this.updateBoxValues(next);
 				} else {
 					// Let the user know that's it
 					p = Promise.resolve();
@@ -825,12 +803,6 @@ export class RTVSynth {
 								let togglePromise;
 
 								if (env[varname] !== cellContent.innerText) {
-									this.logger.exampleChanged(
-										this.findParentRow(cellContent).rowIndex,
-										env[varname],
-										cellContent.innerText
-									);
-
 									togglePromise = this.toggleElement(env, cellContent, varname, true);
 								} else {
 									togglePromise = Promise.resolve(true);
@@ -864,7 +836,16 @@ export class RTVSynth {
 	}
 
 	private async previousResult(): Promise<void> {
-		if (this.instance && this.instance.hasPrevious()) {
+		this.logger.synthUserPrev();
+
+		if (!this.instance) {
+			console.error('previousResult called without instance. This should not happen');
+			return;
+		}
+
+		const prev = this.instance.previous();
+
+		if (prev) {
 			this.waitingOnNextResult = false;
 
 			if (this.errorHover) {
@@ -872,39 +853,46 @@ export class RTVSynth {
 				this.errorHover = undefined;
 			}
 
-			let prev = this.instance.previous()!;
 			this.updateBoxValues(prev);
+		} else {
+			this.addError(this.box?.getCell(this.varnames![0], this.row!)!, 'First result');
 		}
 	}
 
 	private async nextResult(): Promise<void> {
-		if (this.instance) {
-			if (this.errorHover) {
-				this.errorHover.remove();
-				this.errorHover = undefined;
+		this.logger.synthUserNext();
+
+		if (!this.instance) {
+			console.error('nextResult called without instance. This should not happen.');
+			return;
+		}
+
+		if (this.errorHover) {
+			this.errorHover.remove();
+			this.errorHover = undefined;
+		}
+
+		const next = this.instance.next();
+
+		if (next) {
+			this.waitingOnNextResult = false;
+
+			let success = await this.updateBoxValues(next);
+
+			if (!success) {
+				this.instance.remove(next);
+				this.nextResult();
 			}
-
-			if (this.instance.hasNext()) {
-				this.waitingOnNextResult = false;
-
-				let next = this.instance.next()!;
-				let success = await this.updateBoxValues(next);
-
-				if (!success) {
-					this.instance.remove(next);
-					this.nextResult();
-				}
-			} else if (!this.instance.done) {
-				this.waitingOnNextResult = true;
-				this.includedRows.forEach(i => {
-					this.box!.getCellContent()[this.varnames![0]].forEach(cellContent => {
-						cellContent.textContent = '...';
-					});
+		} else if (!this.instance.done) {
+			this.waitingOnNextResult = true;
+			this.includedRows.forEach(_ => {
+				this.box!.getCellContent()[this.varnames![0]].forEach(cellContent => {
+					cellContent.textContent = 'synthesizing';
 				});
-				this.select(this.box?.getCell(this.varnames![0], this.row!)!.childNodes[0]!);
-			} else {
-				this.addError(this.box?.getCell(this.varnames![0], this.row!)!, 'End of results');
-			}
+			});
+			this.select(this.box?.getCell(this.varnames![0], this.row!)!.childNodes[0]!);
+		} else {
+			this.addError(this.box?.getCell(this.varnames![0], this.row!)!, 'Last result');
 		}
 	}
 }
