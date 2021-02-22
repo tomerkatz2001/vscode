@@ -7,6 +7,7 @@ import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 
 const SYNTHESIZING_MESSAGE: string = '# Please wait. Synthesizing...';
+// const INSPECT_OUTPUT_MESSAGE: string = '# Output available. Synthesizing...';
 const SELECT_OUTPUT_MESSAGE: string = '# Please select output';
 
 class SynthInstance {
@@ -32,12 +33,21 @@ class SynthInstance {
 		return [...this._results];
 	}
 
-	private restartTimer() {
-		this._killTimer = setTimeout(() =>
-		{
-			this._done = true;
-			this.process?.kill();
-		}, 7000);
+	private startTimer() {
+		if (!this._killTimer) {
+			this._killTimer = setTimeout(() => {
+				this._done = true;
+				this.process?.toStdin('done');
+				this.process?.kill();
+			}, 7000);
+		}
+	}
+
+	private stopTimer() {
+		if (this._killTimer) {
+			clearTimeout(this._killTimer);
+			this._killTimer = undefined;
+		}
 	}
 
 	public remove(elem: SynthResult) {
@@ -48,17 +58,10 @@ class SynthInstance {
 		let rs;
 		if (this.hasNext()) {
 			rs = this._results[++this._currIdx];
-
-			if (this._killTimer) {
-				clearTimeout(this._killTimer);
-				this._killTimer = undefined;
-			}
+			this.stopTimer();
 		} else {
 			this.logger.synthOutputEnd();
-			if (!this._killTimer) {
-				// We are at the end. Start a kill timer.
-				this.restartTimer();
-			}
+			this.startTimer();
 			rs = undefined;
 		}
 		this.logger.synthOutputNext(rs);
@@ -136,15 +139,18 @@ class SynthInstance {
 		this.process.onStderr((e) => this.logger.synthProcessErr(e));
 
 		this.process.onExit(() => {
-			this.logger.synthProcessEnd(this._results);
+			this.stopTimer();
 			this._done = true;
+
 			if (this.onEndFn) {
 				this.onEndFn(this.results);
 			}
+
+			this.logger.synthProcessEnd(this._results);
 		});
 
 		// Finally, start timer!
-		this.restartTimer();
+		this.startTimer();
 	}
 
 	onEnd(fn: (results: SynthResult[]) => void) {
@@ -165,6 +171,7 @@ class SynthInstance {
 	public dispose() {
 		this.onNextFn = this.onEndFn = undefined;
 		this.process?.kill();
+		this.process = undefined;
 	}
 }
 
@@ -181,7 +188,6 @@ export class RTVSynth {
 	instance?: SynthInstance;
 	waitingOnNextResult: boolean = false;
 	errorHover?: HTMLElement;
-	originalViewMode?: ViewMode;
 
 	// For restoring the PBs on Undo
 	public lastRunResults?: any[] = undefined;
@@ -321,7 +327,6 @@ export class RTVSynth {
 		const runResults: any = await this.controller.updateBoxes();
 
 		// Keep the view mode up to date.
-		this.originalViewMode = this.controller.viewMode;
 		this.controller.disable();
 
 		this.box = this.controller.getBox(lineno);
@@ -387,12 +392,8 @@ export class RTVSynth {
 			this.waitingOnNextResult = false;
 
 			// Then reset the Projection Boxes
+			this.controller.changeViewMode(ViewMode.Full);
 			this.editor.focus();
-
-			if (this.originalViewMode) {
-				this.controller.changeViewMode(this.originalViewMode);
-			}
-
 			this.controller.enable();
 			this.controller.updateBoxes();
 		}
@@ -563,15 +564,19 @@ export class RTVSynth {
 				let p: Promise<any>;
 
 				if (this.waitingOnNextResult) {
-					// Go to the last found solution
-					this.waitingOnNextResult = false;
-					let next = this.instance?.next();
-
-					if (!next) {
-						next = results[results.length - 1];
+					// TODO Write a better API for instance.
+					if (this.instance!.next()) {
+						this.instance!.previous();
+						p = this.nextResult();
+					} else if (this.instance!.previous()) {
+						this.instance!.next();
+						p = this.previousResult();
+					} else {
+						// No valid solutions :(
+						this.insertSynthesizedFragment('# Synthesis failed', this.lineno!);
+						this.stopSynthesis();
+						return;
 					}
-
-					p = this.updateBoxValues(next);
 				} else {
 					// Let the user know that's it
 					p = Promise.resolve();
@@ -737,9 +742,13 @@ export class RTVSynth {
 		if (!content) {
 			// First, run `run.py` with the synthesis result to get the values
 			// TODO This only works for single-line outputs
+			const solution = (synthResult.program.startsWith('rv = ')) ?
+				synthResult.program.replace('rv = ', 'return ') :
+				synthResult.program;
+
 			const program = this.controller.getProgram()
-				.replace(SYNTHESIZING_MESSAGE, synthResult.program)
-				.replace(SELECT_OUTPUT_MESSAGE, synthResult.program);
+				.replace(SYNTHESIZING_MESSAGE, solution)
+				.replace(SELECT_OUTPUT_MESSAGE, solution);
 			let c = utils.runProgram(program);
 			let errorMsg: string = '';
 			c.onStderr((msg) => { errorMsg += msg; });
