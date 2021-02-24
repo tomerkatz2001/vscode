@@ -7,7 +7,7 @@ import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 
 const SYNTHESIZING_MESSAGE: string = '# Please wait. Synthesizing...';
-// const INSPECT_OUTPUT_MESSAGE: string = '# Output available. Synthesizing...';
+const INSPECT_OUTPUT_MESSAGE: string = '# Output available. Synthesizing...';
 const SELECT_OUTPUT_MESSAGE: string = '# Please select output';
 
 class SynthInstance {
@@ -37,8 +37,13 @@ class SynthInstance {
 		if (!this._killTimer) {
 			this._killTimer = setTimeout(() => {
 				this._done = true;
-				this.process?.toStdin('done');
-				this.process?.kill();
+				try {
+					this.process?.toStdin('done');
+					this.process?.kill();
+				} catch (e) {
+					console.error('Failed to write to synth process: ');
+					console.error(e);
+				}
 			}, 7000);
 		}
 	}
@@ -125,13 +130,20 @@ class SynthInstance {
 			const results = String.fromCharCode.apply(null, data)
 				.split('\n')
 				.filter(line => line)
-				.map(line => JSON.parse(line) as SynthResult);
+				.map((line) => {
+					let rs = undefined;
+					try {
+						rs = JSON.parse(line) as SynthResult;
+					} catch (e) {
+						console.error('Failed to parse synth output: ' + String.fromCharCode.apply(null, data));
+					}
+					return rs;
+				})
+				.filter(rs => rs);
 
-			results.forEach(rs =>{
-				this._results.push(rs);
-			});
+			results.forEach(rs => this._results.push(rs!));
 
-			if (this.onNextFn) {
+			if (results && this.onNextFn) {
 				this.onNextFn();
 			}
 		});
@@ -228,9 +240,11 @@ export class RTVSynth {
 					this.stopSynthesis();
 					break;
 				case 'ArrowRight':
+					this.logger.synthUserNext();
 					this.nextResult();
 					break;
 				case 'ArrowLeft':
+					this.logger.synthUserPrev();
 					this.previousResult();
 					break;
 				default:
@@ -547,8 +561,15 @@ export class RTVSynth {
 		this.instance = new SynthInstance(problem, this.logger);
 		this.instance.onNext(() => {
 			if (this.waitingOnNextResult) {
-				this.waitingOnNextResult = false;
-				this.updateBoxValues(this.instance!.next()!);
+					this.waitingOnNextResult = false;
+					const next = this.instance!.next()!;
+					this.updateBoxValues(next).then((success) => {
+						if (!next.done && success) {
+							this.insertSynthesizedFragment(INSPECT_OUTPUT_MESSAGE, this.lineno!);
+						} else {
+							this.waitingOnNextResult = true;
+						}
+				});
 			}
 		});
 		this.instance.onEnd((results: SynthResult[]) => {
@@ -588,7 +609,6 @@ export class RTVSynth {
 
 		this.insertSynthesizedFragment(SYNTHESIZING_MESSAGE, this.lineno!);
 		this.nextResult();
-
 		this.instance.start();
 	}
 
@@ -747,8 +767,10 @@ export class RTVSynth {
 				synthResult.program;
 
 			const program = this.controller.getProgram()
+				.replace(INSPECT_OUTPUT_MESSAGE, solution)
 				.replace(SYNTHESIZING_MESSAGE, solution)
 				.replace(SELECT_OUTPUT_MESSAGE, solution);
+
 			let c = utils.runProgram(program);
 			let errorMsg: string = '';
 			c.onStderr((msg) => { errorMsg += msg; });
@@ -868,8 +890,6 @@ export class RTVSynth {
 	}
 
 	private async previousResult(): Promise<void> {
-		this.logger.synthUserPrev();
-
 		if (!this.instance) {
 			console.error('previousResult called without instance. This should not happen');
 			return;
@@ -898,8 +918,6 @@ export class RTVSynth {
 	}
 
 	private async nextResult(): Promise<void> {
-		this.logger.synthUserNext();
-
 		if (!this.instance) {
 			console.error('nextResult called without instance. This should not happen.');
 			return;
@@ -913,11 +931,13 @@ export class RTVSynth {
 		const next = this.instance.next();
 
 		if (next) {
+			const waitingWas = this.waitingOnNextResult;
 			this.waitingOnNextResult = false;
 
 			let success = await this.updateBoxValues(next);
 
 			if (!success) {
+				this.waitingOnNextResult = waitingWas;
 				this.instance.remove(next);
 				this.nextResult();
 			}
