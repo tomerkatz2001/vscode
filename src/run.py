@@ -1,18 +1,13 @@
-# ---------------------------------------------------------------------------------------------
-#  Copyright (c) Microsoft Corporation. All rights reserved.
-#  Licensed under the MIT License. See License.txt in the project root for license information.
-# ---------------------------------------------------------------------------------------------
-
-import ctypes
-import sys
 import ast
 import bdb
+import ctypes
 import json
-import re
-from core import *
-import time
+import sys
 import types
-import numpy as np
+
+from core import *
+
+
 # from PIL import Image
 
 def add_html_escape(html):
@@ -22,7 +17,7 @@ def add_red_format(html):
 	return f"<div style='color:red;'>{html}</div>"
 
 def is_loop_str(str):
-	return re.search("(for|while).*:", str.strip()) != None
+	return re.search("(for|while).*:\w*\n", str.strip()) != None
 
 def is_break_str(str):
 	return re.search("break", str.strip()) != None
@@ -345,7 +340,7 @@ def adjust_to_next_time_step(data, lines):
 				next_time = env["time"]+1
 				while next_time in envs_by_time:
 					next_env = envs_by_time[next_time]
-					if ("frame" in env and "frame" in next_env and env["frame"] is next_env["frame"]):
+					if "frame" in env and "frame" in next_env and env["frame"] is next_env["frame"]:
 						curr_stmt = lines[env["lineno"]]
 						next_stmt = lines[remove_R(next_env["lineno"])]
 						if "Exception Thrown" in next_env or not is_loop_str(curr_stmt) or indent(next_stmt) > indent(curr_stmt):
