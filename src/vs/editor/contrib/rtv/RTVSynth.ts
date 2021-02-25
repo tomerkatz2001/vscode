@@ -34,7 +34,7 @@ class SynthInstance {
 	}
 
 	private startTimer() {
-		if (!this._killTimer) {
+		if (!this._killTimer && !this._done) {
 			this._killTimer = setTimeout(() => {
 				this._done = true;
 				try {
@@ -589,7 +589,7 @@ export class RTVSynth {
 					if (this.instance!.next()) {
 						this.instance!.previous();
 						p = this.nextResult();
-					} else if (this.instance!.previous()) {
+					} else if (this.instance!.curr() || this.instance!.previous()) {
 						this.instance!.next();
 						p = this.previousResult();
 					} else {
