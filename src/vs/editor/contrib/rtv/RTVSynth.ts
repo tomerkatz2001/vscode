@@ -548,6 +548,21 @@ export class RTVSynth {
 
 		let envs: any[] = rows.map(i => this.boxEnvs![i]);
 
+		// First, we need to validate the inputs and show
+		// error message if the input is not parsable
+		for (const varname of this.varnames!) {
+			for (const row of rows) {
+				const error = await utils.validate(this.boxEnvs![row][varname]);
+
+				if (error) {
+					// Add the error to the matching box
+					const cell = this.box!.getCell(varname, row)!;
+					this.addError(cell, error);
+					return;
+				}
+			}
+		}
+
 		let problem = new SynthProblem(
 			this.varnames!,
 			previous_env,
@@ -837,6 +852,12 @@ export class RTVSynth {
 				const env = this.boxEnvs![i];
 
 				cellContent.contentEditable = editable.toString();
+				cellContent.onchange = () => {
+					if (this.errorHover) {
+						this.errorHover.remove();
+						this.errorHover = undefined;
+					}
+				}
 				cellContent.onkeydown = (e: KeyboardEvent) => {
 					let rs: boolean = true;
 

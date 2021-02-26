@@ -12,7 +12,7 @@ def validate(expr) -> str:
 				return
 			elmtType = type(x[0])
 			for e in x[1:]:
-				if type(e) != elmtType:
+				if e != Ellipsis and type(e) != elmtType:
 					return 'All elements of a list should have the same type'
 		elif typ == dict:
 			if len(x) == 0:
