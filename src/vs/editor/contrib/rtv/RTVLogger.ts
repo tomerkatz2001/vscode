@@ -75,8 +75,8 @@ export class RTVLogger extends ARTVLogger {
 		return this.logCounter;
 	}
 
-	protected write(file: string, content: any): void {
-		fs.writeFileSync(this.logDir + file, JSON.stringify(content, undefined, '\t'));
+	protected write(file: string, content: string): void {
+		fs.writeFileSync(this.logDir + file, content);
 	}
 
 	private now(): number {

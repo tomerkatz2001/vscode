@@ -115,7 +115,7 @@ export interface IRTVLogger {
 export abstract class ARTVLogger implements IRTVLogger {
 	constructor(protected readonly editor: ICodeEditor) {};
 	protected abstract log(code: string, msg?: string): number;
-	protected abstract write(file: string, content: any): void;
+	protected abstract write(file: string, content: string): void;
 
 	// ---------------------------------------------------------------
 	// General Projection Boxes
@@ -136,7 +136,7 @@ export abstract class ARTVLogger implements IRTVLogger {
 
 	public projectionBoxUpdateEnd(result: string | undefined): void {
 		const id = this.log('projectionBox.update.end');
-		this.write(`${id}_result.json`, result);
+		this.write(`${id}_result.json`, result ? result : 'undefined');
 	}
 
 	public projectionBoxModeChanged(mode: string): void {
@@ -177,7 +177,7 @@ export abstract class ARTVLogger implements IRTVLogger {
 
 	synthProcessStart(problem: SynthProblem): void {
 		const id = this.log('synth.process.start');
-		this.write(`${id}_problem.json`, problem);
+		this.write(`${id}_problem.json`, JSON.stringify(problem, undefined, '\t'));
 	}
 
 	synthProcessErr(msg: any): void {
@@ -186,17 +186,17 @@ export abstract class ARTVLogger implements IRTVLogger {
 
 	synthProcessEnd(results: SynthResult[]): void {
 		const id = this.log('synth.process.end');
-		this.write(`${id}_output.json`, results);
+		this.write(`${id}_output.json`, JSON.stringify(results, undefined, '\t'));
 	}
 
 	synthOutputNext(output: SynthResult | undefined): void {
 		const id = this.log('synth.output.next');
-		this.write(`${id}_output.json`, output);
+		this.write(`${id}_output.json`, JSON.stringify(output, undefined, '\t'));
 	}
 
 	synthOutputPrev(output: SynthResult | undefined): void {
 		const id = this.log('synth.output.prev');
-		this.write(`${id}_output.json`, output);
+		this.write(`${id}_output.json`, JSON.stringify(output, undefined, '\t'));
 	}
 
 	synthOutputEnd(): void {
@@ -211,9 +211,9 @@ export abstract class ARTVLogger implements IRTVLogger {
 		this.log('synth.user.prev');
 	}
 
-	synthUserAccept(result: any): void {
+	synthUserAccept(result: SynthResult): void {
 		const id = this.log('synth.output.accept');
-		this.write(`${id}_result.json`, result);
+		this.write(`${id}_result.json`, JSON.stringify(result, undefined, '\t'));
 	}
 
 	synthFinalize(code: string): void {
