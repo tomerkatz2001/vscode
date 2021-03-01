@@ -232,6 +232,7 @@ export class RTVSynth {
 					const solution = this.instance.current();
 					if (solution) {
 						this.logger.synthUserAccept(solution);
+						this.logger.synthFinalize(solution.program);
 						this.insertSynthesizedFragment(solution.program, this.lineno!);
 						this.stopSynthesis();
 					}
@@ -589,11 +590,13 @@ export class RTVSynth {
 		});
 		this.instance.onEnd((results: SynthResult[]) => {
 			if (results.length === 0) {
+				this.logger.synthFinalize('# Synthesis failed');
 				this.insertSynthesizedFragment('# Synthesis failed', this.lineno!);
 				this.stopSynthesis();
 			} else if (results[results.length - 1].done) {
 				// This is not partial synth, just insert as usual
 				const solution = results[results.length - 1];
+				this.logger.synthFinalize(solution.program);
 				this.insertSynthesizedFragment(solution.program, this.lineno!);
 				this.stopSynthesis();
 			} else {
@@ -609,6 +612,7 @@ export class RTVSynth {
 						p = this.previousResult();
 					} else {
 						// No valid solutions :(
+						this.logger.synthFinalize('# Synthesis failed');
 						this.insertSynthesizedFragment('# Synthesis failed', this.lineno!);
 						this.stopSynthesis();
 						return;
