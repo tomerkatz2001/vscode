@@ -230,6 +230,8 @@ export class RTVSynth {
 			switch (e.key) {
 				case 'Enter':
 					const solution = this.instance.current();
+					this.logger.synthUserAccept(solution);
+
 					if (solution) {
 						this.logger.synthUserAccept(solution);
 						this.logger.synthFinalize(solution.program);

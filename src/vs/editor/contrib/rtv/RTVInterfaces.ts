@@ -105,7 +105,7 @@ export interface IRTVLogger {
 
 	synthUserNext(): void;
 	synthUserPrev(): void;
-	synthUserAccept(result: SynthResult): void;
+	synthUserAccept(result: SynthResult | undefined): void;
 
 	synthFinalize(code: string): void;
 
@@ -211,7 +211,7 @@ export abstract class ARTVLogger implements IRTVLogger {
 		this.log('synth.user.prev');
 	}
 
-	synthUserAccept(result: SynthResult): void {
+	synthUserAccept(result: SynthResult | undefined): void {
 		const id = this.log('synth.output.accept');
 		this.write(`${id}_result.json`, JSON.stringify(result, undefined, '\t'));
 	}
