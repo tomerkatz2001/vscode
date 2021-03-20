@@ -332,6 +332,7 @@ export class RTVSynth {
 			varIdx = this.varnames!.length - 1;
 			this.row! -= 1;
 		} else if (varIdx >= this.varnames!.length) {
+			// TODO Prevent going to next row if this row is not included?
 			varIdx = 0;
 			this.row! += 1;
 		}
@@ -638,21 +639,34 @@ export class RTVSynth {
 
 		// We need to check the latest envs, so let's make sure it's up to date.
 		await this.controller.pythonProcess?.toPromise();
-		// await this.controller.runProgram();
 
 		// See if the variable was defined before this statement.
 		// If yes, we can set the default value to itself!
-		const boxEnvs = this.controller.getBox(this.lineno!)!.getEnvs();
-		console.log(boxEnvs);
-
+		// HACK
 		let earliestTime = 100000;
-		for (let env of boxEnvs!) {
-			if (env['time'] < earliestTime) {
-				earliestTime = env['time'];
-			}
-		}
 
-		earliestTime--;
+		let boxEnvs = this.controller.getBox(this.lineno!)!.getEnvs();
+		if (boxEnvs.length === 0) {
+			boxEnvs = this.controller.getBox(this.lineno!-1)?.getEnvs();
+			if (boxEnvs) {
+				if (boxEnvs) {
+					for (let env of boxEnvs!) {
+						if (env['time'] < earliestTime) {
+							earliestTime = env['time'];
+						}
+					}
+				}
+			}
+		} else {
+			if (boxEnvs) {
+				for (let env of boxEnvs!) {
+					if (env['time'] < earliestTime) {
+						earliestTime = env['time'];
+					}
+				}
+			}
+			earliestTime--;
+		}
 
 		for (const varname of this.varnames!) {
 			let val = '0';

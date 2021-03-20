@@ -2162,9 +2162,10 @@ export class RTVController implements IRTVController {
 		}
 	}
 
-	private onDidChangeModelContent(e: IModelContentChangedEvent) {
+	private async onDidChangeModelContent(e: IModelContentChangedEvent) {
 		this.updateMaxPixelCol();
-		this.updateBoxes(e);
+		await this.updateBoxes(e);
+
 		let cursorPos = this._editor.getPosition();
 		if (cursorPos === null) {
 			return;
