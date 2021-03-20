@@ -852,7 +852,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 	}
 
 	public getCellId(varname: string, idx: number): string {
-		return `${this.lineNumber}_${varname}_${idx}`;
+		return `${this.lineNumber}-${varname}-${idx}`;
 	}
 
 	public getCell(varname: string, idx: number): HTMLTableCellElement | null {
@@ -1156,6 +1156,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 			this._openerService);
 
 		if (updateInPlace) {
+			this._cellDictionary = {};
 			if (this._controller.byRowOrCol === RowColMode.ByRow) {
 				this.updateTableByRows(this._box.firstElementChild as HTMLTableElement, renderer, rows);
 			} else {

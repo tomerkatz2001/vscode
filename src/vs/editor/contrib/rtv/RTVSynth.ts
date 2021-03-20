@@ -7,210 +7,106 @@ import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 
 const SYNTHESIZING_MESSAGE: string = '# Please wait. Synthesizing...';
-const INSPECT_OUTPUT_MESSAGE: string = '# Output available. Synthesizing...';
-const SELECT_OUTPUT_MESSAGE: string = '# Please select output';
 
-class SynthInstance {
-	private _results: SynthResult[] = [];
-	private _currIdx: number = -1;
-	private _done: boolean = false;
-	private _killTimer?: ReturnType<typeof setTimeout>;
+class SynthProcess {
+	private _resolve?: (value: SynthResult) => void = undefined;
+	private _reject?: () => void = undefined;
+	private _problemIdx: number;
+	private process: Process;
 
-	private process?: Process;
-	private onNextFn?: () => void;
-	private onEndFn?: (results: SynthResult[]) => void;
+	constructor() {
+		this._problemIdx = -1;
+		this.process = utils.synthProcess();
 
-	constructor(
-		public problem: SynthProblem,
-		private logger: IRTVLogger,
-	) { }
-
-	get done(): boolean {
-		return this._done;
-	}
-
-	get results(): SynthResult[] {
-		return [...this._results];
-	}
-
-	private startTimer() {
-		if (!this._killTimer && !this._done) {
-			this._killTimer = setTimeout(() => {
-				this._done = true;
-				try {
-					this.process?.toStdin('done');
-					this.process?.kill();
-				} catch (e) {
-					console.error('Failed to write to synth process: ');
-					console.error(e);
-				}
-			}, 7000);
-		}
-	}
-
-	private stopTimer() {
-		if (this._killTimer) {
-			clearTimeout(this._killTimer);
-			this._killTimer = undefined;
-		}
-	}
-
-	public remove(elem: SynthResult) {
-		this._results.splice(this._results.findIndex((val) => val === elem), 1);
-	}
-
-	public next(): SynthResult | undefined {
-		let rs;
-		if (this.hasNext()) {
-			rs = this._results[++this._currIdx];
-			this.stopTimer();
-		} else {
-			this.logger.synthOutputEnd();
-			this.startTimer();
-			rs = undefined;
-		}
-		this.logger.synthOutputNext(rs);
-		return rs;
-	}
-
-	public curr(): SynthResult | undefined {
-		let rs;
-
-		if (this._currIdx >= 0 && this._currIdx < this._results.length) {
-			rs = this._results[this._currIdx];
-		} else {
-			rs = undefined;
-		}
-
-		return rs;
-	}
-
-	public previous(): SynthResult | undefined {
-		let rs;
-		if (this.hasPrevious()) {
-			rs = this._results[--this._currIdx];
-
-			if (this._killTimer) {
-				clearTimeout(this._killTimer);
-				this._killTimer = undefined;
-			}
-		} else {
-			rs = undefined;
-		}
-		this.logger.synthOutputPrev(rs);
-		return rs;
-	}
-
-	public current(): SynthResult | undefined {
-		let rs = undefined;
-		if (this._currIdx >= 0 && this._currIdx < this._results.length) {
-			rs = this._results[this._currIdx];
-		}
-		return rs;
-	}
-
-	private hasNext(): boolean {
-		return this._currIdx + 1 < this._results.length;
-	}
-
-	private hasPrevious() {
-		return this._currIdx >= 1;
-	}
-
-	public start() {
-		// Bad name, but reset everything, since we're done;
-		// const lineno = this.problem.line_no!;
-		// const exampleCount = this.problem.envs.length;
-
-		this.process = utils.synthesizeSnippet(JSON.stringify(this.problem));
-
-		this.logger.synthProcessStart(this.problem);
-
+		// Set up the listeners we use to communicate with the synth
 		this.process.onStdout((data) => {
-			const results = String.fromCharCode.apply(null, data)
-				.split('\n')
-				.filter(line => line)
-				.map((line) => {
-					let rs = undefined;
-					try {
-						rs = JSON.parse(line) as SynthResult;
-					} catch (e) {
-						console.error('Failed to parse synth output: ' + String.fromCharCode.apply(null, data));
-					}
-					return rs;
-				})
-				.filter(rs => rs);
+			const resultStr = String.fromCharCode.apply(null, data);
 
-			results.forEach(rs => this._results.push(rs!));
-
-			if (results && this.onNextFn) {
-				this.onNextFn();
+			if (this._resolve && this._reject) {
+				try {
+					// TODO Check result id
+					const rs = JSON.parse(resultStr) as SynthResult;
+					this._resolve(rs);
+					this._resolve = undefined;
+					this._reject = undefined;
+				} catch (e) {
+					console.error('Failed to parse synth output: ' + String.fromCharCode.apply(null, data));
+				}
+			} else {
+				console.error('Synth output when not waiting on promise: ');
+				console.error(resultStr);
 			}
 		});
-
-		this.process.onStderr((e) => this.logger.synthProcessErr(e));
 
 		this.process.onExit(() => {
-			this.stopTimer();
-			this._done = true;
+			// This REALLY shouldn't happen.
+			// TODO Make synthProcess check if the process is alive,
+			//   and if not, restart it.
+			this.process = utils.synthProcess();
+		});
+	}
 
-			if (this.onEndFn) {
-				this.onEndFn(this.results);
-			}
+	public start(problem: SynthProblem): Promise<SynthResult> {
+		if (this._reject) {
+			this._reject();
+			this._resolve = undefined;
+			this._reject = undefined;
+		}
 
-			this.logger.synthProcessEnd(this._results);
+		// First, create the promise we're returning.
+		const rs: Promise<SynthResult> = new Promise((resolve, reject) => {
+			this._resolve = resolve;
+			this._reject = reject;
 		});
 
-		// Finally, start timer!
-		this.startTimer();
+		// Then send the problem to the synth
+		problem.id = ++this._problemIdx;
+		console.log(JSON.stringify(problem));
+		this.process.toStdin(JSON.stringify(problem) + '\n');
+
+		// And we can return!
+		return rs;
 	}
 
-	onEnd(fn: (results: SynthResult[]) => void) {
-		if (this.done) {
-			fn([...this.results]);
+	public stop(): Boolean {
+		if (this._reject) {
+			// TODO Actually stop the synthesizer.
+			this._reject();
+			this._reject = undefined;
+			this._resolve = undefined;
+			return true;
 		}
-		this.onEndFn = fn;
-	}
-
-	onNext(fn: () => void) {
-		this.onNextFn = fn;
-
-		if (this._results) {
-			fn();
-		}
+		return false;
 	}
 
 	public dispose() {
-		this.onNextFn = this.onEndFn = undefined;
+		if (this._reject) {
+			this._reject();
+		}
 		this.process?.kill();
-		this.process = undefined;
 	}
 }
 
 export class RTVSynth {
-	private logger: IRTVLogger;
+	private _logger: IRTVLogger;
 	enabled: boolean;
-	includedRows: Set<number>;
+	includedTimes: Set<number> = new Set();
 	allEnvs?: any[] = undefined; // TODO Can we do better than any?
 	boxEnvs?: any[] = undefined;
 	varnames?: string[] = undefined;
 	row?: number = undefined;
 	lineno?: number = undefined;
 	box?: IRTVDisplayBox = undefined;
-	instance?: SynthInstance;
-	waitingOnNextResult: boolean = false;
-	errorHover?: HTMLElement;
-
-	// For restoring the PBs on Undo
-	public lastRunResults?: any[] = undefined;
+	process: SynthProcess;
+	errorHover?: HTMLElement = undefined;
 
 	constructor(
 		private readonly editor: ICodeEditor,
 		private readonly controller: IRTVController,
 		@IThemeService readonly _themeService: IThemeService
 	) {
-		this.logger = utils.getLogger(editor);
-		this.includedRows = new Set();
+		this._logger = utils.getLogger(editor);
+		this.process = new SynthProcess();
 		this.enabled = false;
 
 		// In case the user click's out of the boxes.
@@ -220,35 +116,16 @@ export class RTVSynth {
 
 		// The output selection process blocks everything!
 		window.onkeydown = (e: KeyboardEvent) => {
-			if (!this.instance) {
-				// The rest of this only applies when in "output view" mode.
+			if (!this.enabled) {
+				// The rest of this only applies when waiting on synth result.
 				return true;
 			}
 
 			let rs = false;
 
 			switch (e.key) {
-				case 'Enter':
-					const solution = this.instance.current();
-					this.logger.synthUserAccept(solution);
-
-					if (solution) {
-						this.logger.synthUserAccept(solution);
-						this.logger.synthFinalize(solution.program);
-						this.insertSynthesizedFragment(solution.program, this.lineno!);
-						this.stopSynthesis();
-					}
-					break;
 				case 'Escape':
 					this.stopSynthesis();
-					break;
-				case 'ArrowRight':
-					this.logger.synthUserNext();
-					this.nextResult();
-					break;
-				case 'ArrowLeft':
-					this.logger.synthUserPrev();
-					this.previousResult();
 					break;
 				default:
 					rs = true;
@@ -282,21 +159,20 @@ export class RTVSynth {
 		//     return y
 		// rs = f(f(1))
 
-		if (line.startsWith('return ')) {
-			l_operand = 'rv';
-			r_operand = line.substr('return '.length);
-		} else {
-			let listOfElems = line.split('=');
+		// if (line.startsWith('return ')) {
+		// 	l_operand = 'rv';
+		// 	r_operand = line.substr('return '.length);
+		// } else {
+		let listOfElems = line.split('=');
 
-			if (listOfElems.length !== 2) {
-				// TODO Can we inform the user of this?
-				console.error(
-					'Invalid input format. Must be of the form <varname> = ??'
-				);
-			} else {
-				l_operand = listOfElems[0].trim();
-				r_operand = listOfElems[1].trim();
-			}
+		if (listOfElems.length !== 2) {
+			// TODO Can we inform the user of this?
+			console.error(
+				'Invalid input format. Must be of the form <varname> = ??'
+			);
+		} else {
+			l_operand = listOfElems[0].trim();
+			r_operand = listOfElems[1].trim();
 		}
 
 		if (l_operand === '' || r_operand === '' || !r_operand.endsWith('??')) {
@@ -306,19 +182,14 @@ export class RTVSynth {
 
 		const varnames = this.extractVarnames(lineno);
 
-		if (varnames.length !== 1) {
-			this.stopSynthesis();
-			return;
-		}
-
 		// ------------------------------------------
 		// Okay, we are definitely using SnipPy here!
 		// ------------------------------------------
+		this.controller.changeViewMode(ViewMode.Cursor);
+
 		this.lineno = lineno;
 		this.varnames = varnames;
 		this.row = 0;
-
-		this.logger.synthStart(varnames[0], this.lineno);
 
 		r_operand = r_operand.substr(0, r_operand.length - 2).trim();
 
@@ -327,6 +198,7 @@ export class RTVSynth {
 		let endCol = model.getLineMaxColumn(lineno);
 
 		let range = new Range(lineno, startCol, lineno, endCol);
+
 		let defaultValue = await this.defaultValue(r_operand);
 		let txt: string;
 
@@ -383,17 +255,12 @@ export class RTVSynth {
 	}
 
 	public stopSynthesis() {
-		this.logger.synthEnd();
-
 		if (this.enabled) {
 			this.enabled = false;
+			this.process.stop();
 
 			// Clear the state
-			this.includedRows = new Set();
-
-			this.waitingOnNextResult = false;
-			this.instance?.dispose();
-			this.instance = undefined;
+			this.includedTimes = new Set();
 
 			if (this.errorHover) {
 				this.errorHover.remove();
@@ -406,7 +273,6 @@ export class RTVSynth {
 			this.boxEnvs = undefined;
 			this.allEnvs = undefined;
 			this.row = undefined;
-			this.waitingOnNextResult = false;
 
 			// Then reset the Projection Boxes
 			this.controller.changeViewMode(ViewMode.Full);
@@ -443,7 +309,7 @@ export class RTVSynth {
 		cell = cell!;
 
 		// Extract the info from the cell ID, skip the first, which is the lineno
-		const [varname, idxStr]: string[] = cell.id.split('_').slice(1);
+		const [varname, idxStr]: string[] = cell.id.split('-').slice(1);
 		const idx: number = parseInt(idxStr);
 
 		const currentValue = cell!.textContent!;
@@ -497,30 +363,58 @@ export class RTVSynth {
 		} else if (force !== null) {
 			on = force;
 		} else {
-			on = !this.includedRows.has(this.row!);
+			on = !this.includedTimes.has(time);
 		}
 
 		if (on) {
 			// Make sure the values are correct and up to date
 
-			// -- LooPy only --
 			// Check if value was valid
-			// let error = await utils.validate(cell.textContent!);
+			let error = await utils.validate(cell.textContent!);
 
-			// if (error) {
-			// 	// Show error message if not
-			// 	this.addError(cell, error);
-			// 	return false;
-			// }
-			// ---------------
+			if (error) {
+				// Show error message if not
+				this.addError(cell, error);
+				return false;
+			}
 
 			// Toggle on
+			const oldVal = env[varname];
+			const included = this.includedTimes.has(env['time']);
+
 			env[varname] = cell.innerText;
-			this.includedRows.add(this.row!);
+			this.includedTimes.add(time);
+
+			error = await this.updateBoxValues();
+
+			if (error) {
+				// The input causes an exception.
+				// Rollback the changes and show the error.
+				env[varname] = oldVal;
+
+				if (!included) {
+					this.includedTimes.delete(env['time']);
+				}
+
+				this.addError(cell, error);
+				return false;
+			}
+
 			this.highlightRow(row);
 		} else {
 			// Toggle off
-			this.includedRows.delete(this.row!);
+			this.includedTimes.delete(time);
+
+			// Update box values
+			let error = await this.updateBoxValues();
+			if (error) {
+				// Undoing this causes an exception.
+				// Rollback the changes and show the error.
+				this.includedTimes.add(time);
+				this.addError(cell, error);
+				return false;
+			}
+
 			this.removeHighlight(row);
 		}
 
@@ -533,111 +427,37 @@ export class RTVSynth {
 
 	public async synthesizeFragment(): Promise<void> {
 		// Build and write the synth_example.json file content
-		let rows = Array.from(this.includedRows).sort();
-		let prev_time: number = this.boxEnvs![rows[0]] - 1;
+		let times = Array.from(this.includedTimes).sort((a, b) => a - b);
+		let prev_time: number = times[0] - 1;
 
-		let previous_env: any = {};
+		let previous_env: any | undefined = this.allEnvs!.find(env => env['time'] && env['time'] === prev_time);
+		let envs: any[] = times.map(time => this.boxEnvs!.find(env => env['time'] && env['time'] === time));
 
-		// Look for the previous env in allEnvs
-		for (let env of this.allEnvs!) {
-			if (!env['time']) {
-				continue;
-			}
-
-			if (env['time'] === prev_time) {
-				previous_env = env;
-			}
-		}
-
-		let envs: any[] = rows.map(i => this.boxEnvs![i]);
-
-		// First, we need to validate the inputs and show
-		// error message if the input is not parsable
-		for (const varname of this.varnames!) {
-			for (const row of rows) {
-				const error = await utils.validate(this.boxEnvs![row][varname]);
-
-				if (error) {
-					// Add the error to the matching box
-					const cell = this.box!.getCell(varname, row)!;
-					this.addError(cell, error);
-					return;
-				}
-			}
-		}
-
-		let problem = new SynthProblem(
-			this.varnames!,
-			previous_env,
-			envs,
-			this.controller.getProgram(),
-			this.lineno!
-		);
-
+		let problem = new SynthProblem(this.varnames!, previous_env, envs);
+		this.insertSynthesizedFragment(SYNTHESIZING_MESSAGE, this.lineno!);
 		this.controller.changeViewMode(ViewMode.Cursor);
 
-		this.instance = new SynthInstance(problem, this.logger);
-		this.instance.onNext(() => {
-			if (this.waitingOnNextResult) {
-					this.waitingOnNextResult = false;
-					const next = this.instance!.next()!;
-					this.updateBoxValues(next).then((success) => {
-						if (!next.done && success) {
-							this.insertSynthesizedFragment(INSPECT_OUTPUT_MESSAGE, this.lineno!);
-						} else {
-							this.waitingOnNextResult = true;
-						}
-				});
-			}
-		});
-		this.instance.onEnd((results: SynthResult[]) => {
-			if (results.length === 0) {
-				this.logger.synthFinalize('# Synthesis failed');
-				this.insertSynthesizedFragment('# Synthesis failed', this.lineno!);
-				this.stopSynthesis();
-			} else if (results[results.length - 1].done) {
-				// This is not partial synth, just insert as usual
-				const solution = results[results.length - 1];
-				this.logger.synthFinalize(solution.program);
-				this.insertSynthesizedFragment(solution.program, this.lineno!);
+		try {
+			const rs = await this.process.start(problem);
+			if (rs.success) {
+				this.insertSynthesizedFragment(rs.program!, this.lineno!);
 				this.stopSynthesis();
 			} else {
-				let p: Promise<any>;
-
-				if (this.waitingOnNextResult) {
-					// TODO Write a better API for instance.
-					if (this.instance!.next()) {
-						this.instance!.previous();
-						p = this.nextResult();
-					} else if (this.instance!.curr() || this.instance!.previous()) {
-						this.instance!.next();
-						p = this.previousResult();
-					} else {
-						// No valid solutions :(
-						this.logger.synthFinalize('# Synthesis failed');
-						this.insertSynthesizedFragment('# Synthesis failed', this.lineno!);
-						this.stopSynthesis();
-						return;
-					}
-				} else {
-					// Let the user know that's it
-					p = Promise.resolve();
-				}
-
-				p.then(() => this.insertSynthesizedFragment(SELECT_OUTPUT_MESSAGE, this.lineno!));
+				this.insertSynthesizedFragment('# Synthesis failed', this.lineno!);
+				this.stopSynthesis();
 			}
-		});
-
-		this.insertSynthesizedFragment(SYNTHESIZING_MESSAGE, this.lineno!);
-		this.nextResult();
-		this.instance.start();
+		} catch (err) {
+			console.error('Synth problem rejected: ');
+			console.error(err);
+		}
 	}
 
 	private insertSynthesizedFragment(fragment: string, lineno: number) {
 		// Cleanup fragment
-		if (fragment.startsWith('rv = ')) {
-			fragment = fragment.replace('rv = ', 'return ');
-		}
+		// TODO We don't support return ?? sadly.
+		// if (fragment.startsWith('rv = ')) {
+		// 	fragment = fragment.replace('rv = ', 'return ');
+		// }
 
 		let model = this.controller.getModelForce();
 		let cursorPos = this.editor.getPosition();
@@ -659,7 +479,7 @@ export class RTVSynth {
 
 		// Add spaces for multiline results
 		if (fragment.includes('\n')) {
-			fragment = fragment.split('\n').join('\n' + ' '.repeat(startCol - 1));
+			fragment = fragment.split('\n').join('\n' + '\t'.repeat(startCol - 1));
 		}
 
 		this.editor.pushUndoStop();
@@ -761,66 +581,50 @@ export class RTVSynth {
 				this.errorHover.style.opacity = '0';
 			}
 		}, 1000);
-
-		// Finally, add a listener to remove the hover and annotation
-		// let removeError = (ev: Event) => {
-		// 	element.removeEventListener('input', removeError);
-		// 	editorNode.removeChild(hover);
-		// 	element.className = element.className.replace('squiggly-error', '');
-		// };
-		// element.addEventListener('input', removeError);
 	}
 
 	/**
-	 * Tries to update the box values with the given synthesis results. It can fail
+	 * Tries to update the box values with the given values. It can fail
 	 * if the code causes an exception/error somewhere.
 	 *
-	 * @return true if it succeeds.
+	 * @return the error string, or `undefined` if no error occurs.
 	 **/
-	private async updateBoxValues(synthResult: SynthResult): Promise<boolean> {
-		let content = synthResult.runpyResults;
-
+	private async updateBoxValues(content?: any[]): Promise<string | undefined> {
 		if (!content) {
-			// First, run `run.py` with the synthesis result to get the values
-			// TODO This only works for single-line outputs
-			const solution = (synthResult.program.startsWith('rv = ')) ?
-				synthResult.program.replace('rv = ', 'return ') :
-				synthResult.program;
+			let values: any = {};
+			for (let env of this.boxEnvs!) {
+				if (this.includedTimes.has(env['time'])) {
+					values[`(${env['lineno']},${env['time']})`] = env;
+				}
+			}
 
-			const program = this.controller.getProgram()
-				.replace(INSPECT_OUTPUT_MESSAGE, solution)
-				.replace(SYNTHESIZING_MESSAGE, solution)
-				.replace(SELECT_OUTPUT_MESSAGE, solution);
-
-			let c = utils.runProgram(program);
+			let c = utils.runProgram(this.controller.getProgram(), values);
 			let errorMsg: string = '';
-			c.onStderr((msg) => { errorMsg += msg; });
+			c.onStderr((msg) => {
+				errorMsg += msg;
+			});
 
-			const results: any = await c.toPromise().catch((e) => console.error(e));
+			const results: any = await c.toPromise();
 			const result = results[1];
 
 			let parsedResult = JSON.parse(result);
 			let returnCode = parsedResult[0];
 
-			// Return false if there were any errors
-
 			if (errorMsg && returnCode !== 0) {
-				return false;
+				// Extract the error message
+				const errorLines = errorMsg.split(/\n/).filter((s) => s);
+				const message = errorLines[errorLines.length - 1];
+				return message;
 			}
 
-			// Update the box with the new values!
-			this.lastRunResults = parsedResult;
 			content = parsedResult;
 		}
 
 		this.box?.updateContent(content![2]);
 		this.boxEnvs = this.box?.getEnvs();
-		this.setupTableCellContents(false);
+		this.setupTableCellContents();
 
-		// Reset the selection
-		// this.select(this.box?.getCell(this.varnames![0], this.row!)!.childNodes[0]!);
-
-		return true;
+		return undefined;
 	}
 
 	private async defaultValue(currentVal: string): Promise<string> {
@@ -829,7 +633,46 @@ export class RTVSynth {
 			return currentVal;
 		}
 
-		return this.varnames!.map(_ => '0').join(', ');
+		// Otherwise, find the best default for each variable
+		let defaults: string[] = [];
+
+		// We need to check the latest envs, so let's make sure it's up to date.
+		await this.controller.pythonProcess?.toPromise();
+		// await this.controller.runProgram();
+
+		// See if the variable was defined before this statement.
+		// If yes, we can set the default value to itself!
+		const boxEnvs = this.controller.getBox(this.lineno!)!.getEnvs();
+		console.log(boxEnvs);
+
+		let earliestTime = 100000;
+		for (let env of boxEnvs!) {
+			if (env['time'] < earliestTime) {
+				earliestTime = env['time'];
+			}
+		}
+
+		earliestTime--;
+
+		for (const varname of this.varnames!) {
+			let val = '0';
+
+			for (let line in this.controller.envs) {
+				for (let env of this.controller.envs[line]) {
+					if (env['time'] === earliestTime) {
+						if (env.hasOwnProperty(varname)) {
+							val = varname;
+						}
+						break;
+					}
+				}
+			}
+
+			// If not, we don't have any information, so let's go with 0.
+			defaults.push(val);
+		}
+
+		return defaults.join(', ');
 	}
 
 	private select(node: Node) {
@@ -850,20 +693,20 @@ export class RTVSynth {
 		row.style.fontWeight = row.style.backgroundColor = '';
 	}
 
-	private setupTableCellContents(editable: boolean = true) {
+	private setupTableCellContents() {
 		for (const varname of this.varnames!) {
 			let contents = this.box!.getCellContent()[varname];
 
 			contents.forEach((cellContent, i) => {
 				const env = this.boxEnvs![i];
 
-				cellContent.contentEditable = editable.toString();
+				cellContent.contentEditable = 'true';
 				cellContent.onchange = () => {
 					if (this.errorHover) {
 						this.errorHover.remove();
 						this.errorHover = undefined;
 					}
-				}
+				};
 				cellContent.onkeydown = (e: KeyboardEvent) => {
 					let rs: boolean = true;
 
@@ -910,74 +753,15 @@ export class RTVSynth {
 							this.stopSynthesis();
 							break;
 					}
+
 					return rs;
 				};
+
+				// Re-highlight the rows
+				if (this.includedTimes.has(env['time'])) {
+					this.highlightRow(this.findParentRow(cellContent));
+				}
 			});
-		}
-	}
-
-	private async previousResult(): Promise<void> {
-		if (!this.instance) {
-			console.error('previousResult called without instance. This should not happen');
-			return;
-		}
-
-		let result: SynthResult | undefined;
-
-		if (this.waitingOnNextResult) {
-			result = this.instance.curr();
-		} else {
-			result = this.instance.previous();
-		}
-
-		if (result) {
-			this.waitingOnNextResult = false;
-
-			if (this.errorHover) {
-				this.errorHover.remove();
-				this.errorHover = undefined;
-			}
-
-			this.updateBoxValues(result);
-		} else {
-			this.addError(this.box?.getCell(this.varnames![0], this.row!)!, 'First result');
-		}
-	}
-
-	private async nextResult(): Promise<void> {
-		if (!this.instance) {
-			console.error('nextResult called without instance. This should not happen.');
-			return;
-		}
-
-		if (this.errorHover) {
-			this.errorHover.remove();
-			this.errorHover = undefined;
-		}
-
-		const next = this.instance.next();
-
-		if (next) {
-			const waitingWas = this.waitingOnNextResult;
-			this.waitingOnNextResult = false;
-
-			let success = await this.updateBoxValues(next);
-
-			if (!success) {
-				this.waitingOnNextResult = waitingWas;
-				this.instance.remove(next);
-				this.nextResult();
-			}
-		} else if (!this.instance.done) {
-			this.waitingOnNextResult = true;
-			this.includedRows.forEach(_ => {
-				this.box!.getCellContent()[this.varnames![0]].forEach(cellContent => {
-					cellContent.textContent = 'synthesizing';
-				});
-			});
-			this.select(this.box?.getCell(this.varnames![0], this.row!)!.childNodes[0]!);
-		} else {
-			this.addError(this.box?.getCell(this.varnames![0], this.row!)!, 'Last result');
 		}
 	}
 }

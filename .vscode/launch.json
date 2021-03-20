@@ -222,7 +222,8 @@
 				"RUNPY": "/home/kas/projects/LooPy/vscode/src/run.py",
 				"IMGSUM": "/home/kas/projects/LooPy/vscode/src/img-summary.py",
 				"SNIPPY_UTILS": "/home/kas/projects/LooPy/vscode/src/snippy.py",
-				"SCALA": "/usr/bin/scala",
+				"JAVA": "/usr/bin/java",
+				"HEAP": "12G",
 				"SYNTH": "/home/kas/projects/LooPy/synthesizer/target/snippy-server-0.1-SNAPSHOT-jar-with-dependencies.jar"
 			},
 			"cleanUp": "wholeBrowser",

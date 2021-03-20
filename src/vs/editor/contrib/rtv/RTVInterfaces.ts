@@ -259,19 +259,18 @@ export class EmptyProcess implements Process {
 
 export class SynthResult {
 	constructor(
-		public program: string,
-		public done: boolean,
-		public runpyResults?: any[]
+		public id: number,
+		public success: boolean,
+		public program?: string
 	) {}
 }
 
 export class SynthProblem {
+	public id: number = -1;
 	constructor(
 		public varNames: string[],
 		public previous_env: any,
-		public envs: any[],
-		public program: string,
-		public line_no: number,
+		public envs: any[]
 	) {}
 }
 

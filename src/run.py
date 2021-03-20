@@ -17,7 +17,7 @@ def add_red_format(html):
 	return f"<div style='color:red;'>{html}</div>"
 
 def is_loop_str(str):
-	return re.search("(for|while).*:\w*\n", str.strip()) != None
+	return re.search("(for|while).*:\w*\n", str) != None
 
 def is_break_str(str):
 	return re.search("break", str.strip()) != None

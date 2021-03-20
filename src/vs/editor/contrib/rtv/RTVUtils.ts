@@ -20,7 +20,8 @@ const PY3 = getOSEnvVariable('PYTHON3');
 const RUNPY = getOSEnvVariable('RUNPY');
 const IMGSUM = getOSEnvVariable('IMGSUM');
 const SYNTH = getOSEnvVariable('SYNTH');
-const SCALA = getOSEnvVariable('SCALA');
+const JAVA = getOSEnvVariable('JAVA');
+const HEAP = process.env['HEAP'];
 const SNIPPY_UTILS = getOSEnvVariable('SNIPPY_UTILS');
 
 abstract class NativeProcess implements Process {
@@ -95,6 +96,10 @@ class SynthProcess extends NativeProcess  {
 		super(p);
 	}
 
+	isAlive(): boolean {
+		return this.process.connected;
+	}
+
 	onExit(fn: (exitCode: any) => void): void {
 		this.process.on('close', (exitCode) => fn(exitCode));
 	}
@@ -124,13 +129,6 @@ export function runProgram(program: string, values?: any): Process {
 	return new RunpyProcess(file, local_process);
 }
 
-export function synthesizeSnippet(problem: string): Process {
-	const example_fname = os.tmpdir() + path.sep + 'synth_example.json';
-	fs.writeFileSync(example_fname, problem);
-	let c = child_process.spawn(SCALA, [SYNTH, example_fname]);
-	return new SynthProcess(c);
-}
-
 export function runImgSummary(program: string, line: number, varname: string): Process {
 	const file: string = os.tmpdir() + path.sep + 'tmp.py';
 	fs.writeFileSync(file, program);
@@ -158,6 +156,24 @@ export async function validate(input: string): Promise<string | undefined> {
 			}
 		});
 	});
+}
+
+let synthesizer: SynthProcess | undefined = undefined;
+export function synthProcess(): Process {
+	if (!(synthesizer && synthesizer.isAlive())) {
+		// Restart the synth
+		console.log('starting synth process...');
+		let c;
+		if (HEAP) {
+			c = child_process.spawn(JAVA, [`-Xmx${HEAP}`, '-jar', SYNTH]);
+		} else {
+			c = child_process.spawn(JAVA, ['-jar', SYNTH]);
+		}
+		c.stdout.on('data', data => console.log(String.fromCharCode.apply(null, data)));
+		c.stderr.on('data', data => console.error(String.fromCharCode.apply(null, data)));
+		synthesizer = new SynthProcess(c);
+	}
+	return synthesizer;
 }
 
 let logger: IRTVLogger | undefined = undefined;
