@@ -26,6 +26,7 @@ class SynthProcess {
 				try {
 					// TODO Check result id
 					const rs = JSON.parse(resultStr) as SynthResult;
+					console.log(rs);
 					this._resolve(rs);
 					this._resolve = undefined;
 					this._reject = undefined;
@@ -87,7 +88,7 @@ class SynthProcess {
 }
 
 export class RTVSynth {
-	private _logger: IRTVLogger;
+	private logger: IRTVLogger;
 	enabled: boolean;
 	includedTimes: Set<number> = new Set();
 	allEnvs?: any[] = undefined; // TODO Can we do better than any?
@@ -104,7 +105,7 @@ export class RTVSynth {
 		private readonly controller: IRTVController,
 		@IThemeService readonly _themeService: IThemeService
 	) {
-		this._logger = utils.getLogger(editor);
+		this.logger = utils.getLogger(editor);
 		this.process = new SynthProcess();
 		this.enabled = false;
 
@@ -179,16 +180,16 @@ export class RTVSynth {
 			return;
 		}
 
-		const varnames = this.extractVarnames(lineno);
-
 		// ------------------------------------------
 		// Okay, we are definitely using SnipPy here!
 		// ------------------------------------------
 		this.controller.changeViewMode(ViewMode.Cursor);
 
 		this.lineno = lineno;
-		this.varnames = varnames;
+		this.varnames = this.extractVarnames(lineno);;
 		this.row = 0;
+
+		this.logger.synthStart(this.varnames, this.lineno);
 
 		r_operand = r_operand.substr(0, r_operand.length - 2).trim();
 
@@ -251,6 +252,7 @@ export class RTVSynth {
 
 	public stopSynthesis() {
 		if (this.enabled) {
+			this.logger.synthEnd();
 			this.enabled = false;
 			this.process.stop();
 
@@ -450,11 +452,13 @@ export class RTVSynth {
 		// TODO add prev envs
 
 		let problem = new SynthProblem(this.varnames!, previousEnvs, envs);
+		this.logger.synthSubmit(problem);
 		this.insertSynthesizedFragment(SYNTHESIZING_MESSAGE, this.lineno!);
 		this.controller.changeViewMode(ViewMode.Cursor);
 
 		try {
-			const rs = await this.process.start(problem);
+			const rs: SynthResult = await this.process.start(problem);
+			this.logger.synthResult(rs);
 			if (rs.success) {
 				this.insertSynthesizedFragment(rs.program!, this.lineno!);
 				this.stopSynthesis();
@@ -463,8 +467,10 @@ export class RTVSynth {
 				this.stopSynthesis();
 			}
 		} catch (err) {
-			console.error('Synth problem rejected: ');
-			console.error(err);
+			console.error('Synth problem rejected.');
+			if (err) {
+				console.error(err);
+			}
 		}
 	}
 

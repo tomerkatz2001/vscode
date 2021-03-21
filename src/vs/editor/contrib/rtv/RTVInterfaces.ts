@@ -92,24 +92,15 @@ export interface IRTVLogger {
 	showOutputBox(): void;
 	hideOutputBox(): void;
 
-	// SnipPy
-	synthStart(varname: string, lineno: number): void;
-
-	synthProcessStart(problem: SynthProblem): void;
-	synthProcessErr(msg: any): void;
-	synthProcessEnd(results: SynthResult[]): void;
-
-	synthOutputNext(output: SynthResult | undefined): void;
-	synthOutputPrev(output: SynthResult | undefined): void;
-	synthOutputEnd(): void;
-
-	synthUserNext(): void;
-	synthUserPrev(): void;
-	synthUserAccept(result: SynthResult | undefined): void;
-
-	synthFinalize(code: string): void;
-
+	// LooPy
+	synthProcessStart(): void;
+	synthStart(varnames: string[], lineno: number): void;
 	synthEnd(): void;
+	synthSubmit(problem: SynthProblem): void;
+	synthResult(result: SynthResult): void;
+	synthStdout(msg: string): void;
+	synthStderr(msg: string): void;
+	synthProcessEnd(): void;
 }
 
 export abstract class ARTVLogger implements IRTVLogger {
@@ -171,57 +162,38 @@ export abstract class ARTVLogger implements IRTVLogger {
 	// Synthesis
 	// ---------------------------------------------------------------
 
-	synthStart(varname: string, lineno: number): void {
-		this.log('synth.start', `${varname},${lineno}`);
+	synthProcessStart(): void {
+		this.log('synth.process.start')
 	}
 
-	synthProcessStart(problem: SynthProblem): void {
-		const id = this.log('synth.process.start');
-		this.write(`${id}_problem.json`, JSON.stringify(problem, undefined, '\t'));
-	}
-
-	synthProcessErr(msg: any): void {
-		this.log('synth.process.err', msg.toString());
-	}
-
-	synthProcessEnd(results: SynthResult[]): void {
-		const id = this.log('synth.process.end');
-		this.write(`${id}_output.json`, JSON.stringify(results, undefined, '\t'));
-	}
-
-	synthOutputNext(output: SynthResult | undefined): void {
-		const id = this.log('synth.output.next');
-		this.write(`${id}_output.json`, JSON.stringify(output, undefined, '\t'));
-	}
-
-	synthOutputPrev(output: SynthResult | undefined): void {
-		const id = this.log('synth.output.prev');
-		this.write(`${id}_output.json`, JSON.stringify(output, undefined, '\t'));
-	}
-
-	synthOutputEnd(): void {
-		this.log('synth.output.end');
-	}
-
-	synthUserNext(): void {
-		this.log('synth.user.next');
-	}
-
-	synthUserPrev(): void {
-		this.log('synth.user.prev');
-	}
-
-	synthUserAccept(result: SynthResult | undefined): void {
-		const id = this.log('synth.output.accept');
-		this.write(`${id}_result.json`, JSON.stringify(result, undefined, '\t'));
-	}
-
-	synthFinalize(code: string): void {
-		this.log('synth.finalize', code);
+	synthStart(varnames: string[], lineno: number): void {
+		this.log('synth.start', `${varnames},${lineno}`);
 	}
 
 	synthEnd(): void {
 		this.log('synth.end');
+	}
+
+	synthSubmit(problem: SynthProblem): void {
+		const id = this.log('synth.submit');
+		this.write(`${id}_problem.json`, JSON.stringify(problem, undefined, '\t'));
+	}
+
+	synthResult(result: SynthResult): void {
+		const id = this.log('synth.result');
+		this.write(`${id}_result.json`, JSON.stringify(result, undefined, '\t'));
+	}
+
+	synthStdout(msg: string): void {
+		this.log('synth.stdout', msg.toString());
+	}
+
+	synthStderr(msg: string): void {
+		this.log('synth.stderr', msg.toString());
+	}
+
+	synthProcessEnd(): void {
+		this.log('synth.process.end');
 	}
 }
 

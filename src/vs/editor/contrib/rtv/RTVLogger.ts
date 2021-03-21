@@ -42,7 +42,7 @@ export class RTVLogger extends ARTVLogger {
 
 		// Build an fs-safe date/time:
 		let now = new Date();
-		dir += `poppy_log_${now.getMonth() + 1}-${now.getDate()}_${now.getHours()}-${now.getMinutes()}_${now.getSeconds()}`;
+		dir += `loopy_log_${now.getMonth() + 1}-${now.getDate()}_${now.getHours()}-${now.getMinutes()}_${now.getSeconds()}`;
 
 		// Don't overwrite existing logs!
 		if (fs.existsSync(dir!!)) {

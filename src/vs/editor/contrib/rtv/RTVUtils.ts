@@ -94,6 +94,9 @@ class RunpyProcess extends NativeProcess {
 class SynthProcess extends NativeProcess  {
 	constructor(p: child_process.ChildProcessWithoutNullStreams) {
 		super(p);
+		p.on('exit', function() {
+			logger?.synthProcessEnd();
+		});
 	}
 
 	isAlive(): boolean {
@@ -162,15 +165,21 @@ let synthesizer: SynthProcess | undefined = undefined;
 export function synthProcess(): Process {
 	if (!(synthesizer && synthesizer.isAlive())) {
 		// Restart the synth
-		console.log('starting synth process...');
+		if (logger) {
+			logger.synthProcessStart();
+		}
+
 		let c;
+
 		if (HEAP) {
 			c = child_process.spawn(JAVA, [`-Xmx${HEAP}`, '-jar', SYNTH]);
 		} else {
 			c = child_process.spawn(JAVA, ['-jar', SYNTH]);
 		}
-		c.stdout.on('data', data => console.log(String.fromCharCode.apply(null, data)));
-		c.stderr.on('data', data => console.error(String.fromCharCode.apply(null, data)));
+
+		c.stdout.on('data', data => logger?.synthStdout(String.fromCharCode.apply(null, data)));
+		c.stderr.on('data', data => logger?.synthStderr(String.fromCharCode.apply(null, data)));
+
 		synthesizer = new SynthProcess(c);
 	}
 	return synthesizer;
