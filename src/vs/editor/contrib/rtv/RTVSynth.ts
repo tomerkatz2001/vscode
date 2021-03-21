@@ -99,6 +99,7 @@ export class RTVSynth {
 	box?: IRTVDisplayBox = undefined;
 	process: SynthProcess;
 	errorHover?: HTMLElement = undefined;
+	rowsValid?: boolean[];
 
 	constructor(
 		private readonly editor: ICodeEditor,
@@ -288,7 +289,12 @@ export class RTVSynth {
 	 * If not, it keeps the cursor position, but adds an error message to the value to
 	 * indicate the issue.
 	 */
-	private async focusNextRow(cellContent: HTMLElement, backwards: boolean = false, trackChanges: boolean = true): Promise<void> {
+	private async focusNextRow(
+		cellContent: HTMLElement,
+		backwards: boolean = false,
+		trackChanges: boolean = true,
+		skipLine: boolean = false
+	): Promise<void> {
 		// Get the current value
 		let cell: HTMLTableCellElement;
 
@@ -308,12 +314,12 @@ export class RTVSynth {
 		// Extract the info from the cell ID, skip the first, which is the lineno
 		const [varname, idxStr]: string[] = cell.id.split('-').slice(1);
 		const idx: number = parseInt(idxStr);
+		const env = this.boxEnvs![idx];
 
 		const currentValue = cell!.textContent!;
 
 		if (trackChanges) {
 			// Keep track of changes!
-			const env = this.boxEnvs![idx];
 			if (env[varname] !== currentValue) {
 				const success = await this.toggleElement(env, cell, varname, true);
 
@@ -324,14 +330,38 @@ export class RTVSynth {
 		}
 
 		// Finally, select the next value.
-		let varIdx = this.varnames!.indexOf(varname) + (backwards ? -1 : +1);
-		if (varIdx < 0) {
-			varIdx = this.varnames!.length - 1;
-			this.row! -= 1;
-		} else if (varIdx >= this.varnames!.length) {
-			// TODO Prevent going to next row if this row is not included?
+		let varIdx: number;
+
+		if (skipLine) {
+			// Go to the first variable in the next line
 			varIdx = 0;
-			this.row! += 1;
+			this.row! += backwards ? -1 : +1;
+		} else {
+			// Check what the next variable is
+			varIdx = this.varnames!.indexOf(varname) + (backwards ? -1 : +1);
+			if (varIdx < 0) {
+				varIdx = this.varnames!.length - 1;
+				this.row! -= 1;
+			} else if (varIdx >= this.varnames!.length) {
+				varIdx = 0;
+				this.row! += 1;
+			}
+		}
+
+		if (this.row! >= this.rowsValid!.length) {
+			this.row = 0;
+		} else if (this.row! < 0) {
+			this.row = this.rowsValid!.length - 1;
+		}
+
+		while (!this.rowsValid![this.row!]) {
+			this.row! += (backwards) ? -1 : +1;
+
+			if (this.row! >= this.rowsValid!.length) {
+				this.row = 0;
+			} else if (this.row! < 0) {
+				this.row = this.rowsValid!.length - 1;
+			}
 		}
 
 		// Find the next row
@@ -730,6 +760,23 @@ export class RTVSynth {
 	}
 
 	private setupTableCellContents() {
+		const boxEnvs = this.box!.getEnvs();
+		this.rowsValid = boxEnvs.map((env, i) => {
+			// TODO Does each env map to the same row?
+			return !env['#'] ||
+				env['#'] === '0' ||
+				this.includedTimes.has(env['time']) ||
+				(i > 0 && this.includedTimes.has(boxEnvs[i-1]['time']));
+		})
+
+		if (this.rowsValid!.length == 0) {
+			console.error("No rows found.");
+			this.rowsValid = [true];
+		} else if (!this.rowsValid!.includes(true)) {
+			console.error("All rows invalid!");
+			this.rowsValid[0] = true;
+		}
+
 		for (const varname of this.varnames!) {
 			let contents = this.box!.getCellContent()[varname];
 
@@ -756,7 +803,7 @@ export class RTVSynth {
 										if (success) {
 											// We're already tracked changes, so this should
 											// not do that!
-											this.focusNextRow(cellContent, false, false);
+											this.focusNextRow(cellContent, false, false, true);
 										}
 									});
 							} else {
