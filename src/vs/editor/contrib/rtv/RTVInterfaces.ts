@@ -269,7 +269,7 @@ export class SynthProblem {
 	public id: number = -1;
 	constructor(
 		public varNames: string[],
-		public previous_env: any,
+		public previousEnvs: {[t: string]: any},
 		public envs: any[]
 	) {}
 }

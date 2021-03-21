@@ -61,7 +61,6 @@ class SynthProcess {
 
 		// Then send the problem to the synth
 		problem.id = ++this._problemIdx;
-		console.log(JSON.stringify(problem));
 		this.process.toStdin(JSON.stringify(problem) + '\n');
 
 		// And we can return!
@@ -244,11 +243,7 @@ export class RTVSynth {
 		});
 
 		// TODO Cleanup all available envs
-		this.allEnvs = [];
-
-		for (let line in (runResults[2] as { [k: string]: any[]; })) {
-			this.allEnvs = this.allEnvs.concat(runResults[2][line]);
-		}
+		this.updateAllEnvs(runResults);
 
 		// Get all cell contents for the variable
 		this.setupTableCellContents();
@@ -428,13 +423,33 @@ export class RTVSynth {
 
 	public async synthesizeFragment(): Promise<void> {
 		// Build and write the synth_example.json file content
-		let times = Array.from(this.includedTimes).sort((a, b) => a - b);
-		let prev_time: number = times[0] - 1;
+		let envs = [];
+		let startTimes: Set<number> = new Set();
 
-		let previous_env: any | undefined = this.allEnvs!.find(env => env['time'] && env['time'] === prev_time);
-		let envs: any[] = times.map(time => this.boxEnvs!.find(env => env['time'] && env['time'] === time));
+		for (const env of this.boxEnvs!) {
+			const time = env['time'];
+			const iter = env['#'];
 
-		let problem = new SynthProblem(this.varnames!, previous_env, envs);
+			if (this.includedTimes!.has(time)) {
+				envs.push(env);
+
+				if (startTimes.size === 0 || iter === '0') {
+					startTimes.add(time);
+				}
+			}
+		}
+
+		let previousEnvs: { [t: string]: any} = {};
+		for (const env of this.allEnvs!) {
+			const time = env['time'];
+			if (time && startTimes.has(time + 1)) {
+				previousEnvs[(time + 1).toString()] = env;
+			}
+		}
+
+		// TODO add prev envs
+
+		let problem = new SynthProblem(this.varnames!, previousEnvs, envs);
 		this.insertSynthesizedFragment(SYNTHESIZING_MESSAGE, this.lineno!);
 		this.controller.changeViewMode(ViewMode.Cursor);
 
@@ -624,6 +639,7 @@ export class RTVSynth {
 		this.box?.updateContent(content![2]);
 		this.boxEnvs = this.box?.getEnvs();
 		this.setupTableCellContents();
+		this.updateAllEnvs(content!);
 
 		return undefined;
 	}
@@ -776,6 +792,13 @@ export class RTVSynth {
 					this.highlightRow(this.findParentRow(cellContent));
 				}
 			});
+		}
+	}
+
+	private updateAllEnvs(runResults: any): void {
+		this.allEnvs = [];
+		for (let line in (runResults[2] as { [k: string]: any[]; })) {
+			this.allEnvs = this.allEnvs.concat(runResults[2][line]);
 		}
 	}
 }
