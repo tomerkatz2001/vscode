@@ -226,15 +226,14 @@ export class RTVSynth {
 			let cellContents = this.box!.getCellContent()[varname];
 
 			if (cellContents) {
-				cellContents.forEach((cellContent) => cellContent.contentEditable = 'true');
-
 				if (idx === 0) {
-					// TODO Is there a faster/cleaner way to select the content?
 					let selection = window.getSelection()!;
 					let range = selection.getRangeAt(0)!;
 
 					range.selectNodeContents(cellContents[0]);
 					selection.removeAllRanges();
+
+					cellContents[0].contentEditable = 'true';
 					selection.addRange(range);
 				}
 			} else {
@@ -783,7 +782,10 @@ export class RTVSynth {
 			contents.forEach((cellContent, i) => {
 				const env = this.boxEnvs![i];
 
-				cellContent.contentEditable = 'true';
+				if (this.rowsValid![i]) {
+					// Only enable this for cells that the user is allowed to modify.
+					cellContent.contentEditable = 'true';
+				}
 				cellContent.onchange = () => {
 					if (this.errorHover) {
 						this.errorHover.remove();
