@@ -2,6 +2,7 @@ import { IEditorContribution } from 'vs/editor/common/editorCommon';
 import { ITextModel } from 'vs/editor/common/model';
 import { Event } from 'vs/base/common/event';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
+import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
 
 export interface IRTVDisplayBox {
 	getCellContent(): { [k: string]: [HTMLElement] };
@@ -36,7 +37,7 @@ export interface IRTVDisplayBox {
 	 * values will be updated in-place, without destroying
 	 * the table and rebuilding it from scratch.
 	 */
-	updateContent(allEnvs?: any[], updateInPlace?: boolean): void;
+	updateContent(allEnvs?: any[], updateInPlace?: boolean, sortedKeys?: string[]): void;
 }
 
 export class BoxUpdateEvent {
@@ -58,7 +59,7 @@ export interface IRTVController extends IEditorContribution {
 	onUpdateEvent: Event<BoxUpdateEvent>;
 
 	// Functions for running the program
-	updateBoxes(): Promise<any>;
+	updateBoxes(e?: IModelContentChangedEvent, sortedKeys?: string[]): Promise<any>;
 	runProgram(): Promise<any>;
 	getId(): string;
 	byRowOrCol: RowColMode;

@@ -1044,7 +1044,11 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		return false;
 	}
 
-	public updateContent(allEnvs?: any[], updateInPlace?: boolean) {
+	public updateContent(allEnvs?: any[], updateInPlace?: boolean, sortedKeys?: string[]) {
+
+		if (!sortedKeys) {
+			sortedKeys = [];
+		}
 
 		// if computeEnvs returns false, there is no content to display
 		let done = this.computeEnvs(allEnvs);
@@ -1087,7 +1091,14 @@ class RTVDisplayBox implements IRTVDisplayBox {
 					key !== 'lineno' &&
 					key !== 'time' &&
 					key !== '$' &&
-					key !== '#') {
+					key !== '#' &&
+					!sortedKeys!.includes(key)) {
+					this._allVars.add(key);
+				}
+			}
+
+			for (let key of sortedKeys!) {
+				if (key in env) {
 					this._allVars.add(key);
 				}
 			}
@@ -2247,9 +2258,9 @@ export class RTVController implements IRTVController {
 		});
 
 	}
-	public async updateContentAndLayout(): Promise<void> {
+	public async updateContentAndLayout(sortedKeys?: string[]): Promise<void> {
 		this.tableCellsByLoop = {};
-		this.updateContent();
+		this.updateContent(sortedKeys);
 		// The 0 timeout seems odd, but it's really a thing in browsers.
 		// We need to let layout threads catch up after we updated content to
 		// get the correct sizes for boxes.
@@ -2263,7 +2274,7 @@ export class RTVController implements IRTVController {
 		});
 	}
 
-	private updateContent() {
+	private updateContent(sortedKeys?: string[]) {
 		this.padBoxArray();
 		if (this.loopFocusController !== null) {
 			// if we are focused on a loop, compute envs at the controlling box first
@@ -2271,7 +2282,7 @@ export class RTVController implements IRTVController {
 			this.loopFocusController.controllingBox.computeEnvs();
 		}
 		this._boxes.forEach((b) => {
-			b.updateContent();
+			b.updateContent(undefined, undefined, sortedKeys);
 		});
 	}
 
@@ -2662,7 +2673,7 @@ export class RTVController implements IRTVController {
 		return [outputMsg, errorMsg, JSON.parse(result!)];
 	}
 
-	public async updateBoxes(e?: IModelContentChangedEvent): Promise<any> {
+	public async updateBoxes(e?: IModelContentChangedEvent, sortedKeys?: string[]): Promise<any> {
 
 		if (!this.enabled) {
 			// We shouldn't change anything. Just return the results
@@ -2728,7 +2739,7 @@ export class RTVController implements IRTVController {
 		}
 
 		// Wait for the layout to finish
-		await this.updateContentAndLayout();
+		await this.updateContentAndLayout(sortedKeys);
 		this.getOutputBox().setOutAndErrMsg(outputMsg, errorMsg);
 
 		this._eventEmitter.fire(new BoxUpdateEvent(false, false, true));

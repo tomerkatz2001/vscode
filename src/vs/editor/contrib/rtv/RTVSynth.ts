@@ -213,7 +213,7 @@ export class RTVSynth {
 		]);
 
 		// Update the projection box with the new value
-		const runResults: any = await this.controller.updateBoxes();
+		const runResults: any = await this.controller.updateBoxes(undefined, this.varnames);
 
 		// Keep the view mode up to date.
 		this.controller.disable();
@@ -682,7 +682,7 @@ export class RTVSynth {
 			content = parsedResult;
 		}
 
-		this.box?.updateContent(content![2]);
+		this.box?.updateContent(content![2], undefined, this.varnames!);
 		this.boxEnvs = this.box?.getEnvs();
 		this.setupTableCellContents();
 		this.updateAllEnvs(content!);
