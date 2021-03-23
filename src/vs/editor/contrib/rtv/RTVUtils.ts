@@ -185,6 +185,11 @@ export function synthProcess(): Process {
 	return synthesizer;
 }
 
+process.on('exit', function() {
+	// We need to kill the child process manually :/
+	synthesizer?.kill();
+});
+
 let logger: IRTVLogger | undefined = undefined;
 export function getLogger(editor: ICodeEditor): IRTVLogger {
 	if (!logger) {
