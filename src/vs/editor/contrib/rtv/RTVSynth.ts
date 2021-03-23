@@ -26,7 +26,6 @@ class SynthProcess {
 				try {
 					// TODO Check result id
 					const rs = JSON.parse(resultStr) as SynthResult;
-					console.log(rs);
 					this._resolve(rs);
 					this._resolve = undefined;
 					this._reject = undefined;
@@ -222,6 +221,12 @@ export class RTVSynth {
 		this.box = this.controller.getBox(lineno);
 		this.boxEnvs = this.box.getEnvs();
 
+		// TODO Cleanup all available envs
+		this.updateAllEnvs(runResults);
+
+		// Get all cell contents for the variable
+		this.setupTableCellContents();
+
 		this.varnames.forEach((varname, idx) => {
 			let cellContents = this.box!.getCellContent()[varname];
 
@@ -230,11 +235,23 @@ export class RTVSynth {
 					let selection = window.getSelection()!;
 					let range = selection.getRangeAt(0)!;
 
-					range.selectNodeContents(cellContents[0]);
-					selection.removeAllRanges();
+					// Find first non-empty cell
+					const cellIdx = cellContents.findIndex(c => (c.textContent as string).trim());
+					const cell = cellContents[cellIdx];
 
-					cellContents[0].contentEditable = 'true';
-					selection.addRange(range);
+					if (cell) {
+						range.selectNodeContents(cell);
+						selection.removeAllRanges();
+
+						cell.contentEditable = 'true';
+						this.row = cellIdx;
+
+						selection.addRange(range);
+					} else {
+						console.error(`All cells for key "${varname} were empty."`);
+						this.stopSynthesis();
+						return;
+					}
 				}
 			} else {
 				console.error(`No cell found with key "${varname}"`);
@@ -242,12 +259,6 @@ export class RTVSynth {
 				return;
 			}
 		});
-
-		// TODO Cleanup all available envs
-		this.updateAllEnvs(runResults);
-
-		// Get all cell contents for the variable
-		this.setupTableCellContents();
 	}
 
 	public stopSynthesis() {
@@ -760,13 +771,18 @@ export class RTVSynth {
 
 	private setupTableCellContents() {
 		const boxEnvs = this.box!.getEnvs();
-		this.rowsValid = boxEnvs.map((env, i) => {
-			// TODO Does each env map to the same row?
-			return !env['#'] ||
-				env['#'] === '0' ||
-				this.includedTimes.has(env['time']) ||
-				(i > 0 && this.includedTimes.has(boxEnvs[i-1]['time']));
-		})
+		if (boxEnvs.some(env => Object.keys(env).length <= 2)) {
+			// We have empty rows, so we must be inside a conditional :(
+			// Any non-empty row is valid here, since this counts as small-step.
+			this.rowsValid = boxEnvs.map((env, i) => Object.keys(env).length > 2);
+		} else {
+			this.rowsValid = boxEnvs.map((env, i) => {
+				return !env['#'] ||
+					env['#'] === '0' ||
+					this.includedTimes.has(env['time']) ||
+					(i > 0 && this.includedTimes.has(boxEnvs[i - 1]['time']));
+			});
+		}
 
 		if (this.rowsValid!.length == 0) {
 			console.error("No rows found.");
