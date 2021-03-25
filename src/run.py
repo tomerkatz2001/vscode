@@ -175,7 +175,6 @@ class Logger(bdb.Bdb):
 			print(frame.f_locals)
 
 			for varname in frame.f_locals:
-				if varname in self.preexisting_locals: continue
 				if varname in env:
 					new_value = eval(env[varname])
 					print("\t'%s': '%s' -> '%s'" % (varname, repr(frame.f_locals[varname]), repr(new_value)))
