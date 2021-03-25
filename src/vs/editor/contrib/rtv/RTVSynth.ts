@@ -808,11 +808,11 @@ export class RTVSynth {
 			});
 		}
 
-		if (this.rowsValid!.length == 0) {
-			console.error("No rows found.");
+		if (this.rowsValid!.length === 0) {
+			console.error('No rows found.');
 			this.rowsValid = [true];
 		} else if (!this.rowsValid!.includes(true)) {
-			console.error("All rows invalid!");
+			console.error('All rows invalid!');
 			this.rowsValid[0] = true;
 		}
 
