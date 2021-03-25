@@ -475,21 +475,37 @@ export class RTVSynth {
 			if (this.includedTimes!.has(time)) {
 				envs.push(env);
 
-				if (startTimes.size === 0 || iter === '0') {
+				if (startTimes.size === 0 || iter === '0' || iter === '') {
 					startTimes.add(time);
 				}
 			}
 		}
 
 		let previousEnvs: { [t: string]: any} = {};
-		for (const env of this.allEnvs!) {
-			const time = env['time'];
-			if (time && startTimes.has(time + 1)) {
-				previousEnvs[(time + 1).toString()] = env;
+
+		for (const start of startTimes) {
+			let minDelta = 1024 * 1024;
+			let minEnv = undefined;
+
+			for (const env of this.allEnvs!) {
+				const time = env['time'];
+				if (time) {
+					const delta = start - time;
+					if (delta > 0 && delta < minDelta) {
+						minDelta = delta;
+						minEnv = env;
+
+						if (delta == 1) {
+							break;
+						}
+					}
+				}
+			}
+
+			if (minEnv) {
+				previousEnvs[start.toString()] = minEnv;
 			}
 		}
-
-		// TODO add prev envs
 
 		let problem = new SynthProblem(this.varnames!, previousEnvs, envs);
 		this.logger.synthSubmit(problem);
@@ -777,10 +793,18 @@ export class RTVSynth {
 			this.rowsValid = boxEnvs.map((env, i) => Object.keys(env).length > 2);
 		} else {
 			this.rowsValid = boxEnvs.map((env, i) => {
-				return !env['#'] ||
+				const time = env['time'];
+				const rs = !env['#'] ||
 					env['#'] === '0' ||
-					this.includedTimes.has(env['time']) ||
 					(i > 0 && this.includedTimes.has(boxEnvs[i - 1]['time']));
+
+				// This row is no longer valid. Remove it from the included time!
+				if (!rs && this.includedTimes.has(time)) {
+					this.includedTimes.delete(time);
+					this.removeHighlight(this.findParentRow(this.box!.getCell(this.varnames![0], i)!));
+				}
+
+				return rs;
 			});
 		}
 
