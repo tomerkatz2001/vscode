@@ -466,24 +466,18 @@ export class RTVSynth {
 	public async synthesizeFragment(): Promise<void> {
 		// Build and write the synth_example.json file content
 		let envs = [];
-		let startTimes: Set<number> = new Set();
 
 		for (const env of this.boxEnvs!) {
 			const time = env['time'];
-			const iter = env['#'];
 
 			if (this.includedTimes!.has(time)) {
 				envs.push(env);
-
-				if (startTimes.size === 0 || iter === '0' || iter === '') {
-					startTimes.add(time);
-				}
 			}
 		}
 
 		let previousEnvs: { [t: string]: any} = {};
 
-		for (const start of startTimes) {
+		for (const start of this.includedTimes!) {
 			let minDelta = 1024 * 1024;
 			let minEnv = undefined;
 
