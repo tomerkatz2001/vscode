@@ -256,7 +256,8 @@ class TableElement {
 		public iter: string,
 		public controllingLineNumber: number,
 		public vname?: string,
-		public env?: any
+		public env?: any,
+		public leftBorder?: boolean
 	) {}
 }
 
@@ -786,7 +787,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 	}
 
 	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer) {
-		if (this._controller.colBorder) {
+		if (this._controller.colBorder || elmt.leftBorder) {
 			cell.style.borderLeft = '1px solid #454545';
 		}
 		let padding = this._controller.cellPadding + 'px';
@@ -834,13 +835,11 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		}
 
 		if (this.lineNumber === elmt.controllingLineNumber) {
-			let name = elmt.vname!;
-			if (name) {
-				if (name in this._cellDictionary) {
-					this._cellDictionary[name].push(cellContent);
-				} else {
-					this._cellDictionary[name] = [cellContent];
-				}
+			const name = elmt.vname!;
+			if (name in this._cellDictionary) {
+				this._cellDictionary[name].push(cellContent);
+			} else {
+				this._cellDictionary[name] = [cellContent];
 			}
 		}
 
@@ -861,14 +860,10 @@ class RTVDisplayBox implements IRTVDisplayBox {
 
 	private updateTableByRows(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
 		for (let colIdx = 0; colIdx < rows[0].length; colIdx++) {
-			// The first row (header) has the varname!
-			let varname = rows[0][colIdx].content;
-			varname = varname.substr(2, varname.length - 4);
-
 			for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
 				let elmt = rows[rowIdx][colIdx];
 				// Get the cell
-				let cell = this.getCell(varname, rowIdx - 1)!;
+				let cell = this.getCell(elmt.vname!, rowIdx - 1)!;
 				this.addCellContent(cell, elmt, renderer);
 			}
 		}
@@ -881,12 +876,8 @@ class RTVDisplayBox implements IRTVDisplayBox {
 				return;
 			}
 			row.forEach((elmt: TableElement, colIdx: number) => {
-				// The first row (header) has the varname!
-				let varname = rows[0][colIdx].content;
-				varname = varname.substr(2, varname.length - 4);
-
 				// Get the cell
-				let cell = this.getCell(varname, rowIdx - 1)!;
+				let cell = this.getCell(elmt.vname!, rowIdx - 1)!;
 				this.addCellContent(cell, elmt, renderer);
 			});
 		});
@@ -901,9 +892,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 				// Skip the headers
 				if (rowIdx > 0) {
 					// The first row (header) has the varname!
-					let varname = rows[0][colIdx].content;
-					varname = varname.substr(2, varname.length - 4);
-					newCell.id = this.getCellId(varname, rowIdx - 1);
+					newCell.id = this.getCellId(elmt.vname!, rowIdx - 1);
 				}
 
 				this.addCellContentAndStyle(newCell, elmt, renderer);
@@ -1044,16 +1033,19 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		return false;
 	}
 
-	public updateContent(allEnvs?: any[], updateInPlace?: boolean, sortedKeys?: string[]) {
-
-		if (!sortedKeys) {
-			sortedKeys = [];
-		}
+	public updateContent(allEnvs?: any[], updateInPlace?: boolean, outputVars?: string[], prevEnvs?: Map<number, any>) {
 
 		// if computeEnvs returns false, there is no content to display
 		let done = this.computeEnvs(allEnvs);
 		if (done) {
 			return;
+		}
+
+		let outVarNames: string[];
+		if (!outputVars) {
+			outVarNames = [];
+		} else {
+			outVarNames = outputVars!;
 		}
 
 		let envs = this._allEnvs;
@@ -1062,7 +1054,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		this._allVars = new Set<string>();
 		let added_loop_vars = false;
 		let added_loop_iter = false;
-		envs.forEach((env) => {
+		for (const env of envs) {
 			// always add "#" first, if we haven't done it already
 			if (!added_loop_iter && env['#'] !== '') {
 				added_loop_iter = true;
@@ -1091,18 +1083,11 @@ class RTVDisplayBox implements IRTVDisplayBox {
 					key !== 'lineno' &&
 					key !== 'time' &&
 					key !== '$' &&
-					key !== '#' &&
-					!sortedKeys!.includes(key)) {
+					key !== '#') {
 					this._allVars.add(key);
 				}
 			}
-
-			for (let key of sortedKeys!) {
-				if (key in env) {
-					this._allVars.add(key);
-				}
-			}
-		});
+		}
 
 		let startingVars: Set<string>;
 		if (this._controller.displayOnlyModifiedVars) {
@@ -1130,8 +1115,18 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		let rows: TableElement[][] = [];
 		let header: TableElement[] = [];
 		vars.forEach((v: string) => {
-			header.push(new TableElement('**' + v + '**', 'header', 'header', 0));
+			let name = '**' + v + '**';
+			if (outVarNames.includes(v)) {
+				name = '```html\n<strong>' + v + '</strong><sub>in</sub>```'
+			} else {
+				name = '**' + v + '**'
+			}
+			header.push(new TableElement(name, 'header', 'header', 0, ''));
 		});
+		outVarNames.forEach((ov: string, i: number) => {
+			header.push(new TableElement('```html\n<strong>' + ov + '</strong><sub>out</sub>```', 'header', 'header', 0, '', undefined, i === 0));
+		});
+
 		rows.push(header);
 
 		// Generate all rows
@@ -1142,6 +1137,28 @@ class RTVDisplayBox implements IRTVDisplayBox {
 			let row: TableElement[] = [];
 			vars.forEach((v: string) => {
 				let v_str: string;
+				let varName = v;
+				let varEnv = env;
+
+				if (outVarNames.includes(v)) {
+					varName += '_in';
+					if (prevEnvs && prevEnvs.has(env['time'])) {
+						varEnv = prevEnvs.get(env['time']);
+					}
+				}
+
+				if (varEnv[v] === undefined) {
+					v_str = '';
+				} else if (isHtmlEscape(varEnv[v])) {
+					v_str = varEnv[v];
+				} else {
+					v_str = '```python\n' + varEnv[v] + '\n```';
+				}
+
+				row.push(new TableElement(v_str, loopID, iter, this.lineNumber, varName, varEnv));
+			});
+			outVarNames.forEach((v: string, i: number) => {
+				let v_str: string;
 				if (env[v] === undefined) {
 					v_str = '';
 				} else if (isHtmlEscape(env[v])) {
@@ -1149,7 +1166,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 				} else {
 					v_str = '```python\n' + env[v] + '\n```';
 				}
-				row.push(new TableElement(v_str, loopID, iter, this.lineNumber, v, env));
+				row.push(new TableElement(v_str, loopID, iter, this.lineNumber, v, env, i === 0));
 			});
 			rows.push(row);
 		}
@@ -2258,9 +2275,9 @@ export class RTVController implements IRTVController {
 		});
 
 	}
-	public async updateContentAndLayout(sortedKeys?: string[]): Promise<void> {
+	public async updateContentAndLayout(outputVars?: string[], prevEnvs?: Map<number, any>): Promise<void> {
 		this.tableCellsByLoop = {};
-		this.updateContent(sortedKeys);
+		this.updateContent(outputVars, prevEnvs);
 		// The 0 timeout seems odd, but it's really a thing in browsers.
 		// We need to let layout threads catch up after we updated content to
 		// get the correct sizes for boxes.
@@ -2274,7 +2291,7 @@ export class RTVController implements IRTVController {
 		});
 	}
 
-	private updateContent(sortedKeys?: string[]) {
+	private updateContent(outputVars?: string[], prevEnvs?: Map<number, any>) {
 		this.padBoxArray();
 		if (this.loopFocusController !== null) {
 			// if we are focused on a loop, compute envs at the controlling box first
@@ -2282,7 +2299,7 @@ export class RTVController implements IRTVController {
 			this.loopFocusController.controllingBox.computeEnvs();
 		}
 		this._boxes.forEach((b) => {
-			b.updateContent(undefined, undefined, sortedKeys);
+			b.updateContent(undefined, undefined, outputVars, prevEnvs);
 		});
 	}
 
@@ -2673,7 +2690,7 @@ export class RTVController implements IRTVController {
 		return [outputMsg, errorMsg, JSON.parse(result!)];
 	}
 
-	public async updateBoxes(e?: IModelContentChangedEvent, sortedKeys?: string[]): Promise<any> {
+	public async updateBoxes(e?: IModelContentChangedEvent, outputVars?: string[], prevEnvs?: Map<number, any>): Promise<any> {
 
 		if (!this.enabled) {
 			// We shouldn't change anything. Just return the results
@@ -2739,7 +2756,7 @@ export class RTVController implements IRTVController {
 		}
 
 		// Wait for the layout to finish
-		await this.updateContentAndLayout(sortedKeys);
+		await this.updateContentAndLayout(outputVars, prevEnvs);
 		this.getOutputBox().setOutAndErrMsg(outputMsg, errorMsg);
 
 		this._eventEmitter.fire(new BoxUpdateEvent(false, false, true));

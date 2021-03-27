@@ -90,7 +90,8 @@ export class RTVSynth {
 	private logger: IRTVLogger;
 	enabled: boolean;
 	includedTimes: Set<number> = new Set();
-	allEnvs?: any[] = undefined; // TODO Can we do better than any?
+	allEnvs?: any[] = undefined;
+	prevEnvs?: Map<number, any>;
 	boxEnvs?: any[] = undefined;
 	varnames?: string[] = undefined;
 	row?: number = undefined;
@@ -475,30 +476,9 @@ export class RTVSynth {
 			}
 		}
 
-		let previousEnvs: { [t: string]: any} = {};
-
-		for (const start of this.includedTimes!) {
-			let minDelta = 1024 * 1024;
-			let minEnv = undefined;
-
-			for (const env of this.allEnvs!) {
-				const time = env['time'];
-				if (time) {
-					const delta = start - time;
-					if (delta > 0 && delta < minDelta) {
-						minDelta = delta;
-						minEnv = env;
-
-						if (delta == 1) {
-							break;
-						}
-					}
-				}
-			}
-
-			if (minEnv) {
-				previousEnvs[start.toString()] = minEnv;
-			}
+		let previousEnvs: {[t: string]: any} = {};
+		for (const [time, env] of this.prevEnvs!) {
+			previousEnvs[time.toString()] = env;
 		}
 
 		let problem = new SynthProblem(this.varnames!, previousEnvs, envs);
@@ -692,10 +672,11 @@ export class RTVSynth {
 			content = parsedResult;
 		}
 
-		this.box?.updateContent(content![2], undefined, this.varnames!);
+		// First, update our envs
+		this.updateAllEnvs(content!);
+		this.box?.updateContent(content![2], undefined, this.varnames!, this.prevEnvs!);
 		this.boxEnvs = this.box?.getEnvs();
 		this.setupTableCellContents();
-		this.updateAllEnvs(content!);
 
 		return undefined;
 	}
@@ -888,6 +869,33 @@ export class RTVSynth {
 		this.allEnvs = [];
 		for (let line in (runResults[2] as { [k: string]: any[]; })) {
 			this.allEnvs = this.allEnvs.concat(runResults[2][line]);
+		}
+
+		this.prevEnvs = new Map<number, any>();
+
+		for (const startEnv of this.allEnvs) {
+			const start = startEnv['time'];
+			let minDelta = 1024 * 1024;
+			let minEnv = undefined;
+
+			for (const env of this.allEnvs) {
+				const time = env['time'];
+				if (time) {
+					const delta = start - time;
+					if (delta > 0 && delta < minDelta) {
+						minDelta = delta;
+						minEnv = env;
+
+						if (delta == 1) {
+							break;
+						}
+					}
+				}
+			}
+
+			if (minEnv) {
+				this.prevEnvs.set(start, minEnv);
+			}
 		}
 	}
 }

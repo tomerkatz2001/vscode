@@ -37,7 +37,7 @@ export interface IRTVDisplayBox {
 	 * values will be updated in-place, without destroying
 	 * the table and rebuilding it from scratch.
 	 */
-	updateContent(allEnvs?: any[], updateInPlace?: boolean, sortedKeys?: string[]): void;
+	updateContent(allEnvs?: any[], updateInPlace?: boolean, outputVars?: string[], prevEnvs?: Map<number, any>): void;
 }
 
 export class BoxUpdateEvent {
@@ -59,7 +59,7 @@ export interface IRTVController extends IEditorContribution {
 	onUpdateEvent: Event<BoxUpdateEvent>;
 
 	// Functions for running the program
-	updateBoxes(e?: IModelContentChangedEvent, sortedKeys?: string[]): Promise<any>;
+	updateBoxes(e?: IModelContentChangedEvent, outputVars?: string[], prevEnvs?: Map<number, any>): Promise<any>;
 	runProgram(): Promise<any>;
 	getId(): string;
 	byRowOrCol: RowColMode;
