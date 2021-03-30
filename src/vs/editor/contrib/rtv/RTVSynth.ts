@@ -214,7 +214,7 @@ export class RTVSynth {
 		]);
 
 		// Update the projection box with the new value
-		const runResults: any = await this.controller.updateBoxes(undefined, this.varnames);
+		const runResults: any = await this.controller.updateBoxes();
 
 		// Keep the view mode up to date.
 		this.controller.disable();
@@ -224,6 +224,9 @@ export class RTVSynth {
 
 		// TODO Cleanup all available envs
 		this.updateAllEnvs(runResults);
+
+		// Now that we have all the info, update the box again!
+		await this.updateBoxValues();
 
 		// Get all cell contents for the variable
 		this.setupTableCellContents();
@@ -295,6 +298,39 @@ export class RTVSynth {
 	// Recording changes
 	// -----------------------------------------------------------------------------------
 
+	private findCell(cellContent: HTMLElement): HTMLTableCellElement | undefined {
+		let cell: HTMLTableCellElement | undefined = undefined;
+
+		for (
+			let cellIter: Node = cellContent;
+			cellIter.parentNode;
+			cellIter = cellIter.parentNode
+		) {
+			if (cellIter.nodeName === 'TD') {
+				cell = cellIter as HTMLTableCellElement;
+				break;
+			}
+		}
+
+		return cell;
+	}
+
+	private async toggleIfChanged(env: any, varname: string, cellContent: HTMLElement): Promise<boolean> {
+		// Keep track of changes!
+		let success = false;
+		const cell = this.findCell(cellContent);
+		if (cell) {
+			const currentValue = cell.textContent!;
+			if (env[varname] !== currentValue) {
+				success = await this.toggleElement(env, cell, varname, true);
+			}
+		} else {
+			console.error('toggleIfChanged called, but parent can\' be found: ');
+			console.error(cellContent);
+		}
+		return success;
+	}
+
 	/**
 	 * Checks whether the current row's value is valid. If yes, it selects the next "row".
 	 * If not, it keeps the cursor position, but adds an error message to the value to
@@ -307,36 +343,17 @@ export class RTVSynth {
 		skipLine: boolean = false
 	): Promise<void> {
 		// Get the current value
-		let cell: HTMLTableCellElement;
-
-		for (
-			let cellIter = cellContent.parentNode!;
-			cellIter.parentNode;
-			cellIter = cellIter.parentNode
-		) {
-			if (cellIter.nodeName === 'TD') {
-				cell = cellIter as HTMLTableCellElement;
-				break;
-			}
-		}
-
-		cell = cell!;
+		let cell: HTMLTableCellElement = this.findCell(cellContent)!;
 
 		// Extract the info from the cell ID, skip the first, which is the lineno
 		const [varname, idxStr]: string[] = cell.id.split('-').slice(1);
 		const idx: number = parseInt(idxStr);
 		const env = this.boxEnvs![idx];
 
-		const currentValue = cell!.textContent!;
-
 		if (trackChanges) {
-			// Keep track of changes!
-			if (env[varname] !== currentValue) {
-				const success = await this.toggleElement(env, cell, varname, true);
-
-				if (!success) {
-					return;
-				}
+			const success = await this.toggleIfChanged(env, varname, cell);
+			if (!success) {
+				return;
 			}
 		}
 
@@ -806,6 +823,9 @@ export class RTVSynth {
 						this.errorHover.remove();
 						this.errorHover = undefined;
 					}
+				};
+				cellContent.onblur = () => {
+					this.toggleIfChanged(env, varname, cellContent);
 				};
 				cellContent.onkeydown = (e: KeyboardEvent) => {
 					let rs: boolean = true;
