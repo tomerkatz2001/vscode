@@ -1096,17 +1096,41 @@ class RTVDisplayBox implements IRTVDisplayBox {
 			startingVars = this._allVars;
 		}
 
-		let vars = this._deltaVarSet.applyTo(startingVars, this._allVars);
-		this._displayedVars = vars;
+		envs = this.filterLoops(envs);
 
-		if (vars.size === 0) {
+		if (envs.length === 0) {
 			this.setContentFalse();
 			return;
 		}
 
-		envs = this.filterLoops(envs);
+		let vars = this._deltaVarSet
+			.applyTo(startingVars, this._allVars)
 
-		if (envs.length === 0) {
+		if (prevEnvs) {
+			const oldVars = vars;
+			vars = new Set();
+			for (const v of oldVars) {
+				// remove any variables newly defined by the synthsizer
+				let rs = true;
+				if (outVarNames.includes(v)) {
+					for (const env of envs) {
+						const time = env['time'];
+						const prev = prevEnvs.get(time);
+						if (prev) {
+							rs = v in prev;
+						}
+					}
+				}
+
+				if (rs) {
+					vars.add(v);
+				}
+			}
+		}
+
+		this._displayedVars = vars;
+
+		if (vars.size === 0) {
 			this.setContentFalse();
 			return;
 		}
