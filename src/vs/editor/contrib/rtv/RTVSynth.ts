@@ -323,6 +323,8 @@ export class RTVSynth {
 			const currentValue = cell.textContent!;
 			if (env[varname] !== currentValue) {
 				success = await this.toggleElement(env, cell, varname, true);
+			} else {
+				success = true;
 			}
 		} else {
 			console.error('toggleIfChanged called, but parent can\' be found: ');
