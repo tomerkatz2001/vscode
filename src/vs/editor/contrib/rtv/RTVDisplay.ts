@@ -41,8 +41,8 @@ import {
 	widgetShadow
 } from 'vs/platform/theme/common/colorRegistry';
 import { IIdentifiedSingleEditOperation, IModelDecorationOptions, ITextModel } from 'vs/editor/common/model';
-import { Process, IRTVController, IRTVLogger, ViewMode, RowColMode, IRTVDisplayBox, BoxUpdateEvent } from 'vs/editor/contrib/rtv/RTVInterfaces';
-import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
+import { RunProcess, RunResult, IRTVController, IRTVLogger, ViewMode, RowColMode, IRTVDisplayBox, BoxUpdateEvent, Utils } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { getUtils } from 'vs/editor/contrib/rtv/RTVUtils';
 import { Button } from 'vs/base/browser/ui/button/button';
 import { attachButtonStyler } from 'vs/platform/theme/common/styler';
 import { RTVSynth } from './RTVSynth';
@@ -111,15 +111,13 @@ function regExpMatchEntireString(s: string, regExp: string) {
 export class DelayedRunAtMostOne {
 	private _reject?: () => void;
 
-	public async run(delay: number, c: () => void) {
+	public async run(delay: number, c: () => Promise<void>) {
 		if (this._reject) {
 			this._reject();
 		}
 
 		if (delay === 0) {
 			this._reject = undefined;
-			c();
-			return Promise.resolve();
 		} else {
 			await new Promise((resolve, reject) => {
 				let timeout = setTimeout(resolve, delay);
@@ -128,9 +126,9 @@ export class DelayedRunAtMostOne {
 					reject();
 				};
 			});
-
-			return c();
 		}
+
+		await c();
 	}
 
 	public cancel() {
@@ -1690,7 +1688,8 @@ export class RTVController implements IRTVController {
 	public _configBox: HTMLDivElement | null = null;
 	public tableCellsByLoop: MapLoopsToCells = {};
 	public logger: IRTVLogger;
-	public pythonProcess?: Process = undefined;
+	public pythonProcess?: RunProcess = undefined;
+	public utils: Utils = getUtils();
 	public runProgramDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 	private _eventEmitter: Emitter<BoxUpdateEvent> = new Emitter<BoxUpdateEvent>();
 	private _boxes: RTVDisplayBox[] = [];
@@ -1740,7 +1739,7 @@ export class RTVController implements IRTVController {
 		//this._modelService.onModelModeChanged((e) => { console.log('BBBB');  });
 
 		this._synthesis = new RTVSynth(_editor, this, this._themeService);
-		this.logger = utils.getLogger(this._editor);
+		this.logger = this.utils.logger(this._editor);
 
 		this.updateMaxPixelCol();
 
@@ -2561,7 +2560,7 @@ export class RTVController implements IRTVController {
 	}
 
 	private showErrorWithDelay(returnCode: number, errorMsg: string) {
-		this._showErrorDelay.run(1500, () => {
+		this._showErrorDelay.run(1500, async () => {
 			this.clearError();
 			this.showError(errorMsg);
 		})
@@ -2587,7 +2586,7 @@ export class RTVController implements IRTVController {
 		let colStart = 0;
 		let colEnd = 0;
 
-		let errorLines = errorMsg.split(utils.EOL);
+		let errorLines = errorMsg.split(this.utils.EOL);
 		errorLines.pop(); // last element is empty line
 
 		// The error description is always the last line
@@ -2687,28 +2686,18 @@ export class RTVController implements IRTVController {
 		}
 
 		this.logger.projectionBoxUpdateStart(program);
-		let c = utils.runProgram(program);
-		this.pythonProcess = c;
+		this.pythonProcess = this.utils.runProgram(program);
 
-		let errorMsg: string = '';
-		c.onStderr((msg) => {
-			errorMsg += msg;
-		});
+		let runResults: RunResult = await this.pythonProcess;
+		const outputMsg = runResults.stdout;
+		const errorMsg = runResults.stderr;
+		const exitCode = runResults.exitCode;
+		const result = runResults.result;
 
-		let outputMsg: string = '';
-		c.onStdout((msg) => {
-			outputMsg += msg;
-		});
-
-		let results = await c.toPromise();
-
-		if (!results) {
-			console.error('runProgram() process returned: ', results);
+		if (!result) {
+			console.error('runProgram() process returned: ', runResults);
 			return [outputMsg, errorMsg];
 		}
-
-		const exitCode = results[0];
-		const result = results[1];
 
 		this.logger.projectionBoxUpdateEnd(result);
 
@@ -2768,7 +2757,7 @@ export class RTVController implements IRTVController {
 
 		try {
 			// Just delay
-			await this.runProgramDelay.run(delay, () => {});
+			await this.runProgramDelay.run(delay, async () => {});
 		} catch (_err) {
 			// The timer was cancelled. Just return.
 			this._eventEmitter.fire(new BoxUpdateEvent(false, true, false));
@@ -3070,11 +3059,6 @@ export class RTVController implements IRTVController {
 	}
 
 	public changeViewMode(m: ViewMode) {
-
-		// Only change the view if allowed
-		if (!utils.isViewModeAllowed(m)) {
-			return;
-		}
 
 		if (m) {
 			this.logger.projectionBoxModeChanged(m.toString());
