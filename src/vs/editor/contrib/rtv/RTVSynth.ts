@@ -550,7 +550,8 @@ export class RTVSynth {
 
 		// Add spaces for multiline results
 		if (fragment.includes('\n')) {
-			fragment = fragment.split('\n').join('\n' + '\t'.repeat(startCol - 1));
+			let indent = (model.getOptions()!.insertSpaces) ? ' ' : '\t';
+			fragment = fragment.split('\n').join('\n' + indent.repeat(startCol - 1));
 		}
 
 		this.editor.pushUndoStop();

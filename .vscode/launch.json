@@ -218,13 +218,13 @@
 			"env": {
 				"VSCODE_EXTHOST_WILL_SEND_SOCKET": null,
 				"VSCODE_SKIP_PRELAUNCH": "1",
-				"PYTHON3": "/usr/bin/python3",
-				"RUNPY": "/home/kas/projects/LooPy/vscode/src/run.py",
-				"IMGSUM": "/home/kas/projects/LooPy/vscode/src/img-summary.py",
-				"SNIPPY_UTILS": "/home/kas/projects/LooPy/vscode/src/snippy.py",
+				"PYTHON3": "/Users/lisa/.pyenv/shims/python3",
+				"RUNPY": "/Users/lisa/Desktop/ucsd-pl/SnipPy/vscode/src/run.py",
+				"IMGSUM": "/Users/lisa/Desktop/ucsd-pl/SnipPy/vscode/src/img-summary.py",
+				"SNIPPY_UTILS": "/Users/lisa/Desktop/ucsd-pl/SnipPy/vscode/src/snippy.py",
 				"JAVA": "/usr/bin/java",
-				"HEAP": "12G",
-				"SYNTH": "/home/kas/projects/LooPy/synthesizer/target/snippy-server-0.1-SNAPSHOT-jar-with-dependencies.jar"
+				// "HEAP": "12G",
+				"SYNTH": "/Users/lisa/Desktop/ucsd-pl/SnipPy/synthesizer/target/snippy-server-0.1-SNAPSHOT-jar-with-dependencies.jar"
 			},
 			"cleanUp": "wholeBrowser",
 			"urlFilter": "*workbench.html*",
