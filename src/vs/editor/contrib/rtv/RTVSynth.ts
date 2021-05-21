@@ -7,6 +7,9 @@ import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 
 const SYNTHESIZING_MESSAGE: string = '# Please wait. Synthesizing...';
+const SPEC_AWAIT_INDICATOR: string = '??';
+const SYNTHESIZING_INDICATOR: string = '...';
+const SYNTH_FAILED_INDICATOR: string = '🤯';
 
 class SynthProcess {
 	private _resolve?: (value: SynthResult) => void = undefined;
@@ -315,14 +318,14 @@ export class RTVSynth {
 		return cell;
 	}
 
-	private async toggleIfChanged(env: any, varname: string, cellContent: HTMLElement): Promise<boolean> {
+	private async toggleIfChanged(env: any, varname: string, cellContent: HTMLElement, updateBoxContent: boolean = true): Promise<boolean> {
 		// Keep track of changes!
 		let success = false;
 		const cell = this.findCell(cellContent);
 		if (cell) {
 			const currentValue = cell.textContent!;
 			if (env[varname] !== currentValue) {
-				success = await this.toggleElement(env, cell, varname, true);
+				success = await this.toggleElement(env, cell, varname, true, updateBoxContent);
 			} else {
 				success = true;
 			}
@@ -342,7 +345,8 @@ export class RTVSynth {
 		cellContent: HTMLElement,
 		backwards: boolean = false,
 		trackChanges: boolean = true,
-		skipLine: boolean = false
+		skipLine: boolean = false,
+		updateBoxContent: boolean = true
 	): Promise<void> {
 		// Get the current value
 		let cell: HTMLTableCellElement = this.findCell(cellContent)!;
@@ -353,7 +357,7 @@ export class RTVSynth {
 		const env = this.boxEnvs![idx];
 
 		if (trackChanges) {
-			const success = await this.toggleIfChanged(env, varname, cell);
+			const success = await this.toggleIfChanged(env, varname, cell, updateBoxContent);
 			if (!success) {
 				return;
 			}
@@ -410,7 +414,8 @@ export class RTVSynth {
 		env: any,
 		cell: HTMLElement,
 		varname: string,
-		force: boolean | null = null
+		force: boolean | null = null,
+		updateBoxContent: boolean = true
 	): Promise<boolean> {
 		let time = env['time'];
 		let row = this.findParentRow(cell);
@@ -427,14 +432,17 @@ export class RTVSynth {
 		if (on) {
 			// Make sure the values are correct and up to date
 
-			// Check if value was valid
-			let error = await utils.validate(cell.textContent!);
+			// [lisa] Removed parser check for now.
+			// // Check if value was valid
+			// let error = await utils.validate(cell.textContent!);
 
-			if (error) {
-				// Show error message if not
-				this.addError(cell, error);
-				return false;
-			}
+			// if (error) {
+			// 	// Show error message if not
+			// 	this.addError(cell, error);
+			// 	return false;
+			// }
+
+			let error;
 
 			// Toggle on
 			const oldVal = env[varname];
@@ -443,18 +451,21 @@ export class RTVSynth {
 			env[varname] = cell.innerText;
 			this.includedTimes.add(time);
 
-			error = await this.updateBoxValues();
+			error = await this.updateBoxValues(updateBoxContent);
 
 			if (error) {
 				// The input causes an exception.
 				// Rollback the changes and show the error.
-				env[varname] = oldVal;
+				if (updateBoxContent) {
+					env[varname] = oldVal;
+				}
 
 				if (!included) {
 					this.includedTimes.delete(env['time']);
 				}
 
-				this.addError(cell, error);
+				// removed `addError` to avoid error indicators as the user types in a string
+				// this.addError(cell, error);
 				return false;
 			}
 
@@ -464,12 +475,12 @@ export class RTVSynth {
 			this.includedTimes.delete(time);
 
 			// Update box values
-			let error = await this.updateBoxValues();
+			let error = await this.updateBoxValues(updateBoxContent);
 			if (error) {
 				// Undoing this causes an exception.
 				// Rollback the changes and show the error.
 				this.includedTimes.add(time);
-				this.addError(cell, error);
+				// this.addError(cell, error);
 				return false;
 			}
 
@@ -483,7 +494,7 @@ export class RTVSynth {
 	// Synthesize from current data
 	// -----------------------------------------------------------------------------------
 
-	public async synthesizeFragment(): Promise<void> {
+	public async synthesizeFragment(cellContent: HTMLTableCellElement): Promise<boolean> {
 		// Build and write the synth_example.json file content
 		let envs = [];
 
@@ -502,18 +513,47 @@ export class RTVSynth {
 
 		let problem = new SynthProblem(this.varnames!, previousEnvs, envs);
 		this.logger.synthSubmit(problem);
-		this.insertSynthesizedFragment(SYNTHESIZING_MESSAGE, this.lineno!);
-		this.controller.changeViewMode(ViewMode.Cursor);
+		const line = this.controller.getLineContent(this.lineno!).trim();
+		const [l_operand, _] = line.split('=');
+		this.insertSynthesizedFragment(`${l_operand}= ${SYNTHESIZING_INDICATOR}`, this.lineno!);
 
 		try {
 			const rs: SynthResult = await this.process.start(problem);
 			this.logger.synthResult(rs);
+			// console.log(completion);
 			if (rs.success) {
 				this.insertSynthesizedFragment(rs.program!, this.lineno!);
-				this.stopSynthesis();
+				let newCellContent = this.controller.updateBoxesNoRefresh(cellContent);
+
+				newCellContent.then((res) => {
+					if (res) {
+						// this.box = this.controller.getBox(this.lineno!);
+						this.boxEnvs = this.box!.getEnvs();
+
+						this.logger.synthEnd();
+						this.process.stop();
+
+						this.setupTableCellContents();
+
+						// TODO: let the cursor follow the cell even after onDidChangeModelContent was fired
+						let cell = this.findCell(cellContent)!;
+
+						// from stackoverflow
+						var range = document.createRange();
+						var sel = window.getSelection()!;
+
+						range.setStart(cell.childNodes[0], cell.innerText.length);
+						range.collapse(true);
+
+						sel.removeAllRanges();
+						sel.addRange(range);
+
+					}
+				})
+
+				return true;
 			} else {
-				this.insertSynthesizedFragment('# Synthesis failed', this.lineno!);
-				this.stopSynthesis();
+				this.insertSynthesizedFragment(`${l_operand}= ${SYNTH_FAILED_INDICATOR}`, this.lineno!);
 			}
 		} catch (err) {
 			console.error('Synth problem rejected.');
@@ -521,6 +561,7 @@ export class RTVSynth {
 				console.error(err);
 			}
 		}
+		return false;
 	}
 
 	private insertSynthesizedFragment(fragment: string, lineno: number) {
@@ -661,7 +702,7 @@ export class RTVSynth {
 	 *
 	 * @return the error string, or `undefined` if no error occurs.
 	 **/
-	private async updateBoxValues(content?: any[]): Promise<string | undefined> {
+	private async updateBoxValues(updateBoxContent: boolean = true, content?: any[]): Promise<string | undefined> {
 		if (!content) {
 			let values: any = {};
 			for (let env of this.boxEnvs!) {
@@ -694,7 +735,11 @@ export class RTVSynth {
 
 		// First, update our envs
 		this.updateAllEnvs(content!);
-		this.box?.updateContent(content![2], undefined, this.varnames!, this.prevEnvs!);
+
+		// only create new boxes when `updateBoxContent` is true
+		if (updateBoxContent) {
+			this.box?.updateContent(content![2], undefined, this.varnames!, this.prevEnvs!);
+		}
 		this.boxEnvs = this.box?.getEnvs();
 		this.setupTableCellContents();
 
@@ -832,37 +877,25 @@ export class RTVSynth {
 				};
 				cellContent.onkeydown = (e: KeyboardEvent) => {
 					let rs: boolean = true;
+					let synthAttempt;
 
 					switch (e.key) {
+						// TODO: automatically insert closing quotes
+						// case '"':
+						// case '\'':
+						// 	// end of str
+						// 	if (isString && !isComplete) isComplete = true;
+						// 	// beginning of str
+						// 	if (!isString) {
+						// 		isString = true;
+						// 		// setTimeout(() => {cellContent.innerText += cellContent.innerText;}, 1);
+						// 	}
+						// 	//break;
+
 						case 'Enter':
 							e.preventDefault();
-
-							if (e.shiftKey) {
-								this.toggleElement(env, cellContent, varname)
-									.then((success) => {
-										if (success) {
-											// We're already tracked changes, so this should
-											// not do that!
-											this.focusNextRow(cellContent, false, false, true);
-										}
-									});
-							} else {
-								let togglePromise;
-
-								if (env[varname] !== cellContent.innerText) {
-									togglePromise = this.toggleElement(env, cellContent, varname, true);
-								} else {
-									togglePromise = Promise.resolve(true);
-								}
-
-								togglePromise.then((success: boolean) => {
-									if (success) {
-										// Cleanup the UI
-										this.box!.getCellContent()[varname].forEach(cellContent => this.removeHighlight(this.findParentRow(cellContent)));
-										this.synthesizeFragment();
-									}
-								});
-							}
+							// this.box!.getCellContent()[varname].forEach(cellContent => this.removeHighlight(this.findParentRow(cellContent)));
+							this.stopSynthesis();
 							break;
 						case 'Tab':
 							// ----------------------------------------------------------
@@ -874,6 +907,29 @@ export class RTVSynth {
 						case 'Escape':
 							rs = false;
 							this.stopSynthesis();
+							break;
+
+						default:
+							setTimeout(() => {
+								this.process?.stop();
+								// TODO: debug the following
+								// const line = this.controller.getLineContent(this.lineno!).trim();
+								// const [l_operand, _] = line.split('=');
+								// this.insertSynthesizedFragment(`${l_operand}= ${SPEC_AWAIT_INDICATOR}`, this.lineno!);
+
+								if (env[varname] !== cellContent.innerText) {
+									// do not create a new box when synth succeeds
+									// or roll back to prev values when synth fails
+									// TODO: maybe use a different name?
+									let updateBoxContent = false;
+									let togglePromise = this.toggleElement(env, cellContent, varname, true, updateBoxContent);
+									togglePromise.then((_: boolean) => {
+										let cell: HTMLTableCellElement = this.findCell(cellContent)!;
+										synthAttempt = this.synthesizeFragment(cell);
+										}
+									);
+								}
+							}, 1);
 							break;
 					}
 

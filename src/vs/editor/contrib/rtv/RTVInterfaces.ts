@@ -60,6 +60,7 @@ export interface IRTVController extends IEditorContribution {
 
 	// Functions for running the program
 	updateBoxes(e?: IModelContentChangedEvent, outputVars?: string[], prevEnvs?: Map<number, any>): Promise<any>;
+	updateBoxesNoRefresh(specCell?: HTMLTableCellElement, e?: IModelContentChangedEvent, outputVars?: string[], prevEnvs?: Map<number, any>): Promise<any>;
 	runProgram(): Promise<any>;
 	getId(): string;
 	byRowOrCol: RowColMode;
