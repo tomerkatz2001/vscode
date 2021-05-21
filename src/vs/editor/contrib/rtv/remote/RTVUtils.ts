@@ -106,6 +106,7 @@ class RemoteSynthProcess implements SynthProcess {
 				if (response && response.status < 200 || response.status >= 300 || response.redirected) {
 					// TODO Error handling
 					console.error(response);
+					return new SynthResult(problem.id, false, '');
 				}
 
 				return response.json();
@@ -113,6 +114,7 @@ class RemoteSynthProcess implements SynthProcess {
 			catch(err => {
 				// TODO Error handling
 				console.error(err);
+				return new SynthResult(problem.id, false, err.toString());
 			});
 	}
 

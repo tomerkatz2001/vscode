@@ -6,8 +6,8 @@ import { Utils, RunResult, SynthResult, SynthProblem, IRTVLogger, IRTVController
 import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 
-const SYNTHESIZING_MESSAGE: string = '# Please wait. Synthesizing...';
-const SPEC_AWAIT_INDICATOR: string = '??';
+// const SYNTHESIZING_MESSAGE: string = '# Please wait. Synthesizing...';
+// const SPEC_AWAIT_INDICATOR: string = '??';
 const SYNTHESIZING_INDICATOR: string = '...';
 const SYNTH_FAILED_INDICATOR: string = '🤯';
 
@@ -447,33 +447,30 @@ export class RTVSynth {
 			// console.log(completion);
 			if (rs.success) {
 				this.insertSynthesizedFragment(rs.program!, this.lineno!);
-				let newCellContent = this.controller.updateBoxesNoRefresh(cellContent);
+				const res = await this.controller.updateBoxesNoRefresh(cellContent);
 
-				newCellContent.then((res) => {
-					if (res) {
-						// this.box = this.controller.getBox(this.lineno!);
-						this.boxEnvs = this.box!.getEnvs();
+				if (res) {
+					// this.box = this.controller.getBox(this.lineno!);
+					this.boxEnvs = this.box!.getEnvs();
 
-						this.logger.synthEnd();
-						this.process.stop();
+					this.logger.synthEnd();
+					this.process.stop();
 
-						this.setupTableCellContents();
+					this.setupTableCellContents();
 
-						// TODO: let the cursor follow the cell even after onDidChangeModelContent was fired
-						let cell = this.findCell(cellContent)!;
+					// TODO: let the cursor follow the cell even after onDidChangeModelContent was fired
+					let cell = this.findCell(cellContent)!;
 
-						// from stackoverflow
-						var range = document.createRange();
-						var sel = window.getSelection()!;
+					// from stackoverflow
+					var range = document.createRange();
+					var sel = window.getSelection()!;
 
-						range.setStart(cell.childNodes[0], cell.innerText.length);
-						range.collapse(true);
+					range.setStart(cell.childNodes[0], cell.innerText.length);
+					range.collapse(true);
 
-						sel.removeAllRanges();
-						sel.addRange(range);
-
-					}
-				})
+					sel.removeAllRanges();
+					sel.addRange(range);
+				}
 
 				return true;
 			} else {
@@ -559,66 +556,66 @@ export class RTVSynth {
 		return rs;
 	}
 
-	private addError(element: HTMLElement, msg: string) {
-		if (this.errorHover) {
-			this.errorHover.remove();
-			this.errorHover = undefined;
-		}
+	// private _addError(element: HTMLElement, msg: string) {
+	// 	if (this.errorHover) {
+	// 		this.errorHover.remove();
+	// 		this.errorHover = undefined;
+	// 	}
 
-		// First, squiggly lines!
-		// element.className += 'squiggly-error';
+	// 	// First, squiggly lines!
+	// 	// element.className += 'squiggly-error';
 
-		// Use monaco's monaco-hover class to keep the style the same
-		this.errorHover = document.createElement('div');
-		this.errorHover.className = 'monaco-hover visible';
-		this.errorHover.id = 'snippy-example-hover';
+	// 	// Use monaco's monaco-hover class to keep the style the same
+	// 	this.errorHover = document.createElement('div');
+	// 	this.errorHover.className = 'monaco-hover visible';
+	// 	this.errorHover.id = 'snippy-example-hover';
 
-		const scrollable = document.createElement('div');
-		scrollable.className = 'monaco-scrollable-element';
-		scrollable.style.position = 'relative';
-		scrollable.style.overflow = 'hidden';
+	// 	const scrollable = document.createElement('div');
+	// 	scrollable.className = 'monaco-scrollable-element';
+	// 	scrollable.style.position = 'relative';
+	// 	scrollable.style.overflow = 'hidden';
 
-		const row = document.createElement('row');
-		row.className = 'hover-row markdown-hover';
+	// 	const row = document.createElement('row');
+	// 	row.className = 'hover-row markdown-hover';
 
-		const content = document.createElement('div');
-		content.className = 'monaco-hover-content';
+	// 	const content = document.createElement('div');
+	// 	content.className = 'monaco-hover-content';
 
-		const div = document.createElement('div');
-		const p = document.createElement('p');
-		p.innerText = msg;
+	// 	const div = document.createElement('div');
+	// 	const p = document.createElement('p');
+	// 	p.innerText = msg;
 
-		div.appendChild(p);
-		content.appendChild(div);
-		row.appendChild(content);
-		scrollable.appendChild(row);
-		this.errorHover.appendChild(scrollable);
+	// 	div.appendChild(p);
+	// 	content.appendChild(div);
+	// 	row.appendChild(content);
+	// 	scrollable.appendChild(row);
+	// 	this.errorHover.appendChild(scrollable);
 
-		let position = element.getBoundingClientRect();
-		this.errorHover.style.position = 'fixed';
-		this.errorHover.style.top = position.bottom.toString() + 'px';
-		this.errorHover.style.left = position.right.toString() + 'px';
-		this.errorHover.style.padding = '3px';
+	// 	let position = element.getBoundingClientRect();
+	// 	this.errorHover.style.position = 'fixed';
+	// 	this.errorHover.style.top = position.bottom.toString() + 'px';
+	// 	this.errorHover.style.left = position.right.toString() + 'px';
+	// 	this.errorHover.style.padding = '3px';
 
-		// Add it to the DOM
-		let editorNode = this.editor.getDomNode()!;
-		editorNode.appendChild(this.errorHover);
+	// 	// Add it to the DOM
+	// 	let editorNode = this.editor.getDomNode()!;
+	// 	editorNode.appendChild(this.errorHover);
 
-		this.errorHover.ontransitionend = () => {
-			if (this.errorHover) {
-				if (this.errorHover.style.opacity === '0') {
-					this.errorHover.remove();
-				}
-			}
-		};
+	// 	this.errorHover.ontransitionend = () => {
+	// 		if (this.errorHover) {
+	// 			if (this.errorHover.style.opacity === '0') {
+	// 				this.errorHover.remove();
+	// 			}
+	// 		}
+	// 	};
 
-		setTimeout(() => {// TODO Make the error fade over time
-			if (this.errorHover) {
-				this.errorHover.style.transitionDuration = '1s';
-				this.errorHover.style.opacity = '0';
-			}
-		}, 1000);
-	}
+	// 	setTimeout(() => {// TODO Make the error fade over time
+	// 		if (this.errorHover) {
+	// 			this.errorHover.style.transitionDuration = '1s';
+	// 			this.errorHover.style.opacity = '0';
+	// 		}
+	// 	}, 1000);
+	// }
 
 	/**
 	 * Tries to update the box values with the given values. It can fail
@@ -802,7 +799,7 @@ export class RTVSynth {
 				};
 				cellContent.onkeydown = (e: KeyboardEvent) => {
 					let rs: boolean = true;
-					let synthAttempt;
+					// let synthAttempt;
 
 					switch (e.key) {
 						// TODO: automatically insert closing quotes
@@ -850,9 +847,8 @@ export class RTVSynth {
 									let togglePromise = this.toggleElement(env, cellContent, varname, true, updateBoxContent);
 									togglePromise.then((_: boolean) => {
 										let cell: HTMLTableCellElement = this.findCell(cellContent)!;
-										synthAttempt = this.synthesizeFragment(cell);
-										}
-									);
+										return this.synthesizeFragment(cell);
+									});
 								}
 							}, 1);
 							break;

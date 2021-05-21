@@ -883,7 +883,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 				let cell = this.getCell(elmt.vname!, rowIdx - 1)!;
 				let editable;
 				if (specCell) {
-					const [varName, idxStr]: string[] = cell.id.split('-').slice(1);
+					const [varName, _]: string[] = cell.id.split('-').slice(1);
 					// const cellIdx: number = parseInt(idxStr);
 					editable = (varName == elmt.vname!);// && (cellIdx == rowIdx - 1);
 				}
