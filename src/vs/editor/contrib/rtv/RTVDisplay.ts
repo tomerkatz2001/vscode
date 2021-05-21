@@ -3422,9 +3422,9 @@ export class RTVController implements IRTVController {
 	}
 
 	public increaseDelay() {
-		this._config.updateValue(
-			boxUpdateDelayKey,
-			this._config.getValue(boxUpdateDelayKey) as number + 100);
+		const newValue = this._config.getValue(boxUpdateDelayKey) as number + 100;
+		console.log(`Setting box update delay to ${newValue}`);
+		this._config.updateValue(boxUpdateDelayKey, newValue);
 	}
 
 	public decreaseDelay() {
@@ -3436,6 +3436,7 @@ export class RTVController implements IRTVController {
 			val = 5000;
 		}
 
+		console.log(`Setting box update delay to ${val}`);
 		this._config.updateValue(boxUpdateDelayKey, val);
 	}
 }
@@ -3529,7 +3530,7 @@ const configurations: IConfigurationNode = {
 		},
 		[showBoxWhenNotExecutedKey]: {
 			'type': 'boolean',
-			'default': true,
+			'default': false,
 			'description': localize('rtv.showboxwhennotexecuted', 'Controls whether a box is displayed for statements that are not executed')
 		},
 		[spaceBetweenBoxesKey]: {
@@ -3554,7 +3555,7 @@ const configurations: IConfigurationNode = {
 		},
 		[boxUpdateDelayKey]: {
 			type: 'number',
-			default: 500,
+			default: 100,
 			description: localize('rtv.boxupdatedelay', 'Controls the delay (in ms) between a change in the code and the projection boxes updating.')
 		}
 	}
