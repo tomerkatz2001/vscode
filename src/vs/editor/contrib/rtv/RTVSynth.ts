@@ -114,7 +114,7 @@ export class RTVSynth {
 		this.controller.changeViewMode(ViewMode.Cursor);
 
 		this.lineno = lineno;
-		this.varnames = this.extractVarnames(lineno);;
+		this.varnames = this.extractVarnames(lineno);
 		this.row = 0;
 
 		this.logger.synthStart(this.varnames, this.lineno);
@@ -430,7 +430,7 @@ export class RTVSynth {
 			}
 		}
 
-		let previousEnvs: {[t: string]: any} = {};
+		let previousEnvs: { [t: string]: any } = {};
 		for (const [time, env] of this.prevEnvs!) {
 			previousEnvs[time.toString()] = env;
 		}
@@ -462,8 +462,8 @@ export class RTVSynth {
 					let cell = this.findCell(cellContent)!;
 
 					// from stackoverflow
-					var range = document.createRange();
-					var sel = window.getSelection()!;
+					const range = document.createRange();
+					const sel = window.getSelection()!;
 
 					range.setStart(cell.childNodes[0], cell.innerText.length);
 					range.collapse(true);
@@ -687,7 +687,7 @@ export class RTVSynth {
 
 		let boxEnvs = this.controller.getBox(this.lineno!)!.getEnvs();
 		if (boxEnvs.length === 0) {
-			boxEnvs = this.controller.getBox(this.lineno!-1)?.getEnvs();
+			boxEnvs = this.controller.getBox(this.lineno! - 1)?.getEnvs();
 			if (boxEnvs) {
 				if (boxEnvs) {
 					for (let env of boxEnvs!) {
@@ -886,7 +886,7 @@ export class RTVSynth {
 						minDelta = delta;
 						minEnv = env;
 
-						if (delta == 1) {
+						if (delta === 1) {
 							break;
 						}
 					}
