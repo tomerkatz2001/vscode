@@ -224,7 +224,7 @@
 				"SNIPPY_UTILS": "/Users/lisa/Desktop/ucsd-pl/PopPy/vscode/src/snippy.py",
 				"JAVA": "/usr/bin/java",
 				// "HEAP": "12G",
-				"SYNTH": "/Users/lisa/Desktop/ucsd-pl/PopPy/synthesizer/target/snippy-server-0.1-SNAPSHOT-jar-with-dependencies.jar"
+				"SYNTH": "/Users/lisa/Desktop/ucsd-pl/PopPy/synthesizer/target/synthesizer-0.3-SNAPSHOT-jar-with-dependencies.jar"
 			},
 			"cleanUp": "wholeBrowser",
 			"urlFilter": "*workbench.html*",
