@@ -358,7 +358,7 @@ export class RTVSynth {
 
 			// [lisa] Removed parser check for now.
 			// // Check if value was valid
-			// let error = await utils.validate(cell.textContent!);
+			// let error = await this.utils.validate(cell.textContent!);
 
 			// if (error) {
 			// 	// Show error message if not
@@ -438,7 +438,8 @@ export class RTVSynth {
 		let problem = new SynthProblem(this.varnames!, previousEnvs, envs);
 		this.logger.synthSubmit(problem);
 		const line = this.controller.getLineContent(this.lineno!).trim();
-		const [l_operand, _] = line.split('=');
+		const parts = line.split('=');
+		const l_operand = parts[0];
 		this.insertSynthesizedFragment(`${l_operand}= ${SYNTHESIZING_INDICATOR}`, this.lineno!);
 
 		try {
@@ -562,7 +563,7 @@ export class RTVSynth {
 		return rs;
 	}
 
-	// private _addError(element: HTMLElement, msg: string) {
+	// private addError(element: HTMLElement, msg: string) {
 	// 	if (this.errorHover) {
 	// 		this.errorHover.remove();
 	// 		this.errorHover = undefined;
@@ -758,7 +759,7 @@ export class RTVSynth {
 		if (boxEnvs.some(env => Object.keys(env).length <= 2)) {
 			// We have empty rows, so we must be inside a conditional :(
 			// Any non-empty row is valid here, since this counts as small-step.
-			this.rowsValid = boxEnvs.map((env, i) => Object.keys(env).length > 2);
+			this.rowsValid = boxEnvs.map((env, _) => Object.keys(env).length > 2);
 		} else {
 			this.rowsValid = boxEnvs.map((env, i) => {
 				const time = env['time'];
