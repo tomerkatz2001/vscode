@@ -458,14 +458,20 @@ export class RTVSynth {
 
 					this.setupTableCellContents();
 
-					// TODO: let the cursor follow the cell even after onDidChangeModelContent was fired
-					let cell = this.findCell(cellContent)!;
+					let cell = this.findCell(res)!;
 
-					// from stackoverflow
-					const range = document.createRange();
 					const sel = window.getSelection()!;
+					const range = document.createRange();
 
-					range.setStart(cell.childNodes[0], cell.innerText.length);
+					let isString = cell.innerText[0] == '\'' || cell.innerText[0] == '"';
+					let offset = isString ? (cell.innerText.length - 1) : (cell.innerText.length);
+
+					let dest: HTMLElement = cell;
+					while (dest.firstChild) {
+						dest = dest.firstChild as HTMLElement;
+					}
+					range.selectNodeContents(dest);
+					range.setStart(dest, offset);
 					range.collapse(true);
 
 					sel.removeAllRanges();
@@ -802,17 +808,6 @@ export class RTVSynth {
 					// let synthAttempt;
 
 					switch (e.key) {
-						// TODO: automatically insert closing quotes
-						// case '"':
-						// case '\'':
-						// 	// end of str
-						// 	if (isString && !isComplete) isComplete = true;
-						// 	// beginning of str
-						// 	if (!isString) {
-						// 		isString = true;
-						// 		// setTimeout(() => {cellContent.innerText += cellContent.innerText;}, 1);
-						// 	}
-						// 	//break;
 
 						case 'Enter':
 							e.preventDefault();
@@ -843,6 +838,19 @@ export class RTVSynth {
 									// do not create a new box when synth succeeds
 									// or roll back to prev values when synth fails
 									// TODO: maybe use a different name?
+									let pattern = new RegExp(/('[^']*)|("[^"]*)$/g);
+									let match = cellContent.innerText.match(pattern);
+									let incomplete = match ? (match.length == 1) : false;
+									if (incomplete) {
+										cellContent.innerText += cellContent.innerText[0];
+										let selection = window.getSelection()!;
+										let range = selection.getRangeAt(0)!;
+										range.setStart(cellContent.childNodes[0], cellContent.innerText.length-1);
+										range.collapse(true);
+										selection.removeAllRanges();
+										selection.addRange(range);
+
+									}
 									let updateBoxContent = false;
 									let togglePromise = this.toggleElement(env, cellContent, varname, true, updateBoxContent);
 									togglePromise.then((_: boolean) => {

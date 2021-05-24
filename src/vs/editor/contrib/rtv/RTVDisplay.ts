@@ -1691,6 +1691,7 @@ export class RTVController implements IRTVController {
 	public pythonProcess?: RunProcess = undefined;
 	public utils: Utils = getUtils();
 	public runProgramDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
+	public modelUpdated: boolean = false;
 	private _eventEmitter: Emitter<BoxUpdateEvent> = new Emitter<BoxUpdateEvent>();
 	private _boxes: RTVDisplayBox[] = [];
 	private _maxPixelCol = 0;
@@ -2225,6 +2226,11 @@ export class RTVController implements IRTVController {
 	}
 
 	private async onDidChangeModelContent(e: IModelContentChangedEvent) {
+		// early exit during synthesis
+		if (!this.isEnabled()) {
+			return;
+		}
+
 		this.updateMaxPixelCol();
 		await this.updateBoxes(e);
 
@@ -2316,6 +2322,12 @@ export class RTVController implements IRTVController {
 		// We need to let layout threads catch up after we updated content to
 		// get the correct sizes for boxes.
 
+		// await new Promise(resolve => setTimeout(resolve, 0));
+		// this.updateCellSizesForNewContent();
+		// await this.updateLayout();
+		// return Promise.resolve();
+
+		// -- original code
 		return new Promise((resolve, _reject) => {
 			setTimeout(() => {
 				this.updateCellSizesForNewContent();
@@ -2336,6 +2348,8 @@ export class RTVController implements IRTVController {
 			b.updateContent(undefined, updateInPlace, outputVars, prevEnvs, specCell);
 		});
 	}
+
+	// private async updateLayoutHelper(toProcess: (b: RTVDisplayBox) => boolean, opacityMult: number): Promise<void> {
 
 	private updateLayoutHelper(toProcess: (b: RTVDisplayBox) => boolean, opacityMult: number) {
 		this.padBoxArray();
@@ -2440,6 +2454,18 @@ export class RTVController implements IRTVController {
 		this.updateLayoutHelper(b => b.hasContent() && this._visibilityPolicy(b, curr), 1);
 		return;
 	}
+
+
+	// private async updateLayout() : Promise<void> {
+	// 	let cursorPos = this._editor.getPosition();
+	// 	if (cursorPos === null) {
+	// 		return;
+	// 	}
+	// 	let curr = cursorPos.lineNumber;
+	// 	await this.updateLayoutHelper(b => b.hasContent(), 0);
+	// 	await this.updateLayoutHelper(b => b.hasContent() && this._visibilityPolicy(b, curr), 1);
+	// 	return;
+	// }
 
 
 	public getLinePixelPos(line: number): { top: number; left: number; height: number; } {
