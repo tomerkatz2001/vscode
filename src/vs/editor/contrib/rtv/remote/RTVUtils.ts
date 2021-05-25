@@ -128,9 +128,9 @@ class RemoteSynthProcess implements SynthProcess {
 	}
 }
 
-function headers(): Headers {
+export function headers(contentType: string = 'application/json;charset=UTF-8'): Headers {
 	const headers = new Headers();
-	headers.append('Content-Type', 'application/json;charset=UTF-8');
+	headers.append('Content-Type', contentType);
 
 	// We need this for CSRF protection on the server
 	const csrfInput = document.getElementById('csrf-parameter') as HTMLInputElement;
@@ -221,12 +221,25 @@ class RemoteUtils implements Utils {
 	}
 
 	runProgram(program: string, values?: any): RunProcess {
+		// First, save the program!
+		this.saveProgram(program);
 		return new RemoteRunProcess(new RunpyRequest(program, JSON.stringify(values)));
 	}
 
 	runImgSummary(program: string, line: number, varname: string): RunProcess {
 		// TODO Make this feature optional in the web version.
 		return new RemoteRunProcess(new ImgSumRequest(program, line, varname));
+	}
+
+	async saveProgram(program: string): Promise<void> {
+		await fetch(
+			'/save',
+			{
+				method: 'POST',
+				body: program,
+				mode: 'same-origin',
+				headers: headers()
+			});
 	}
 
 	async validate(input: string): Promise<string | undefined> {
