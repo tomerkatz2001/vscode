@@ -883,9 +883,9 @@ class RTVDisplayBox implements IRTVDisplayBox {
 				let cell = this.getCell(elmt.vname!, rowIdx - 1)!;
 				let editable;
 				if (specCell) {
-					const [varName, _]: string[] = cell.id.split('-').slice(1);
+					const varName: string = cell.id.split('-').slice(1)[0];
 					// const cellIdx: number = parseInt(idxStr);
-					editable = (varName == elmt.vname!);// && (cellIdx == rowIdx - 1);
+					editable = (varName === elmt.vname!);// && (cellIdx == rowIdx - 1);
 				}
 				this.addCellContent(cell, elmt, renderer, editable);
 			});
@@ -2867,7 +2867,9 @@ export class RTVController implements IRTVController {
 
 		// this.hideOutputBox();
 
-		let [_, errorMsg, parsedResult] = await this.runProgram();
+		const rs = await this.runProgram();
+		let errorMsg = rs[1];
+		let parsedResult = rs[2];
 		let returnCode = parsedResult[0];
 
 		this.updateLinesWhenOutOfDate(returnCode, e);
