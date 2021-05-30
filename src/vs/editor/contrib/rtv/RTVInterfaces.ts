@@ -250,6 +250,7 @@ export interface SynthProcess {
 	synthesize(problem: SynthProblem): Promise<SynthResult>;
 	stop(): boolean;
 	connected(): boolean;
+	discard(): void;
 }
 
 

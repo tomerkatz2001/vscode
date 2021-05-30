@@ -375,6 +375,7 @@ export class RTVSynth {
 			env[varname] = cell.innerText;
 			this.includedTimes.add(time);
 
+			/*
 			error = await this.updateBoxValues(updateBoxContent);
 
 			if (error) {
@@ -392,6 +393,7 @@ export class RTVSynth {
 				// this.addError(cell, error);
 				return false;
 			}
+			*/
 
 			this.highlightRow(row);
 		} else {
@@ -422,7 +424,9 @@ export class RTVSynth {
 		// Build and write the synth_example.json file content
 		let envs = [];
 
-		for (const env of this.boxEnvs!) {
+		let boxEnvs = this.box!.getEnvs(); // instead of this.boxEnvs!
+
+		for (const env of boxEnvs) {
 			const time = env['time'];
 
 			if (this.includedTimes!.has(time)) {
@@ -438,9 +442,10 @@ export class RTVSynth {
 		let problem = new SynthProblem(this.varnames!, previousEnvs, envs);
 		this.logger.synthSubmit(problem);
 		const line = this.controller.getLineContent(this.lineno!).trim();
-		const parts = line.split('=');
-		const l_operand = parts[0];
-		this.insertSynthesizedFragment(`${l_operand}= ${SYNTHESIZING_INDICATOR}`, this.lineno!);
+		const [l_operand, r_operand]: string[] = line.split('=');
+		if (r_operand != SYNTHESIZING_INDICATOR) {
+			this.insertSynthesizedFragment(`${l_operand}= ${SYNTHESIZING_INDICATOR}`, this.lineno!);
+		}
 
 		try {
 			const rs: SynthResult = await this.process.synthesize(problem);
@@ -451,11 +456,10 @@ export class RTVSynth {
 				const res = await this.controller.updateBoxesNoRefresh(cellContent);
 
 				if (res) {
-					// this.box = this.controller.getBox(this.lineno!);
 					this.boxEnvs = this.box!.getEnvs();
 
 					this.logger.synthEnd();
-					this.process.stop();
+					// this.process.stop();
 
 					this.setupTableCellContents();
 
@@ -481,14 +485,22 @@ export class RTVSynth {
 
 				return true;
 			} else {
+				// let killed = this.process.isKilledByUser();
+				// if (!killed) {
 				this.insertSynthesizedFragment(`${l_operand}= ${SYNTH_FAILED_INDICATOR}`, this.lineno!);
+				// }
 			}
 		} catch (err) {
-			console.error('Synth problem rejected.');
-			if (err) {
-				console.error(err);
-			}
+			// when synth did not resolve
+			// if (!this.process.isKilledByUser()) {
+				console.error('Synth problem rejected.');
+				if (err) {
+					console.error(err);
+				}
+				this.insertSynthesizedFragment(`${l_operand}= ${SYNTH_FAILED_INDICATOR}`, this.lineno!);
+			// }
 		}
+
 		return false;
 	}
 
@@ -762,10 +774,14 @@ export class RTVSynth {
 			this.rowsValid = boxEnvs.map((env, _) => Object.keys(env).length > 2);
 		} else {
 			this.rowsValid = boxEnvs.map((env, i) => {
-				const time = env['time'];
-				const rs = !env['#'] ||
-					env['#'] === '0' ||
-					(i > 0 && this.includedTimes.has(boxEnvs[i - 1]['time']));
+				let time;
+				let rs = false;
+				if (env) {
+					time = env['time'];
+					rs = !env['#'] ||
+						env['#'] === '0' ||
+						(i > 0 && this.includedTimes.has(boxEnvs[i - 1]['time']));
+				}
 
 				// This row is no longer valid. Remove it from the included time!
 				if (!rs && this.includedTimes.has(time)) {
@@ -789,6 +805,7 @@ export class RTVSynth {
 			let contents = this.box!.getCellContent()[varname];
 
 			contents.forEach((cellContent, i) => {
+				// not available when synth solution has multi lines
 				const env = this.boxEnvs![i];
 
 				if (this.rowsValid![i]) {
@@ -828,30 +845,60 @@ export class RTVSynth {
 							break;
 
 						default:
+							// const mapping: { [c: string]: string} = {'\'': '\'', '"':'"', '[':']', '{':'}'};
+							this.process.discard();
+							// 	if (e.key in mapping) {
+							// 		let selection = window.getSelection()!;
+							// 		let range = selection.getRangeAt(0)!;
+							// 		let pos = range.startOffset;
+							// 		let currContent = cellContent.innerText;
+							// 		let newContent = [currContent.slice(0,pos),
+							// 							mapping[e.key],
+							// 							currContent.slice(pos)].join('');
+							// 		cellContent.innerText = newContent;
+
+							// 		// var dest: HTMLElement = cellContent;
+							// 		// while (dest.firstChild) {
+							// 		// 	dest = dest.firstChild as HTMLElement;
+							// 		// }
+
+							// 		// // move cursor right before the ending quote
+							// 		// range.setStart(dest, pos);
+							// 		// range.collapse(true);
+							// 		// selection.removeAllRanges();
+							// 		// selection.addRange(range);
+							// 	}
 							setTimeout(() => {
-								this.process?.stop();
 								// TODO: debug the following
 								// const line = this.controller.getLineContent(this.lineno!).trim();
 								// const [l_operand, _] = line.split('=');
 								// this.insertSynthesizedFragment(`${l_operand}= ${SPEC_AWAIT_INDICATOR}`, this.lineno!);
 
+								// the following pasted from snippy-plus-temp
+								// TODO: debug this
+								// string only
+
 								if (env[varname] !== cellContent.innerText) {
 									// do not create a new box when synth succeeds
 									// or roll back to prev values when synth fails
-									// TODO: maybe use a different name?
-									let pattern = new RegExp(/('[^']*)|("[^"]*)$/g);
-									let match = cellContent.innerText.match(pattern);
-									let incomplete = match ? (match.length == 1) : false;
-									if (incomplete) {
-										cellContent.innerText += cellContent.innerText[0];
-										let selection = window.getSelection()!;
-										let range = selection.getRangeAt(0)!;
-										range.setStart(cellContent.childNodes[0], cellContent.innerText.length-1);
-										range.collapse(true);
-										selection.removeAllRanges();
-										selection.addRange(range);
 
-									}
+									// let pattern = new RegExp("^(('[^']*)|(\"[^\"]*))$");
+									// let incomplete = pattern.test(cellContent.innerText);
+
+
+									// let selection = window.getSelection()!;
+									// let range = selection.getRangeAt(0)!;
+									// let incomplete = false;
+									// if (incomplete) {
+									// 	cellContent.innerText += cellContent.innerText[0];
+									// 	let selection = window.getSelection()!;
+									// 	let range = selection.getRangeAt(0)!;
+									// 	range.setStart(cellContent.childNodes[0], cellContent.innerText.length-1);
+									// 	range.collapse(true);
+									// 	selection.removeAllRanges();
+									// 	selection.addRange(range);
+
+									// }
 									let updateBoxContent = false;
 									let togglePromise = this.toggleElement(env, cellContent, varname, true, updateBoxContent);
 									togglePromise.then((_: boolean) => {
@@ -859,7 +906,8 @@ export class RTVSynth {
 										return this.synthesizeFragment(cell);
 									});
 								}
-							}, 1);
+							}, 500);
+
 							break;
 					}
 
@@ -867,8 +915,10 @@ export class RTVSynth {
 				};
 
 				// Re-highlight the rows
-				if (this.includedTimes.has(env['time'])) {
-					this.highlightRow(this.findParentRow(cellContent));
+				if (env) {
+					if (this.includedTimes.has(env['time'])) {
+						this.highlightRow(this.findParentRow(cellContent));
+					}
 				}
 			});
 		}

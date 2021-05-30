@@ -3,9 +3,12 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
+import { kill } from 'process';
 import { Utils, RunResult, IRTVLogger, SynthProblem, SynthResult, SynthProcess, RunProcess } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
+import { runAtThisOrScheduleAtNextAnimationFrame } from 'vs/base/browser/dom';
+import { MainThreadFileSystem } from 'vs/workbench/api/browser/mainThreadFileSystem';
 
 // Helper functions
 export function getOSEnvVariable(v: string): string {
@@ -75,6 +78,7 @@ class LocalSynthProcess implements SynthProcess {
 	private _reject?: () => void = undefined;
 	private _problemIdx: number;
 	private process: ChildProcessWithoutNullStreams;
+	private discardedRequests: number[] = [];
 
 	constructor(protected logger?: IRTVLogger) {
 		this._problemIdx = -1;
@@ -97,9 +101,16 @@ class LocalSynthProcess implements SynthProcess {
 				try {
 					// TODO Check result id
 					const rs = JSON.parse(resultStr) as SynthResult;
-					this._resolve(rs);
-					this._resolve = undefined;
-					this._reject = undefined;
+					if (this.discardedRequests.indexOf(this._problemIdx) == -1) {
+						// problem not discarded
+						this._resolve(rs);
+						// if (rs.success) {
+						// 	this._resolve = undefined;
+						// 	this._reject = undefined;
+						// }
+					} else {
+						console.error('Request already discarded');
+					}
 				} catch (e) {
 					console.error('Failed to parse synth output: ' + String.fromCharCode.apply(null, data));
 				}
@@ -124,14 +135,17 @@ class LocalSynthProcess implements SynthProcess {
 		});
 
 		// Then send the problem to the synth
-		problem.id = ++this._problemIdx;
-		this.process.stdin.write(JSON.stringify(problem) + '\n');
-
+		//problem.id = ++this._problemIdx;
+		problem.id = this._problemIdx;
+		if (this.discardedRequests.indexOf(problem.id) == -1) {
+			this.process.stdin.write(JSON.stringify(problem) + '\n');
+		}
 		// And we can return!
 		return rs;
 	}
 
 	public stop(): boolean {
+		// kill(this.process?.pid);
 		if (this._reject) {
 			// TODO Actually stop the synthesizer.
 			this._reject();
@@ -152,6 +166,11 @@ class LocalSynthProcess implements SynthProcess {
 	public connected(): boolean {
 		return this.process && this.process.connected;
 	}
+
+	public discard(): void {
+		this.discardedRequests.push(this._problemIdx++);
+	}
+
 }
 
 

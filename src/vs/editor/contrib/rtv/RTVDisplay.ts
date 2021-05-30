@@ -882,12 +882,14 @@ class RTVDisplayBox implements IRTVDisplayBox {
 				// Get the cell
 				let cell = this.getCell(elmt.vname!, rowIdx - 1)!;
 				let editable;
-				if (specCell) {
-					const varName: string = cell.id.split('-').slice(1)[0];
-					// const cellIdx: number = parseInt(idxStr);
-					editable = (varName === elmt.vname!);// && (cellIdx == rowIdx - 1);
+				if (cell !== null) {
+					if (specCell) {
+						const varName: string = cell.id.split('-').slice(1)[0];
+						// const cellIdx: number = parseInt(idxStr);
+						editable = (varName === elmt.vname!);// && (cellIdx == rowIdx - 1);
+					}
+					this.addCellContent(cell, elmt, renderer, editable);
 				}
-				this.addCellContent(cell, elmt, renderer, editable);
 			});
 		});
 	}
@@ -1045,7 +1047,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 	public updateContent(allEnvs?: any[], updateInPlace?: boolean, outputVars?: string[], prevEnvs?: Map<number, any>, specCell?: HTMLTableCellElement) {
 
 		// if computeEnvs returns false, there is no content to display
-		let done = this.computeEnvs(allEnvs);
+		let done =this.computeEnvs(allEnvs);
 		if (done) {
 			return;
 		}
@@ -1216,7 +1218,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 			this._modeService,
 			this._openerService);
 
-		if (updateInPlace) {
+		if (updateInPlace && this.hasContent()) {
 			this._cellDictionary = {};
 			if (this._controller.byRowOrCol === RowColMode.ByRow) {
 				this.updateTableByRows(this._box.firstElementChild as HTMLTableElement, renderer, rows);
@@ -2099,6 +2101,7 @@ export class RTVController implements IRTVController {
 	}
 
 	private updateLinesWhenOutOfDate(returnCode: number | null, e?: IModelContentChangedEvent) {
+		// TODO: reset indicator to green after synthesis is done
 		if (e === undefined) {
 			return;
 		}
