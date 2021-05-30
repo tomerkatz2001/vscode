@@ -369,13 +369,15 @@ export class RTVSynth {
 			let error;
 
 			// Toggle on
-			const oldVal = env[varname];
-			const included = this.includedTimes.has(env['time']);
+			// const oldVal = env[varname];
+			// const included = this.includedTimes.has(env['time']);
 
 			env[varname] = cell.innerText;
 			this.includedTimes.add(time);
 
 			/*
+			// [Lisa, 5/30] original code for input checking,
+			// commented out to avoid new specs being removed from `this.includedTimes`
 			error = await this.updateBoxValues(updateBoxContent);
 
 			if (error) {
@@ -823,7 +825,6 @@ export class RTVSynth {
 				};
 				cellContent.onkeydown = (e: KeyboardEvent) => {
 					let rs: boolean = true;
-					// let synthAttempt;
 
 					switch (e.key) {
 
@@ -845,8 +846,14 @@ export class RTVSynth {
 							break;
 
 						default:
-							// const mapping: { [c: string]: string} = {'\'': '\'', '"':'"', '[':']', '{':'}'};
+							// in case the synth process has been killed (on esc/enter/clicks)
+							if (!this.process.connected()) {
+								this.process = this.utils.synthesizer();
+							}
+							// discard previous synth requests
 							this.process.discard();
+							// TODO: auto-closing quotes, brackets etc. per corresponding key down
+							// const mapping: { [c: string]: string} = {'\'': '\'', '"':'"', '[':']', '{':'}'};
 							// 	if (e.key in mapping) {
 							// 		let selection = window.getSelection()!;
 							// 		let range = selection.getRangeAt(0)!;
@@ -869,18 +876,13 @@ export class RTVSynth {
 							// 		// selection.addRange(range);
 							// 	}
 							setTimeout(() => {
-								// TODO: debug the following
-								// const line = this.controller.getLineContent(this.lineno!).trim();
-								// const [l_operand, _] = line.split('=');
-								// this.insertSynthesizedFragment(`${l_operand}= ${SPEC_AWAIT_INDICATOR}`, this.lineno!);
-
 								// the following pasted from snippy-plus-temp
-								// TODO: debug this
-								// string only
 
 								if (env[varname] !== cellContent.innerText) {
 									// do not create a new box when synth succeeds
 									// or roll back to prev values when synth fails
+
+									// TODO: auto-inserting missing closing quotes
 
 									// let pattern = new RegExp("^(('[^']*)|(\"[^\"]*))$");
 									// let incomplete = pattern.test(cellContent.innerText);
@@ -888,7 +890,6 @@ export class RTVSynth {
 
 									// let selection = window.getSelection()!;
 									// let range = selection.getRangeAt(0)!;
-									// let incomplete = false;
 									// if (incomplete) {
 									// 	cellContent.innerText += cellContent.innerText[0];
 									// 	let selection = window.getSelection()!;

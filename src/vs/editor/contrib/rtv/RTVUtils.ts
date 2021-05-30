@@ -102,8 +102,9 @@ class LocalSynthProcess implements SynthProcess {
 					// TODO Check result id
 					const rs = JSON.parse(resultStr) as SynthResult;
 					if (this.discardedRequests.indexOf(this._problemIdx) == -1) {
-						// problem not discarded
+						// request not discarded
 						this._resolve(rs);
+						// the code below commented out to prevent synth from unncessarily stopping
 						// if (rs.success) {
 						// 	this._resolve = undefined;
 						// 	this._reject = undefined;
@@ -135,6 +136,7 @@ class LocalSynthProcess implements SynthProcess {
 		});
 
 		// Then send the problem to the synth
+		// _problemIdx has been incremented by `discard()`
 		//problem.id = ++this._problemIdx;
 		problem.id = this._problemIdx;
 		if (this.discardedRequests.indexOf(problem.id) == -1) {
@@ -145,9 +147,11 @@ class LocalSynthProcess implements SynthProcess {
 	}
 
 	public stop(): boolean {
-		// kill(this.process?.pid);
+		// Actually stop the synthesizer.
+		kill(this.process?.pid);
+		// somehow the line below couldn't really kill the child process
+		// this.process?.kill();
 		if (this._reject) {
-			// TODO Actually stop the synthesizer.
 			this._reject();
 			this._reject = undefined;
 			this._resolve = undefined;
@@ -229,7 +233,9 @@ class LocalUtils implements Utils {
 	}
 
 	synthesizer(): SynthProcess {
-		if (!this._synth || !this._synth.connected) {
+		// create a new process on init and when the existing child process is killed
+		// TODO: maybe there's a better way to handle this...?
+		if (!this._synth || !this._synth.connected()) {
 			this._synth = new LocalSynthProcess(this._logger);
 		}
 		return this._synth;
