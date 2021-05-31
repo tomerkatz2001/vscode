@@ -366,7 +366,7 @@ export class RTVSynth {
 			// 	return false;
 			// }
 
-			let error;
+			// let error;
 
 			// Toggle on
 			// const oldVal = env[varname];
@@ -846,10 +846,6 @@ export class RTVSynth {
 							break;
 
 						default:
-							// in case the synth process has been killed (on esc/enter/clicks)
-							if (!this.process.connected()) {
-								this.process = this.utils.synthesizer();
-							}
 							// discard previous synth requests
 							this.process.discard();
 							// TODO: auto-closing quotes, brackets etc. per corresponding key down

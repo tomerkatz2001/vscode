@@ -87,6 +87,7 @@ class SnipPyRequest extends PyodideRequest {
 
 class RemoteSynthProcess implements SynthProcess {
 	protected _controller = new AbortController();
+	protected _problemIdx: number = -1;
 
 	async synthesize(problem: SynthProblem): Promise<SynthResult> {
 		// First cancel any previous call
@@ -107,8 +108,11 @@ class RemoteSynthProcess implements SynthProcess {
 					// TODO Error handling
 					console.error(response);
 					return new SynthResult(problem.id, false, '');
+				} else if (response && problem.id != this._problemIdx) {
+					console.error('Request already discarded');
+					// TODO should we return something? the local version just keeps the promise as pending
+					return;
 				}
-
 				return response.json();
 			}).
 			catch(err => {
@@ -125,6 +129,10 @@ class RemoteSynthProcess implements SynthProcess {
 
 	connected(): boolean {
 		return true;
+	}
+
+	discard(): void {
+		this._problemIdx++;
 	}
 }
 
