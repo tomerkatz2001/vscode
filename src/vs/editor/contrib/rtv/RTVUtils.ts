@@ -76,40 +76,42 @@ class LocalRunProcess implements RunProcess {
 class LocalSynthProcess implements SynthProcess {
 	private _resolve?: (value: SynthResult) => void = undefined;
 	private _reject?: () => void = undefined;
-	private _problemIdx: number;
-	private process: ChildProcessWithoutNullStreams;
+	private _problemIdx: number = -1;
+	private _synthProcess: ChildProcessWithoutNullStreams;
 
 	constructor(protected logger?: IRTVLogger) {
-		this._problemIdx = -1;
-
 		this.logger?.synthProcessStart();
 		if (HEAP) {
-			this.process = spawn(JAVA, [`-Xmx${HEAP}`, '-jar', SYNTH]);
+			this._synthProcess = spawn(JAVA, [`-Xmx${HEAP}`, '-jar', SYNTH]);
 		} else {
-			this.process = spawn(JAVA, ['-jar', SYNTH]);
+			this._synthProcess = spawn(JAVA, ['-jar', SYNTH]);
 		}
 
-		this.process.stdout.on('data', data => this.logger?.synthStdout(data));
-		this.process.stderr.on('data', data => this.logger?.synthStderr(data));
+		// shut down the synthesizer with the editor
+		process.on('exit', () => this.dispose());
+		process.on('beforeExit', async () => this.dispose());
+		process.on('uncaughtException', () => this.dispose());
+		process.on('SIGINT', () => this.dispose());
+
+		// Log all synthesizer output
+		this._synthProcess.stdout.on('data', data => this.logger?.synthStdout(data));
+		this._synthProcess.stderr.on('data', data => this.logger?.synthStderr(data));
 
 		// Set up the listeners we use to communicate with the synth
-		this.process.stdout.on('data', (data) => {
+		this._synthProcess.stdout.on('data', (data) => {
 			const resultStr = String.fromCharCode.apply(null, data);
 
 			if (this._resolve && this._reject) {
 				try {
 					// TODO Check result id
 					const rs = JSON.parse(resultStr) as SynthResult;
-					if (rs.id == this._problemIdx) {
+					if (rs.id === this._problemIdx) {
 						// request not discarded
 						this._resolve(rs);
-						// the code below commented out to prevent synth from unncessarily stopping
-						// if (rs.success) {
-						// 	this._resolve = undefined;
-						// 	this._reject = undefined;
-						// }
+						this._resolve = undefined;
+						this._reject = undefined;
 					} else {
-						console.error('Request already discarded');
+						console.error(`Request already discarded: ${rs.id}`);
 					}
 				} catch (e) {
 					console.error('Failed to parse synth output: ' + String.fromCharCode.apply(null, data));
@@ -135,16 +137,15 @@ class LocalSynthProcess implements SynthProcess {
 		});
 
 		// Then send the problem to the synth
-		// _problemIdx has been incremented by `discard()`
-		//problem.id = ++this._problemIdx;
-		problem.id = this._problemIdx;
-		this.process.stdin.write(JSON.stringify(problem) + '\n');
+		problem.id = ++this._problemIdx;
+		this._synthProcess.stdin.write(JSON.stringify(problem) + '\n');
+		console.log(`Started synth process: ${this._problemIdx}`);
+
 		// And we can return!
 		return rs;
 	}
 
 	public stop(): boolean {
-		// TODO shut down the synthesizer with the editor
 		if (this._reject) {
 			this._reject();
 			this._reject = undefined;
@@ -155,20 +156,12 @@ class LocalSynthProcess implements SynthProcess {
 	}
 
 	public dispose() {
-		if (this._reject) {
-			this._reject();
-		}
-		this.process?.kill();
+		this._synthProcess?.kill('SIGKILL');
 	}
 
 	public connected(): boolean {
-		return this.process && this.process.connected;
+		return this._synthProcess && this._synthProcess.connected;
 	}
-
-	public discard(): void {
-		this._problemIdx++;
-	}
-
 }
 
 
