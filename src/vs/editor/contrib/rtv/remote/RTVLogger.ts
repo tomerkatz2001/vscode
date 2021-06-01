@@ -82,7 +82,7 @@ export class RTVLogger extends ARTVLogger {
 		const body = new LogResultData(file, contentStr);
 
 		fetch(
-			'/logEvent',
+			'/logResult',
 			{
 				method: 'POST',
 				body: JSON.stringify(body),
