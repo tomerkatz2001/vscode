@@ -13,8 +13,6 @@ import { ARTVLogger } from 'vs/editor/contrib/rtv/RTVInterfaces';
  *   - Attempts to synthesize dependent loops?
  *   - How many examples do they provide?
  */
-// TODO Everything is sync right now. We should convert
-// it to async calls to minimize any waiting for logging.
 export class RTVLogger extends ARTVLogger {
 	// States for various things we need to log
 	private logDir: string;
@@ -42,7 +40,7 @@ export class RTVLogger extends ARTVLogger {
 
 		// Build an fs-safe date/time:
 		let now = new Date();
-		dir += `loopy_log_${now.getMonth() + 1}-${now.getDate()}_${now.getHours()}-${now.getMinutes()}_${now.getSeconds()}`;
+		dir += `snippy_log_${now.getMonth() + 1}-${now.getDate()}_${now.getHours()}-${now.getMinutes()}_${now.getSeconds()}`;
 
 		// Don't overwrite existing logs!
 		if (fs.existsSync(dir!!)) {
@@ -56,7 +54,7 @@ export class RTVLogger extends ARTVLogger {
 
 		this.logDir = dir! + path.sep;
 		fs.mkdirSync(this.logDir);
-		this.logFile = 'poppy.log';
+		this.logFile = 'snippy_plus.log';
 	}
 
 	protected log(code: string, msg?: string): number {
