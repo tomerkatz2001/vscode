@@ -106,7 +106,7 @@ export interface IRTVLogger {
 }
 
 export abstract class ARTVLogger implements IRTVLogger {
-	constructor(protected readonly editor: ICodeEditor) {};
+	constructor(protected readonly editor: ICodeEditor) {}
 	protected abstract log(code: string, msg?: string): number;
 	protected abstract write(file: string, content: string): void;
 
@@ -165,7 +165,7 @@ export abstract class ARTVLogger implements IRTVLogger {
 	// ---------------------------------------------------------------
 
 	synthProcessStart(): void {
-		this.log('synth.process.start')
+		this.log('synth.process.start');
 	}
 
 	synthStart(varnames: string[], lineno: number): void {
@@ -247,10 +247,9 @@ export interface RunProcess extends PromiseLike<RunResult> {
 }
 
 export interface SynthProcess {
-	synthesize(problem: SynthProblem): Promise<SynthResult>;
+	synthesize(problem: SynthProblem): Promise<SynthResult | undefined>;
 	stop(): boolean;
 	connected(): boolean;
-	discard(): void;
 }
 
 
@@ -292,4 +291,35 @@ export enum ViewMode {
 export enum RowColMode {
 	ByRow = 'By Row',
 	ByCol = 'By Col'
+}
+
+export class DelayedRunAtMostOne {
+	private _reject?: () => void;
+
+	public async run(delay: number, c: () => Promise<void>) {
+		if (this._reject) {
+			this._reject();
+		}
+
+		if (delay === 0) {
+			this._reject = undefined;
+		} else {
+			await new Promise((resolve, reject) => {
+				let timeout = setTimeout(resolve, delay);
+				this._reject = () => {
+					clearTimeout(timeout);
+					reject();
+				};
+			});
+		}
+
+		await c();
+	}
+
+	public cancel() {
+		if (this._reject) {
+			this._reject();
+			this._reject = undefined;
+		}
+	}
 }

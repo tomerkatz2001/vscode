@@ -2,7 +2,7 @@ import { Range } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { getUtils } from 'vs/editor/contrib/rtv/RTVUtils';
-import { Utils, RunResult, SynthResult, SynthProblem, IRTVLogger, IRTVController, IRTVDisplayBox, ViewMode, SynthProcess } from './RTVInterfaces';
+import { Utils, RunResult, SynthResult, SynthProblem, IRTVLogger, IRTVController, IRTVDisplayBox, ViewMode, SynthProcess, DelayedRunAtMostOne } from './RTVInterfaces';
 import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 
@@ -26,6 +26,7 @@ export class RTVSynth {
 	process: SynthProcess;
 	errorHover?: HTMLElement = undefined;
 	rowsValid?: boolean[];
+	synthTimer: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 
 	constructor(
 		private readonly editor: ICodeEditor,
@@ -450,7 +451,13 @@ export class RTVSynth {
 		}
 
 		try {
-			const rs: SynthResult = await this.process.synthesize(problem);
+			const rs: SynthResult | undefined = await this.process.synthesize(problem);
+
+			if (!rs) {
+				console.error('process.synthesizer returned undefined!');
+				return false;
+			}
+
 			this.logger.synthResult(rs);
 			// console.log(completion);
 			if (rs.success) {
@@ -871,7 +878,7 @@ export class RTVSynth {
 							// 		// selection.removeAllRanges();
 							// 		// selection.addRange(range);
 							// 	}
-							setTimeout(() => {
+							this.synthTimer.run(500, async () => {
 								// the following pasted from snippy-plus-temp
 
 								if (env[varname] !== cellContent.innerText) {
@@ -897,13 +904,11 @@ export class RTVSynth {
 
 									// }
 									let updateBoxContent = false;
-									let togglePromise = this.toggleElement(env, cellContent, varname, true, updateBoxContent);
-									togglePromise.then((_: boolean) => {
-										let cell: HTMLTableCellElement = this.findCell(cellContent)!;
-										return this.synthesizeFragment(cell);
-									});
+									await this.toggleElement(env, cellContent, varname, true, updateBoxContent);
+									let cell: HTMLTableCellElement = this.findCell(cellContent)!;
+									await this.synthesizeFragment(cell);
 								}
-							}, 500);
+							});
 
 							break;
 					}

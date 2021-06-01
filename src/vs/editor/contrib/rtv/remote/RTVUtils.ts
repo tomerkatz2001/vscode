@@ -89,37 +89,46 @@ class RemoteSynthProcess implements SynthProcess {
 	protected _controller = new AbortController();
 	protected _problemIdx: number = -1;
 
-	async synthesize(problem: SynthProblem): Promise<SynthResult> {
+	constructor(protected _logger?: IRTVLogger) {}
+
+	async synthesize(problem: SynthProblem): Promise<SynthResult | undefined> {
 		// First cancel any previous call
 		this._controller.abort();
 		this._controller = new AbortController();
+		problem.id = ++this._problemIdx;
 
-		return fetch(
-			'/synthesize',
-			{
-				method: 'POST',
-				body: JSON.stringify(problem),
-				signal: this._controller.signal,
-				mode: 'same-origin',
-				headers: headers()
-			}).
-			then(response => {
-				if (response && response.status < 200 || response.status >= 300 || response.redirected) {
-					// TODO Error handling
-					console.error(response);
-					return new SynthResult(problem.id, false, '');
-				} else if (response && problem.id != this._problemIdx) {
-					console.error('Request already discarded');
-					// TODO should we return something? the local version just keeps the promise as pending
-					return;
-				}
-				return response.json();
-			}).
-			catch(err => {
+		try {
+			let response = await fetch(
+				'/synthesize',
+				{
+					method: 'POST',
+					body: JSON.stringify(problem),
+					signal: this._controller.signal,
+					mode: 'same-origin',
+					headers: headers()
+				});
+
+			// Log the response async
+			response
+				.text()
+				.then(msg => this._logger?.synthStdout(msg));
+
+			if (response && response.status < 200 || response.status >= 300 || response.redirected) {
 				// TODO Error handling
-				console.error(err);
-				return new SynthResult(problem.id, false, err.toString());
-			});
+				console.error(response);
+				return new SynthResult(problem.id, false, '');
+			} else if (response && problem.id != this._problemIdx) {
+				console.error('Request already discarded');
+				return;
+			}
+
+			return response.json();
+		}
+		catch (err) {
+			// TODO Error handling
+			console.error(err);
+			return new SynthResult(problem.id, false, err.toString());
+		}
 	}
 
 	stop(): boolean {
@@ -129,10 +138,6 @@ class RemoteSynthProcess implements SynthProcess {
 
 	connected(): boolean {
 		return true;
-	}
-
-	discard(): void {
-		this._problemIdx++;
 	}
 }
 
@@ -219,7 +224,7 @@ class RemoteRunProcess implements RunProcess {
 class RemoteUtils implements Utils {
 	readonly EOL: string = '\n'; // Assuming the server is running on a unix system
 	protected _logger?: IRTVLogger;
-	protected _synthProcess = new RemoteSynthProcess();
+	protected _synthProcess?: SynthProcess;
 
 	logger(editor: ICodeEditor): IRTVLogger {
 		if (!this._logger) {
@@ -256,6 +261,9 @@ class RemoteUtils implements Utils {
 	}
 
 	synthesizer(): SynthProcess {
+		if (!this._synthProcess) {
+			this._synthProcess = new RemoteSynthProcess(this._logger);
+		}
 		return this._synthProcess;
 	}
 }

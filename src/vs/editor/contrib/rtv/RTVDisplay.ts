@@ -41,7 +41,7 @@ import {
 	widgetShadow
 } from 'vs/platform/theme/common/colorRegistry';
 import { IIdentifiedSingleEditOperation, IModelDecorationOptions, ITextModel } from 'vs/editor/common/model';
-import { RunProcess, RunResult, IRTVController, IRTVLogger, ViewMode, RowColMode, IRTVDisplayBox, BoxUpdateEvent, Utils } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { DelayedRunAtMostOne, RunProcess, RunResult, IRTVController, IRTVLogger, ViewMode, RowColMode, IRTVDisplayBox, BoxUpdateEvent, Utils } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { getUtils } from 'vs/editor/contrib/rtv/RTVUtils';
 import { Button } from 'vs/base/browser/ui/button/button';
 import { attachButtonStyler } from 'vs/platform/theme/common/styler';
@@ -106,37 +106,6 @@ function strNumsToArray(s: string): number[] {
 function regExpMatchEntireString(s: string, regExp: string) {
 	let res = s.match(regExp);
 	return res !== null && res.index === 0 && res[0] === s;
-}
-
-export class DelayedRunAtMostOne {
-	private _reject?: () => void;
-
-	public async run(delay: number, c: () => Promise<void>) {
-		if (this._reject) {
-			this._reject();
-		}
-
-		if (delay === 0) {
-			this._reject = undefined;
-		} else {
-			await new Promise((resolve, reject) => {
-				let timeout = setTimeout(resolve, delay);
-				this._reject = () => {
-					clearTimeout(timeout);
-					reject();
-				};
-			});
-		}
-
-		await c();
-	}
-
-	public cancel() {
-		if (this._reject) {
-			this._reject();
-			this._reject = undefined;
-		}
-	}
 }
 
 class DeltaVarSet {

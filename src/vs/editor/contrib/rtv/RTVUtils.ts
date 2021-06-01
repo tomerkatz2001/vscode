@@ -123,7 +123,7 @@ class LocalSynthProcess implements SynthProcess {
 		});
 	}
 
-	public synthesize(problem: SynthProblem): Promise<SynthResult> {
+	public synthesize(problem: SynthProblem): Promise<SynthResult | undefined> {
 		if (this._reject) {
 			this._reject();
 			this._resolve = undefined;
