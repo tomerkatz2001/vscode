@@ -847,7 +847,7 @@ export class RTVSynth {
 
 						default:
 							// discard previous synth requests
-							this.process.discard();
+							this.process.stop();
 							// TODO: auto-closing quotes, brackets etc. per corresponding key down
 							// const mapping: { [c: string]: string} = {'\'': '\'', '"':'"', '[':']', '{':'}'};
 							// 	if (e.key in mapping) {
