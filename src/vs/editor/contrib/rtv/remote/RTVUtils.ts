@@ -108,11 +108,6 @@ class RemoteSynthProcess implements SynthProcess {
 					headers: headers()
 				});
 
-			// Log the response async
-			response
-				.text()
-				.then(msg => this._logger?.synthStdout(msg));
-
 			if (response && response.status < 200 || response.status >= 300 || response.redirected) {
 				// TODO Error handling
 				console.error(response);
@@ -122,7 +117,9 @@ class RemoteSynthProcess implements SynthProcess {
 				return;
 			}
 
-			return response.json();
+			const rs = await response.json();
+			this._logger?.synthStdout(rs.toString());
+			return rs;
 		}
 		catch (err) {
 			// TODO Error handling

@@ -2,7 +2,7 @@ import { IEditorContribution } from 'vs/editor/common/editorCommon';
 import { registerEditorContribution } from 'vs/editor/browser/editorExtensions';
 import { ICodeEditor, IEditorMouseEvent } from 'vs/editor/browser/editorBrowser';
 import { ITextModel } from 'vs/editor/common/model';
-import {  DelayedRunAtMostOne, Utils, IRTVLogger, RunProcess } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import { DelayedRunAtMostOne, Utils, IRTVLogger, RunProcess } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { getUtils } from 'vs/editor/contrib/rtv/RTVUtils';
 
 class RTVImgDisplayBox {
