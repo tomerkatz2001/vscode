@@ -634,12 +634,22 @@ export class RTVSynth {
 					const range = document.createRange();
 
 					let isString = cell.innerText[0] === '\'' || cell.innerText[0] === '"';
-					let offset = isString ? (cell.innerText.length - 1) : (cell.innerText.length);
 
 					let dest: HTMLElement = cell;
-					while (dest.firstChild) {
+					while (dest.firstChild && !dest.classList.contains('monaco-tokenized-source')) {
 						dest = dest.firstChild as HTMLElement;
 					}
+
+					// We need to carefully pick the offset based on the type
+					let offset;
+					if (isString)  {
+						offset = cell.innerText.length - 1;
+					} else if (dest.childNodes.length > 1) {
+						offset = dest.childNodes.length - 1;
+					} else {
+						offset = cell.innerText.length;
+					}
+
 					range.selectNodeContents(dest);
 					range.setStart(dest, offset);
 					range.collapse(true);
