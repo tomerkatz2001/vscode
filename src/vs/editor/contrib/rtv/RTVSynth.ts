@@ -8,8 +8,169 @@ import { IThemeService } from 'vs/platform/theme/common/themeService';
 
 // const SYNTHESIZING_MESSAGE: string = '# Please wait. Synthesizing...';
 // const SPEC_AWAIT_INDICATOR: string = '??';
-const SYNTHESIZING_INDICATOR: string = '...';
-const SYNTH_FAILED_INDICATOR: string = '🤯';
+
+enum EditorState {
+	Synthesizing,
+	Failed,
+	HasProgram,
+}
+
+class EditorStateManager {
+	private readonly SYNTHESIZING_INDICATOR: string;
+	private readonly SYNTH_FAILED_INDICATOR: string;
+	private _state: EditorState = EditorState.HasProgram;
+
+	constructor(
+		l_operand: string,
+		private lineno: number,
+		private editor: ICodeEditor,
+		private controller: IRTVController) {
+		this.SYNTHESIZING_INDICATOR = `${l_operand} = ...`;
+		this.SYNTH_FAILED_INDICATOR = `${l_operand} = '🤯'`;
+	}
+
+	get state(): EditorState {
+		return this._state;
+	}
+
+	synthesizing() {
+		if (this._state == EditorState.Synthesizing) return;
+		this._state = EditorState.Synthesizing;
+		this.insertFragment(this.SYNTHESIZING_INDICATOR);
+	}
+
+	failed() {
+		if (this._state == EditorState.Failed) return;
+		this._state = EditorState.Failed;
+		this.insertFragment(this.SYNTH_FAILED_INDICATOR);
+	}
+
+	program(program: string) {
+		this._state = EditorState.HasProgram;
+		this.insertFragment(program);
+	}
+
+	private insertFragment(fragment: string) {
+		// Cleanup fragment
+		// TODO We don't support return ?? sadly.
+		// if (fragment.startsWith('rv = ')) {
+		// 	fragment = fragment.replace('rv = ', 'return ');
+		// }
+
+		let model = this.controller.getModelForce();
+		let cursorPos = this.editor.getPosition();
+		let startCol: number;
+		let endCol: number;
+
+		if (
+			model.getLineContent(this.lineno).trim() === '' &&
+			cursorPos !== null &&
+			cursorPos.lineNumber === this.lineno
+		) {
+			startCol = cursorPos.column;
+			endCol = cursorPos.column;
+		} else {
+			startCol = model.getLineFirstNonWhitespaceColumn(this.lineno);
+			endCol = model.getLineMaxColumn(this.lineno);
+		}
+		let range = new Range(this.lineno, startCol, this.lineno, endCol);
+
+		// Add spaces for multiline results
+		if (fragment.includes('\n')) {
+			let indent = (model.getOptions()!.insertSpaces) ? ' ' : '\t';
+			fragment = fragment.split('\n').join('\n' + indent.repeat(startCol - 1));
+		}
+
+		this.editor.pushUndoStop();
+		let selection = new Selection(
+			this.lineno,
+			startCol,
+			this.lineno,
+			startCol + fragment.length
+		);
+		this.editor.executeEdits(
+			this.controller.getId(),
+			[{ range: range, text: fragment }],
+			[selection]
+		);
+	}
+}
+
+class ErrorHoverManager {
+	private errorHover?: HTMLElement = undefined;
+	private addHoverTimer = new DelayedRunAtMostOne();
+
+	constructor(private editor: ICodeEditor) {}
+
+	public remove() {
+		this.addHoverTimer.cancel();
+		this.errorHover?.remove();
+		this.errorHover = undefined;
+	}
+
+	public add(element: HTMLElement, msg: string, timeout: number = 0) {
+		this.addHoverTimer.run(timeout, async () => {
+			if (this.errorHover) {
+				this.errorHover.remove();
+				this.errorHover = undefined;
+			}
+
+			// First, squiggly lines!
+			// element.className += 'squiggly-error';
+
+			// Use monaco's monaco-hover class to keep the style the same
+			this.errorHover = document.createElement('div');
+			this.errorHover.className = 'monaco-hover visible';
+			this.errorHover.id = 'snippy-example-hover';
+
+			const scrollable = document.createElement('div');
+			scrollable.className = 'monaco-scrollable-element';
+			scrollable.style.position = 'relative';
+			scrollable.style.overflow = 'hidden';
+
+			const row = document.createElement('row');
+			row.className = 'hover-row markdown-hover';
+
+			const content = document.createElement('div');
+			content.className = 'monaco-hover-content';
+
+			const div = document.createElement('div');
+			const p = document.createElement('p');
+			p.innerText = msg;
+
+			div.appendChild(p);
+			content.appendChild(div);
+			row.appendChild(content);
+			scrollable.appendChild(row);
+			this.errorHover.appendChild(scrollable);
+
+			let position = element.getBoundingClientRect();
+			this.errorHover.style.position = 'fixed';
+			this.errorHover.style.top = position.bottom.toString() + 'px';
+			this.errorHover.style.left = position.right.toString() + 'px';
+			this.errorHover.style.padding = '3px';
+
+			// Add it to the DOM
+			let editorNode = this.editor.getDomNode()!;
+			editorNode.appendChild(this.errorHover);
+
+			this.errorHover.ontransitionend = () => {
+				if (this.errorHover) {
+					if (this.errorHover.style.opacity === '0') {
+						this.errorHover.remove();
+					}
+				}
+			};
+
+			setTimeout(() => {// TODO Make the error fade over time
+				if (this.errorHover) {
+					this.errorHover.style.transitionDuration = '1s';
+					this.errorHover.style.opacity = '0';
+				}
+			}, 1000);
+		});
+	}
+}
 
 export class RTVSynth {
 	private logger: IRTVLogger;
@@ -24,9 +185,10 @@ export class RTVSynth {
 	box?: IRTVDisplayBox = undefined;
 	utils: Utils;
 	process: SynthProcess;
-	errorHover?: HTMLElement = undefined;
 	rowsValid?: boolean[];
 	synthTimer: DelayedRunAtMostOne = new DelayedRunAtMostOne();
+	editorState?: EditorStateManager = undefined;
+	errorBox: ErrorHoverManager;
 
 	constructor(
 		private readonly editor: ICodeEditor,
@@ -36,6 +198,7 @@ export class RTVSynth {
 		this.utils = getUtils();
 		this.logger = this.utils.logger(editor);
 		this.process = this.utils.synthesizer();
+		this.errorBox = new ErrorHoverManager(editor);
 		this.enabled = false;
 
 		// In case the user click's out of the boxes.
@@ -117,6 +280,7 @@ export class RTVSynth {
 		this.lineno = lineno;
 		this.varnames = this.extractVarnames(lineno);
 		this.row = 0;
+		this.editorState = new EditorStateManager(l_operand, this.lineno, this.editor, this.controller);
 
 		this.logger.synthStart(this.varnames, this.lineno);
 
@@ -201,11 +365,7 @@ export class RTVSynth {
 
 			// Clear the state
 			this.includedTimes = new Set();
-
-			if (this.errorHover) {
-				this.errorHover.remove();
-				this.errorHover = undefined;
-			}
+			this.errorBox.remove();
 
 			this.lineno = undefined;
 			this.varnames = [];
@@ -213,6 +373,7 @@ export class RTVSynth {
 			this.boxEnvs = undefined;
 			this.allEnvs = undefined;
 			this.row = undefined;
+			this.editorState = undefined;
 
 			// Then reset the Projection Boxes
 			this.controller.changeViewMode(ViewMode.Full);
@@ -357,15 +518,14 @@ export class RTVSynth {
 		if (on) {
 			// Make sure the values are correct and up to date
 
-			// [lisa] Removed parser check for now.
-			// // Check if value was valid
-			// let error = await this.utils.validate(cell.textContent!);
+			// Check if value was valid
+			let error = await this.utils.validate(cell.textContent!);
 
-			// if (error) {
-			// 	// Show error message if not
-			// 	this.addError(cell, error);
-			// 	return false;
-			// }
+			if (error) {
+				// Show error message if not
+				this.errorBox.add(cell, error, 500);
+				return false;
+			}
 
 			// let error;
 
@@ -379,18 +539,18 @@ export class RTVSynth {
 			/*
 			// [Lisa, 5/30] original code for input checking,
 			// commented out to avoid new specs being removed from `this.includedTimes`
-			error = await this.updateBoxValues(updateBoxContent);
+			// error = await this.updateBoxValues(updateBoxContent);
 
 			if (error) {
 				// The input causes an exception.
 				// Rollback the changes and show the error.
-				if (updateBoxContent) {
-					env[varname] = oldVal;
-				}
+				// if (updateBoxContent) {
+				// 	env[varname] = oldVal;
+				// }
 
-				if (!included) {
-					this.includedTimes.delete(env['time']);
-				}
+				// if (!included) {
+				// 	this.includedTimes.delete(env['time']);
+				// }
 
 				// removed `addError` to avoid error indicators as the user types in a string
 				// this.addError(cell, error);
@@ -444,24 +604,20 @@ export class RTVSynth {
 
 		let problem = new SynthProblem(this.varnames!, previousEnvs, envs);
 		this.logger.synthSubmit(problem);
-		const line = this.controller.getLineContent(this.lineno!).trim();
-		const [l_operand, r_operand]: string[] = line.split('=');
-		if (r_operand != SYNTHESIZING_INDICATOR) {
-			this.insertSynthesizedFragment(`${l_operand}= ${SYNTHESIZING_INDICATOR}`, this.lineno!);
-		}
+		this.editorState!.synthesizing();
 
 		try {
 			const rs: SynthResult | undefined = await this.process.synthesize(problem);
 
 			if (!rs) {
-				console.error('process.synthesizer returned undefined!');
+				// The request was cancelled!
 				return false;
 			}
 
 			this.logger.synthResult(rs);
 			// console.log(completion);
 			if (rs.success) {
-				this.insertSynthesizedFragment(rs.program!, this.lineno!);
+				this.editorState!.program(rs.program!);
 				const res = await this.controller.updateBoxesNoRefresh(cellContent);
 
 				if (res) {
@@ -477,7 +633,7 @@ export class RTVSynth {
 					const sel = window.getSelection()!;
 					const range = document.createRange();
 
-					let isString = cell.innerText[0] == '\'' || cell.innerText[0] == '"';
+					let isString = cell.innerText[0] === '\'' || cell.innerText[0] === '"';
 					let offset = isString ? (cell.innerText.length - 1) : (cell.innerText.length);
 
 					let dest: HTMLElement = cell;
@@ -494,69 +650,21 @@ export class RTVSynth {
 
 				return true;
 			} else {
-				// let killed = this.process.isKilledByUser();
-				// if (!killed) {
-				this.insertSynthesizedFragment(`${l_operand}= ${SYNTH_FAILED_INDICATOR}`, this.lineno!);
-				// }
+				this.editorState!.failed();
 			}
 		} catch (err) {
-			// when synth did not resolve
-			// if (!this.process.isKilledByUser()) {
-				console.error('Synth problem rejected.');
-				if (err) {
-					console.error(err);
-				}
-				this.insertSynthesizedFragment(`${l_operand}= ${SYNTH_FAILED_INDICATOR}`, this.lineno!);
-			// }
+			// If the synth promise is rejected
+			console.error('Synth problem rejected.');
+			if (err) {
+				console.error(err);
+				this.editorState!.failed();
+			}
 		}
 
 		return false;
 	}
 
-	private insertSynthesizedFragment(fragment: string, lineno: number) {
-		// Cleanup fragment
-		// TODO We don't support return ?? sadly.
-		// if (fragment.startsWith('rv = ')) {
-		// 	fragment = fragment.replace('rv = ', 'return ');
-		// }
 
-		let model = this.controller.getModelForce();
-		let cursorPos = this.editor.getPosition();
-		let startCol: number;
-		let endCol: number;
-
-		if (
-			model.getLineContent(lineno).trim() === '' &&
-			cursorPos !== null &&
-			cursorPos.lineNumber === lineno
-		) {
-			startCol = cursorPos.column;
-			endCol = cursorPos.column;
-		} else {
-			startCol = model.getLineFirstNonWhitespaceColumn(lineno);
-			endCol = model.getLineMaxColumn(lineno);
-		}
-		let range = new Range(lineno, startCol, lineno, endCol);
-
-		// Add spaces for multiline results
-		if (fragment.includes('\n')) {
-			let indent = (model.getOptions()!.insertSpaces) ? ' ' : '\t';
-			fragment = fragment.split('\n').join('\n' + indent.repeat(startCol - 1));
-		}
-
-		this.editor.pushUndoStop();
-		let selection = new Selection(
-			lineno,
-			startCol,
-			lineno,
-			startCol + fragment.length
-		);
-		this.editor.executeEdits(
-			this.controller.getId(),
-			[{ range: range, text: fragment }],
-			[selection]
-		);
-	}
 
 	// -----------------------------------------------------------------------------------
 	// Utility functions
@@ -584,66 +692,6 @@ export class RTVSynth {
 		return rs;
 	}
 
-	// private addError(element: HTMLElement, msg: string) {
-	// 	if (this.errorHover) {
-	// 		this.errorHover.remove();
-	// 		this.errorHover = undefined;
-	// 	}
-
-	// 	// First, squiggly lines!
-	// 	// element.className += 'squiggly-error';
-
-	// 	// Use monaco's monaco-hover class to keep the style the same
-	// 	this.errorHover = document.createElement('div');
-	// 	this.errorHover.className = 'monaco-hover visible';
-	// 	this.errorHover.id = 'snippy-example-hover';
-
-	// 	const scrollable = document.createElement('div');
-	// 	scrollable.className = 'monaco-scrollable-element';
-	// 	scrollable.style.position = 'relative';
-	// 	scrollable.style.overflow = 'hidden';
-
-	// 	const row = document.createElement('row');
-	// 	row.className = 'hover-row markdown-hover';
-
-	// 	const content = document.createElement('div');
-	// 	content.className = 'monaco-hover-content';
-
-	// 	const div = document.createElement('div');
-	// 	const p = document.createElement('p');
-	// 	p.innerText = msg;
-
-	// 	div.appendChild(p);
-	// 	content.appendChild(div);
-	// 	row.appendChild(content);
-	// 	scrollable.appendChild(row);
-	// 	this.errorHover.appendChild(scrollable);
-
-	// 	let position = element.getBoundingClientRect();
-	// 	this.errorHover.style.position = 'fixed';
-	// 	this.errorHover.style.top = position.bottom.toString() + 'px';
-	// 	this.errorHover.style.left = position.right.toString() + 'px';
-	// 	this.errorHover.style.padding = '3px';
-
-	// 	// Add it to the DOM
-	// 	let editorNode = this.editor.getDomNode()!;
-	// 	editorNode.appendChild(this.errorHover);
-
-	// 	this.errorHover.ontransitionend = () => {
-	// 		if (this.errorHover) {
-	// 			if (this.errorHover.style.opacity === '0') {
-	// 				this.errorHover.remove();
-	// 			}
-	// 		}
-	// 	};
-
-	// 	setTimeout(() => {// TODO Make the error fade over time
-	// 		if (this.errorHover) {
-	// 			this.errorHover.style.transitionDuration = '1s';
-	// 			this.errorHover.style.opacity = '0';
-	// 		}
-	// 	}, 1000);
-	// }
 
 	/**
 	 * Tries to update the box values with the given values. It can fail
@@ -821,12 +869,6 @@ export class RTVSynth {
 					// Only enable this for cells that the user is allowed to modify.
 					cellContent.contentEditable = 'true';
 				}
-				cellContent.onchange = () => {
-					if (this.errorHover) {
-						this.errorHover.remove();
-						this.errorHover = undefined;
-					}
-				};
 				cellContent.onblur = () => {
 					this.toggleIfChanged(env, varname, cellContent);
 				};
@@ -834,11 +876,13 @@ export class RTVSynth {
 					let rs: boolean = true;
 
 					switch (e.key) {
-
 						case 'Enter':
 							e.preventDefault();
-							// this.box!.getCellContent()[varname].forEach(cellContent => this.removeHighlight(this.findParentRow(cellContent)));
-							this.stopSynthesis();
+
+							if (this.editorState!.state === EditorState.HasProgram) {
+								// The use must have accepted the solution.
+								this.stopSynthesis();
+							}
 							break;
 						case 'Tab':
 							// ----------------------------------------------------------
@@ -851,10 +895,13 @@ export class RTVSynth {
 							rs = false;
 							this.stopSynthesis();
 							break;
-
 						default:
 							// discard previous synth requests
 							this.process.stop();
+
+							// Remove any error box
+							this.errorBox.remove();
+
 							// TODO: auto-closing quotes, brackets etc. per corresponding key down
 							// const mapping: { [c: string]: string} = {'\'': '\'', '"':'"', '[':']', '{':'}'};
 							// 	if (e.key in mapping) {
@@ -881,35 +928,37 @@ export class RTVSynth {
 							this.synthTimer.run(500, async () => {
 								// the following pasted from snippy-plus-temp
 
+								// do not create a new box when synth succeeds
+								// or roll back to prev values when synth fails
+
+								// TODO: auto-inserting missing closing quotes
+
+								// let pattern = new RegExp("^(('[^']*)|(\"[^\"]*))$");
+								// let incomplete = pattern.test(cellContent.innerText);
+
+
+								// let selection = window.getSelection()!;
+								// let range = selection.getRangeAt(0)!;
+								// if (incomplete) {
+								// 	cellContent.innerText += cellContent.innerText[0];
+								// 	let selection = window.getSelection()!;
+								// 	let range = selection.getRangeAt(0)!;
+								// 	range.setStart(cellContent.childNodes[0], cellContent.innerText.length-1);
+								// 	range.collapse(true);
+								// 	selection.removeAllRanges();
+								// 	selection.addRange(range);
+
+								// }
 								if (env[varname] !== cellContent.innerText) {
-									// do not create a new box when synth succeeds
-									// or roll back to prev values when synth fails
-
-									// TODO: auto-inserting missing closing quotes
-
-									// let pattern = new RegExp("^(('[^']*)|(\"[^\"]*))$");
-									// let incomplete = pattern.test(cellContent.innerText);
-
-
-									// let selection = window.getSelection()!;
-									// let range = selection.getRangeAt(0)!;
-									// if (incomplete) {
-									// 	cellContent.innerText += cellContent.innerText[0];
-									// 	let selection = window.getSelection()!;
-									// 	let range = selection.getRangeAt(0)!;
-									// 	range.setStart(cellContent.childNodes[0], cellContent.innerText.length-1);
-									// 	range.collapse(true);
-									// 	selection.removeAllRanges();
-									// 	selection.addRange(range);
-
-									// }
 									let updateBoxContent = false;
-									await this.toggleElement(env, cellContent, varname, true, updateBoxContent);
-									let cell: HTMLTableCellElement = this.findCell(cellContent)!;
-									await this.synthesizeFragment(cell);
+									const validInput = await this.toggleElement(env, cellContent, varname, true, updateBoxContent);
+
+									if (validInput) {
+										let cell: HTMLTableCellElement = this.findCell(cellContent)!;
+										await this.synthesizeFragment(cell);
+									}
 								}
 							});
-
 							break;
 					}
 
