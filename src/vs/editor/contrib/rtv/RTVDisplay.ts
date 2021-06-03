@@ -947,7 +947,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 	public computeEnvs(allEnvs?: any[]) {
 
 		let count = 0;
-		if (this._controller.changedLinesWhenOutOfDate !== null) {
+		if (this._controller.changedLinesWhenOutOfDate) {
 			count = this._controller.changedLinesWhenOutOfDate.size;
 		}
 
@@ -1233,8 +1233,8 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		stalenessIndicator.style.top = '5px';
 		stalenessIndicator.style.left = '3px';
 		stalenessIndicator.style.borderRadius = '50%';
-		let x = this._controller.changedLinesWhenOutOfDate;
-		if (x === null) {
+		const x = this._controller.changedLinesWhenOutOfDate;
+		if (!x) {
 			stalenessIndicator.style.backgroundColor = 'green';
 		} else {
 			let green = 165 - (x.size - 1) * 35;
@@ -1655,7 +1655,7 @@ function visibilityCursorAndReturn(b: RTVDisplayBox, cursorLineNumber: number) {
 export class RTVController implements IRTVController {
 	public envs: { [k: string]: any[]; } = {};
 	public writes: { [k: string]: string[]; } = {};
-	public changedLinesWhenOutOfDate: Set<number> | null = null;
+	public changedLinesWhenOutOfDate?: Set<number> = undefined;
 	public _configBox: HTMLDivElement | null = null;
 	public tableCellsByLoop: MapLoopsToCells = {};
 	public logger: IRTVLogger;
@@ -2075,13 +2075,14 @@ export class RTVController implements IRTVController {
 			return;
 		}
 		if (returnCode === 0 || returnCode === 2) {
-			this.changedLinesWhenOutOfDate = null;
+			this.changedLinesWhenOutOfDate = undefined;
 			return;
 		}
-		if (this.changedLinesWhenOutOfDate === null) {
+		if (!this.changedLinesWhenOutOfDate) {
 			this.changedLinesWhenOutOfDate = new Set();
 		}
-		let s = this.changedLinesWhenOutOfDate;
+
+		const s = this.changedLinesWhenOutOfDate;
 		e.changes.forEach((change) => {
 			for (let i = change.range.startLineNumber; i <= change.range.endLineNumber; i++) {
 				s.add(i);
@@ -2793,26 +2794,6 @@ export class RTVController implements IRTVController {
 			return;
 		}
 
-		// function runImmediately(e?: IModelContentChangedEvent): boolean {
-		// 	if (e === undefined) {
-		// 		return true;
-		// 	}
-		// 	// We run immediately when any of the changes span multi-lines.
-		// 	// In this case, we will be either removing or adding projection boxes,
-		// 	// and we want to process this change immediately.
-		// 	for (let i = 0; i < e.changes.length; i++) {
-		// 		let change = e.changes[i];
-		// 		if (change.range.endLineNumber - change.range.startLineNumber > 0) {
-		// 			return true;
-		// 		}
-		// 		if (change.text.split('\n').length > 1) {
-		// 			return true;
-		// 		}
-		// 	}
-		// 	// we get here only if all changes are a single line at a time, and do not introduce new lines
-		// 	return false;
-		// }
-
 		// avoid creating projection boxes/panels for the built-in output panel
 		if (!this.isTextEditor()) {
 			return;
@@ -2820,20 +2801,6 @@ export class RTVController implements IRTVController {
 
 		this.padBoxArray();
 		this.addRemoveBoxes(e);
-
-		// let delay: number = this._config.getValue(boxUpdateDelayKey);
-		// if (runImmediately(e)) {
-		// 	delay = 0;
-		// }
-
-		// try {
-		// 	// Just delay
-		// 	await this.runProgramDelay.run(delay, () => {});
-		// } catch (_err) {
-		// 	// The timer was cancelled. Just return.
-		// 	this._eventEmitter.fire(new BoxUpdateEvent(false, true, false));
-		// 	return;
-		// }
 
 		this._eventEmitter.fire(new BoxUpdateEvent(true, false, false));
 
@@ -2854,12 +2821,8 @@ export class RTVController implements IRTVController {
 		}
 
 		// Wait for the layout to finish
-		// the line where all the magic happens!
 		await this.updateContentAndLayout(outputVars, prevEnvs, true, specCell);
-		// this.getOutputBox().setOutAndErrMsg(outputMsg, errorMsg);
-
 		this._eventEmitter.fire(new BoxUpdateEvent(false, false, true));
-
 
 		return specCell;
 	}
