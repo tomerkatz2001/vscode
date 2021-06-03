@@ -225,7 +225,7 @@ export class SynthResult {
 	constructor(
 		public id: number,
 		public success: boolean,
-		public program?: string
+		public result?: string
 	) {}
 }
 

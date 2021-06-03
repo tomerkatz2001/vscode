@@ -110,6 +110,8 @@ class LocalSynthProcess implements SynthProcess {
 						this._resolve(rs);
 						this._resolve = undefined;
 						this._reject = undefined;
+					} else if (rs.id === -1) {
+						console.error(`The synthesizer crashed!`, rs);
 					} else {
 						console.error(`Request already discarded: ${rs.id}`);
 					}

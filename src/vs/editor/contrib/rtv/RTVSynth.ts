@@ -615,9 +615,9 @@ export class RTVSynth {
 			}
 
 			this.logger.synthResult(rs);
-			// console.log(completion);
+
 			if (rs.success) {
-				this.editorState!.program(rs.program!);
+				this.editorState!.program(rs.result!);
 				const res = await this.controller.updateBoxesNoRefresh(cellContent);
 
 				if (res) {
@@ -651,6 +651,14 @@ export class RTVSynth {
 				return true;
 			} else {
 				this.editorState!.failed();
+
+				if (rs.result) {
+					// We have an error message!
+					const cell = this.findCell(cellContent);
+					if (cell) {
+						this.errorBox.add(cell, rs.result, 500);
+					}
+				}
 			}
 		} catch (err) {
 			// If the synth promise is rejected
