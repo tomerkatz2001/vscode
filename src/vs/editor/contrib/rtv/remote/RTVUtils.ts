@@ -122,7 +122,11 @@ class RemoteSynthProcess implements SynthProcess {
 			return rs;
 		}
 		catch (err) {
-			// TODO Error handling
+			if (err instanceof DOMException && err.name === 'AbortError') {
+				// The request was cancelled. We can ignore this.
+				return undefined;
+			}
+
 			console.error(err);
 			return new SynthResult(problem.id, false, err.toString());
 		}
