@@ -642,12 +642,15 @@ export class RTVSynth {
 
 					// We need to carefully pick the offset based on the type
 					let offset;
-					if (isString)  {
-						offset = cell.innerText.length - 1;
-					} else if (dest.childNodes.length > 1) {
+					if (dest.childNodes.length > 1) {
 						offset = dest.childNodes.length - 1;
 					} else {
-						offset = cell.innerText.length;
+						// Select the actual text
+						while (dest.firstChild) {
+							dest = dest.firstChild as HTMLElement;
+						}
+
+						offset = isString ? cell.innerText.length - 1 : cell.innerText.length;
 					}
 
 					range.selectNodeContents(dest);
