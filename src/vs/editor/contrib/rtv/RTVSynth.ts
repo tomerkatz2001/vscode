@@ -500,7 +500,7 @@ export class RTVSynth {
 		env: any,
 		cell: HTMLElement,
 		varname: string,
-		force: boolean | null = null,
+		force?: boolean,
 		updateBoxContent: boolean = true
 	): Promise<boolean> {
 		let time = env['time'];
@@ -509,7 +509,7 @@ export class RTVSynth {
 
 		if (!time) {
 			on = true;
-		} else if (force !== null) {
+		} else if (force !== undefined) {
 			on = force;
 		} else {
 			on = !this.includedTimes.has(time);
@@ -879,7 +879,17 @@ export class RTVSynth {
 						case 'Enter':
 							e.preventDefault();
 
-							if (this.editorState!.state === EditorState.HasProgram) {
+							if (e.shiftKey) {
+								// We just want to include this row
+								this.synthTimer.run(1, async () => {
+									const validInput = await this.toggleElement(env, cellContent, varname, undefined, false);
+
+									if (validInput) {
+										let cell: HTMLTableCellElement = this.findCell(cellContent)!;
+										await this.synthesizeFragment(cell);
+									}
+								});
+							} else if (this.editorState!.state === EditorState.HasProgram) {
 								// The use must have accepted the solution.
 								this.stopSynthesis();
 							}
