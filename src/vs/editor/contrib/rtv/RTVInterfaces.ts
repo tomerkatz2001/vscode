@@ -234,7 +234,8 @@ export class SynthProblem {
 	constructor(
 		public varNames: string[],
 		public previousEnvs: {[t: string]: any},
-		public envs: any[]
+		public envs: any[],
+		public optEnvs: any[] = []
 	) {}
 }
 

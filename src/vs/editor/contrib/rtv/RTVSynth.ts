@@ -34,13 +34,13 @@ class EditorStateManager {
 	}
 
 	synthesizing() {
-		if (this._state == EditorState.Synthesizing) return;
+		if (this._state === EditorState.Synthesizing) {return;}
 		this._state = EditorState.Synthesizing;
 		this.insertFragment(this.SYNTHESIZING_INDICATOR);
 	}
 
 	failed() {
-		if (this._state == EditorState.Failed) return;
+		if (this._state === EditorState.Failed) {return;}
 		this._state = EditorState.Failed;
 		this.insertFragment(this.SYNTH_FAILED_INDICATOR);
 	}
@@ -50,7 +50,7 @@ class EditorStateManager {
 		this.insertFragment(program);
 	}
 
-	private insertFragment(fragment: string) {
+	private insertFragment(fragment: string): void {
 		// Cleanup fragment
 		// TODO We don't support return ?? sadly.
 		// if (fragment.startsWith('rv = ')) {
@@ -586,6 +586,7 @@ export class RTVSynth {
 	public async synthesizeFragment(cellContent: HTMLTableCellElement): Promise<boolean> {
 		// Build and write the synth_example.json file content
 		let envs = [];
+		let optEnvs = [];
 
 		let boxEnvs = this.box!.getEnvs(); // instead of this.boxEnvs!
 
@@ -594,6 +595,8 @@ export class RTVSynth {
 
 			if (this.includedTimes!.has(time)) {
 				envs.push(env);
+			} else {
+				optEnvs.push(env);
 			}
 		}
 
@@ -602,7 +605,8 @@ export class RTVSynth {
 			previousEnvs[time.toString()] = env;
 		}
 
-		let problem = new SynthProblem(this.varnames!, previousEnvs, envs);
+
+		let problem = new SynthProblem(this.varnames!, previousEnvs, envs, optEnvs);
 		this.logger.synthSubmit(problem);
 		this.editorState!.synthesizing();
 
