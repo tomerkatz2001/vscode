@@ -112,8 +112,8 @@ class RemoteSynthProcess implements SynthProcess {
 				// TODO Error handling
 				console.error(response);
 				return new SynthResult(problem.id, false, '');
-			} else if (response && problem.id != this._problemIdx) {
-				console.error('Request already discarded');
+			} else if (response && problem.id !== this._problemIdx) {
+				console.error('Request already discarded', problem, response);
 				return;
 			}
 

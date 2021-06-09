@@ -81,6 +81,7 @@ class LocalSynthProcess implements SynthProcess {
 
 	constructor(protected logger?: IRTVLogger) {
 		this.logger?.synthProcessStart();
+
 		if (HEAP) {
 			this._synthProcess = spawn(JAVA, [`-Xmx${HEAP}`, '-jar', SYNTH]);
 		} else {
@@ -92,6 +93,10 @@ class LocalSynthProcess implements SynthProcess {
 		process.on('beforeExit', async () => this.dispose());
 		process.on('uncaughtException', () => this.dispose());
 		process.on('SIGINT', () => this.dispose());
+
+		// Log if the synth crashes/exits
+		this._synthProcess.on('exit', () => this.logger?.synthProcessEnd());
+		this._synthProcess.on('close', () => this.logger?.synthProcessEnd());
 
 		// Log all synthesizer output
 		this._synthProcess.stdout.on('data', data => this.logger?.synthStdout(data));

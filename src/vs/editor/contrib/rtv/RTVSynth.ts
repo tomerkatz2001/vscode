@@ -269,7 +269,7 @@ export class RTVSynth {
 
 		const varnames = this.extractVarnames(lineno);
 
-		if (l_operand === '' || r_operand === '' || !r_operand.endsWith('??') || !varnames || varnames.length != 1) {
+		if (l_operand === '' || r_operand === '' || !r_operand.endsWith('??') || !varnames || varnames.length !== 1) {
 			this.stopSynthesis();
 			return;
 		}
@@ -629,13 +629,9 @@ export class RTVSynth {
 				if (res) {
 					this.boxEnvs = this.box!.getEnvs();
 
-					this.logger.synthEnd();
-					// this.process.stop();
-
 					this.setupTableCellContents();
 
 					let cell = this.findCell(res)!;
-
 					const sel = window.getSelection()!;
 					const range = document.createRange();
 
