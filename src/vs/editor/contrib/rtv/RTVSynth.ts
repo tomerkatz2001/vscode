@@ -267,7 +267,9 @@ export class RTVSynth {
 			r_operand = listOfElems[1].trim();
 		}
 
-		if (l_operand === '' || r_operand === '' || !r_operand.endsWith('??')) {
+		const varnames = this.extractVarnames(lineno);
+
+		if (l_operand === '' || r_operand === '' || !r_operand.endsWith('??') || !varnames || varnames.length != 1) {
 			this.stopSynthesis();
 			return;
 		}
@@ -278,7 +280,7 @@ export class RTVSynth {
 		this.controller.changeViewMode(ViewMode.Cursor);
 
 		this.lineno = lineno;
-		this.varnames = this.extractVarnames(lineno);
+		this.varnames = varnames;
 		this.row = 0;
 		this.editorState = new EditorStateManager(l_operand, this.lineno, this.editor, this.controller);
 
