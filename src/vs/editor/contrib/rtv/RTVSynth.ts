@@ -5,6 +5,7 @@ import { getUtils } from 'vs/editor/contrib/rtv/RTVUtils';
 import { Utils, RunResult, SynthResult, SynthProblem, IRTVLogger, IRTVController, IRTVDisplayBox, ViewMode, SynthProcess, DelayedRunAtMostOne } from './RTVInterfaces';
 import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
+import { registerProductIconThemeSchemas } from 'vs/workbench/services/themes/common/productIconThemeSchema';
 
 // const SYNTHESIZING_MESSAGE: string = '# Please wait. Synthesizing...';
 // const SPEC_AWAIT_INDICATOR: string = '??';
@@ -108,7 +109,7 @@ class ErrorHoverManager {
 		this.errorHover = undefined;
 	}
 
-	public add(element: HTMLElement, msg: string, timeout: number = 0) {
+	public add(element: HTMLElement, msg: string, timeout: number = 0, fadeout: number = 1000) {
 		this.addHoverTimer.run(timeout, async () => {
 			if (this.errorHover) {
 				this.errorHover.remove();
@@ -167,7 +168,7 @@ class ErrorHoverManager {
 					this.errorHover.style.transitionDuration = '1s';
 					this.errorHover.style.opacity = '0';
 				}
-			}, 1000);
+			}, fadeout);
 		});
 	}
 }
@@ -274,6 +275,10 @@ export class RTVSynth {
 			return;
 		}
 
+		if (!this.process.connected()) {
+			this.process = this.utils.synthesizer();
+		}
+
 		// ------------------------------------------
 		// Okay, we are definitely using SnipPy here!
 		// ------------------------------------------
@@ -357,6 +362,22 @@ export class RTVSynth {
 				return;
 			}
 		});
+
+		// Last chance to make sure the synthesizer is working
+
+
+		if (!this.process.connected()) {
+			// Show the error message
+			const box = this.controller.getBox(lineno);
+			const cell = box.getCell(varnames[0], 0);
+
+			if (cell) {
+				this.errorBox.add(cell, 'Cannot start the synthesizer. Please contact the admin.', 0, 2500);
+			}
+
+			this.stopSynthesis();
+			return;
+		}
 	}
 
 	public stopSynthesis() {
@@ -367,7 +388,6 @@ export class RTVSynth {
 
 			// Clear the state
 			this.includedTimes = new Set();
-			this.errorBox.remove();
 
 			this.lineno = undefined;
 			this.varnames = [];

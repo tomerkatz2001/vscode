@@ -128,6 +128,8 @@ class LocalSynthProcess implements SynthProcess {
 				console.error(resultStr);
 			}
 		});
+
+		this._synthProcess
 	}
 
 	public synthesize(problem: SynthProblem): Promise<SynthResult | undefined> {
@@ -167,7 +169,9 @@ class LocalSynthProcess implements SynthProcess {
 	}
 
 	public connected(): boolean {
-		return this._synthProcess && this._synthProcess.connected;
+		return this._synthProcess &&
+			// this._synthProcess.connected &&
+			!this._synthProcess.stdin.destroyed;
 	}
 }
 
