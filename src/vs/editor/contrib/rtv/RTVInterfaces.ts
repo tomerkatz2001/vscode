@@ -5,6 +5,11 @@ import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
 
 export interface IRTVDisplayBox {
+	/**
+	 * Returns the box's HTML element.
+	 * */
+	getElement(): HTMLElement;
+
 	getCellContent(): { [k: string]: [HTMLElement] };
 
 	/**

@@ -146,7 +146,7 @@ class ErrorHoverManager {
 
 			let position = element.getBoundingClientRect();
 			this.errorHover.style.position = 'fixed';
-			this.errorHover.style.top = position.bottom.toString() + 'px';
+			this.errorHover.style.top = position.top.toString() + 'px';
 			this.errorHover.style.left = position.right.toString() + 'px';
 			this.errorHover.style.padding = '3px';
 
@@ -267,8 +267,6 @@ export class RTVSynth {
 		// ------------------------------------------
 		// Okay, we are definitely using SnipPy here!
 		// ------------------------------------------
-		this.controller.changeViewMode(ViewMode.Cursor);
-
 		this.lineno = lineno;
 		this.varnames = varnames;
 		this.row = 0;
@@ -310,7 +308,18 @@ export class RTVSynth {
 		this.updateAllEnvs(runResults);
 
 		// Now that we have all the info, update the box again!
-		await this.updateBoxValues();
+		let error = await this.updateBoxValues();
+
+		if (error) {
+			// We shouldn't start synthesis if the underlying code
+			// doesn't even excute.
+			this.errorBox.add(this.box.getElement(), error);
+			this.stopSynthesis();
+			return;
+		}
+
+		// First, hide all the other boxes!
+		this.controller.changeViewMode(ViewMode.Cursor);
 
 		// Get all cell contents for the variable
 		this.setupTableCellContents();
@@ -349,8 +358,6 @@ export class RTVSynth {
 		});
 
 		// Last chance to make sure the synthesizer is working
-
-
 		if (!this.process.connected()) {
 			// Show the error message
 			const box = this.controller.getBox(lineno);
@@ -540,13 +547,12 @@ export class RTVSynth {
 			// const oldVal = env[varname];
 			// const included = this.includedTimes.has(env['time']);
 
-			env[varname] = cell.innerText;
+			env[varname] = cell.innerText.trim();
 			this.includedTimes.add(time);
 
-			/*
 			// [Lisa, 5/30] original code for input checking,
 			// commented out to avoid new specs being removed from `this.includedTimes`
-			// error = await this.updateBoxValues(updateBoxContent);
+			error = await this.updateBoxValues(updateBoxContent);
 
 			if (error) {
 				// The input causes an exception.
@@ -560,10 +566,9 @@ export class RTVSynth {
 				// }
 
 				// removed `addError` to avoid error indicators as the user types in a string
-				// this.addError(cell, error);
+				this.errorBox.add(cell, error);
 				return false;
 			}
-			*/
 
 			this.highlightRow(row);
 		} else {
@@ -757,15 +762,15 @@ export class RTVSynth {
 		const errorMsg = runResult[1];
 		const content = runResult[2];
 
+		if (errorMsg) {
+			// Extract the error message
+			const errorLines = errorMsg.split(/\n/).filter((s) => s);
+			const message = errorLines[errorLines.length - 1];
+			return message;
+		}
+
 		if (!content) {
-			if (errorMsg) {
-				// Extract the error message
-				const errorLines = errorMsg.split(/\n/).filter((s) => s);
-				const message = errorLines[errorLines.length - 1];
-				return message;
-			} else {
-				return 'Error: Failed to run program.';
-			}
+			return 'Error: Failed to run program.';
 		}
 
 		// First, update our envs
@@ -1008,6 +1013,11 @@ export class RTVSynth {
 										let cell: HTMLTableCellElement = this.findCell(cellContent)!;
 										await this.synthesizeFragment(cell);
 									}
+								}
+							})
+							.catch(err => {
+								if (err) {
+									console.error(err);
 								}
 							});
 							break;

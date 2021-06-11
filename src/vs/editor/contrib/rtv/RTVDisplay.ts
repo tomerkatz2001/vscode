@@ -510,6 +510,10 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		this._deltaVarSet = new DeltaVarSet(deltaVarSet);
 	}
 
+	public getElement(): HTMLElement {
+		return this._box;
+	}
+
 	public getEnvs(): any[] {
 		return this._allEnvs;
 	}
@@ -2815,7 +2819,6 @@ export class RTVController implements IRTVController {
 		}
 
 		// Wait for the layout to finish
-		console.log(outputVars, prevEnvs);
 		await this.updateContentAndLayout(outputVars, prevEnvs, true);
 		this._eventEmitter.fire(new BoxUpdateEvent(false, false, true));
 
