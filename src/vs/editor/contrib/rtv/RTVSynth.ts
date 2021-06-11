@@ -5,7 +5,6 @@ import { getUtils } from 'vs/editor/contrib/rtv/RTVUtils';
 import { Utils, RunResult, SynthResult, SynthProblem, IRTVLogger, IRTVController, IRTVDisplayBox, ViewMode, SynthProcess, DelayedRunAtMostOne } from './RTVInterfaces';
 import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
-import { registerProductIconThemeSchemas } from 'vs/workbench/services/themes/common/productIconThemeSchema';
 
 // const SYNTHESIZING_MESSAGE: string = '# Please wait. Synthesizing...';
 // const SPEC_AWAIT_INDICATOR: string = '??';
@@ -242,20 +241,6 @@ export class RTVSynth {
 		let l_operand: string = '';
 		let r_operand: string = '';
 
-		// TODO Handling `return ??` with the environment update is broken
-		// Consider:
-		// def f(x): return ??
-		// rs = f(f(1))
-		// The `rv` value is never updated. This however works fine:
-		// def f(x):
-		//     y = ??
-		//     return y
-		// rs = f(f(1))
-
-		// if (line.startsWith('return ')) {
-		// 	l_operand = 'rv';
-		// 	r_operand = line.substr('return '.length);
-		// } else {
 		let listOfElems = line.split('=');
 
 		if (listOfElems.length !== 2) {
@@ -605,7 +590,7 @@ export class RTVSynth {
 	// Synthesize from current data
 	// -----------------------------------------------------------------------------------
 
-	public async synthesizeFragment(cellContent: HTMLTableCellElement): Promise<boolean> {
+	public async synthesizeFragment(cell: HTMLTableCellElement): Promise<boolean> {
 		// Build and write the synth_example.json file content
 		let envs = [];
 		let optEnvs = [];
@@ -643,27 +628,26 @@ export class RTVSynth {
 			this.logger.synthResult(rs);
 
 			if (rs.success) {
+				const sel = window.getSelection()!;
+				let offset = sel.anchorOffset;
+
 				this.editorState!.program(rs.result!);
-				const res = await this.controller.updateBoxesNoRefresh(cellContent);
 
-				if (res) {
-					this.boxEnvs = this.box!.getEnvs();
+				await this.updateBoxValues(true, false);
 
-					this.setupTableCellContents();
+				// let cell = this.findCell(res)!;
+				const range = document.createRange();
 
-					let cell = this.findCell(res)!;
-					const sel = window.getSelection()!;
-					const range = document.createRange();
+				let isString = cell.innerText[0] === '\'' || cell.innerText[0] === '"';
 
-					let isString = cell.innerText[0] === '\'' || cell.innerText[0] === '"';
+				let dest: HTMLElement = cell;
+				while (dest.firstChild) {
+					dest = dest.firstChild as HTMLElement;
+				}
 
-					let dest: HTMLElement = cell;
-					while (dest.firstChild && !dest.classList.contains('monaco-tokenized-source')) {
-						dest = dest.firstChild as HTMLElement;
-					}
+				// We need to carefully pick the offset based on the type
 
-					// We need to carefully pick the offset based on the type
-					let offset;
+				if (!offset) {
 					if (dest.childNodes.length > 1) {
 						offset = dest.childNodes.length - 1;
 					} else {
@@ -674,14 +658,14 @@ export class RTVSynth {
 
 						offset = isString ? cell.innerText.length - 1 : cell.innerText.length;
 					}
-
-					range.selectNodeContents(dest);
-					range.setStart(dest, offset);
-					range.collapse(true);
-
-					sel.removeAllRanges();
-					sel.addRange(range);
 				}
+
+				range.selectNodeContents(dest);
+				range.setStart(dest, offset);
+				range.collapse(true);
+
+				sel.removeAllRanges();
+				sel.addRange(range);
 
 				return true;
 			} else {
@@ -689,7 +673,6 @@ export class RTVSynth {
 
 				if (rs.result) {
 					// We have an error message!
-					const cell = this.findCell(cellContent);
 					if (cell) {
 						this.errorBox.add(cell, rs.result, 500);
 					}
@@ -735,6 +718,30 @@ export class RTVSynth {
 		return rs;
 	}
 
+	private async runProgram(): Promise<[string, string, any?]> {
+		let values: any = {};
+		for (let env of this.boxEnvs!) {
+			if (this.includedTimes.has(env['time'])) {
+				values[`(${env['lineno']},${env['time']})`] = env;
+			}
+		}
+
+		const runResults: RunResult = await this.utils.runProgram(
+			this.controller.getProgram(),
+			values);
+
+		const outputMsg = runResults.stdout;
+		const errorMsg = runResults.stderr;
+		const exitCode = runResults.exitCode;
+		const result = runResults.result;
+
+		if (exitCode === null || !result) {
+			return [outputMsg, errorMsg, undefined];
+		}
+
+		return [outputMsg, errorMsg, JSON.parse(result)];
+	}
+
 
 	/**
 	 * Tries to update the box values with the given values. It can fail
@@ -742,46 +749,37 @@ export class RTVSynth {
 	 *
 	 * @return the error string, or `undefined` if no error occurs.
 	 **/
-	private async updateBoxValues(updateBoxContent: boolean = true, content?: any[]): Promise<string | undefined> {
+	private async updateBoxValues(
+		updateBoxContent: boolean = true,
+		redraw: boolean = true,
+	): Promise<string | undefined> {
+		const runResult = await this.runProgram();
+		const errorMsg = runResult[1];
+		const content = runResult[2];
+
 		if (!content) {
-			let values: any = {};
-			for (let env of this.boxEnvs!) {
-				if (this.includedTimes.has(env['time'])) {
-					values[`(${env['lineno']},${env['time']})`] = env;
-				}
-			}
-
-			let c = this.utils.runProgram(this.controller.getProgram(), values);
-			const results: RunResult = await c;
-			const errorMsg = results.stderr;
-			const result = results.result;
-
-			if (!result) {
-				console.error('Failed to run program');
-				return 'Error: Failed to run program.';
-			}
-
-			let parsedResult = JSON.parse(result);
-			let returnCode = parsedResult[0];
-
-			if (errorMsg && returnCode !== 0) {
+			if (errorMsg) {
 				// Extract the error message
 				const errorLines = errorMsg.split(/\n/).filter((s) => s);
 				const message = errorLines[errorLines.length - 1];
 				return message;
+			} else {
+				return 'Error: Failed to run program.';
 			}
-
-			content = parsedResult;
 		}
 
 		// First, update our envs
-		this.updateAllEnvs(content!);
+		this.updateAllEnvs(content);
 
 		// only create new boxes when `updateBoxContent` is true
 		if (updateBoxContent) {
-			this.box?.updateContent(content![2], undefined, this.varnames!, this.prevEnvs!);
+			if (redraw) {
+				this.box!.updateContent(content[2], false, this.varnames, this.prevEnvs);
+			} else {
+				await this.controller.updateBoxesNoRefresh(undefined, runResult, this.varnames, this.prevEnvs);
+			}
 		}
-		this.boxEnvs = this.box?.getEnvs();
+		this.boxEnvs = this.box!.getEnvs();
 		this.setupTableCellContents();
 
 		return undefined;

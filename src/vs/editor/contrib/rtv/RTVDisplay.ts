@@ -830,7 +830,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		return document.getElementById(this.getCellId(varname, idx)) as HTMLTableCellElement;
 	}
 
-	private updateTableByRows(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
+	private updateTableByRows(renderer: MarkdownRenderer, rows: TableElement[][]) {
 		for (let colIdx = 0; colIdx < rows[0].length; colIdx++) {
 			for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
 				let elmt = rows[rowIdx][colIdx];
@@ -841,22 +841,19 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		}
 	}
 
-	private updateTableByCols(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][], specCell?: HTMLTableCellElement) {
+	private updateTableByCols(
+		renderer: MarkdownRenderer,
+		rows: TableElement[][]) {
 		rows.forEach((row: TableElement[], rowIdx: number) => {
 			if (rowIdx === 0) {
 				// Skip the header.
 				return;
 			}
-			row.forEach((elmt: TableElement, colIdx: number) => {
+			row.forEach((elmt: TableElement, _colIdx: number) => {
 				// Get the cell
 				let cell = this.getCell(elmt.vname!, rowIdx - 1)!;
 				let editable;
 				if (cell !== null) {
-					if (specCell) {
-						const varName: string = cell.id.split('-').slice(1)[0];
-						// const cellIdx: number = parseInt(idxStr);
-						editable = (varName === elmt.vname!);// && (cellIdx == rowIdx - 1);
-					}
 					this.addCellContent(cell, elmt, renderer, editable);
 				}
 			});
@@ -1013,7 +1010,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		return false;
 	}
 
-	public updateContent(allEnvs?: any[], updateInPlace?: boolean, outputVars?: string[], prevEnvs?: Map<number, any>, specCell?: HTMLTableCellElement) {
+	public updateContent(allEnvs?: any[], updateInPlace?: boolean, outputVars?: string[], prevEnvs?: Map<number, any>) {
 
 		// if computeEnvs returns false, there is no content to display
 		let done =this.computeEnvs(allEnvs);
@@ -1190,9 +1187,9 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		if (updateInPlace && this.hasContent()) {
 			this._cellDictionary = {};
 			if (this._controller.byRowOrCol === RowColMode.ByRow) {
-				this.updateTableByRows(this._box.firstElementChild as HTMLTableElement, renderer, rows);
+				this.updateTableByRows(renderer, rows);
 			} else {
-				this.updateTableByCols(this._box.firstElementChild as HTMLTableElement, renderer, rows, specCell);
+				this.updateTableByCols(renderer, rows);
 			}
 		} else {
 			// Remove the contents
@@ -2286,22 +2283,15 @@ export class RTVController implements IRTVController {
 			// console.log('Computed width for ' + loop + ': ' + widths[loop]);
 			this.tableCellsByLoop[loop].forEach(e => { e.width = (widths[loop] - spaceBetweenCells) + 'px'; });
 		});
-
 	}
-	public async updateContentAndLayout(outputVars?: string[], prevEnvs?: Map<number, any>, updateInPlace?: boolean, specCell?: HTMLTableCellElement): Promise<void> {
+
+	public async updateContentAndLayout(outputVars?: string[], prevEnvs?: Map<number, any>, updateInPlace?: boolean): Promise<void> {
 		this.tableCellsByLoop = {};
-		this.updateContent(outputVars, prevEnvs, updateInPlace, specCell);
-		// The 0 timeout seems odd, but it's really a thing in browsers.
-		// We need to let layout threads catch up after we updated content to
-		// get the correct sizes for boxes.
-
-		// await new Promise(resolve => setTimeout(resolve, 0));
-		// this.updateCellSizesForNewContent();
-		// await this.updateLayout();
-		// return Promise.resolve();
-
-		// -- original code
+		this.updateContent(outputVars, prevEnvs, updateInPlace);
 		return new Promise((resolve, _reject) => {
+			// The 0 timeout seems odd, but it's really a thing in browsers.
+			// We need to let layout threads catch up after we updated content to
+			// get the correct sizes for boxes.
 			setTimeout(() => {
 				this.updateCellSizesForNewContent();
 				this.updateLayout();
@@ -2310,7 +2300,7 @@ export class RTVController implements IRTVController {
 		});
 	}
 
-	private updateContent(outputVars?: string[], prevEnvs?: Map<number, any>, updateInPlace?: boolean, specCell?: HTMLTableCellElement) {
+	private updateContent(outputVars?: string[], prevEnvs?: Map<number, any>, updateInPlace?: boolean) {
 		this.padBoxArray();
 		if (this.loopFocusController !== null) {
 			// if we are focused on a loop, compute envs at the controlling box first
@@ -2318,11 +2308,9 @@ export class RTVController implements IRTVController {
 			this.loopFocusController.controllingBox.computeEnvs();
 		}
 		this._boxes.forEach((b) => {
-			b.updateContent(undefined, updateInPlace, outputVars, prevEnvs, specCell);
+			b.updateContent(undefined, updateInPlace, outputVars, prevEnvs);
 		});
 	}
-
-	// private async updateLayoutHelper(toProcess: (b: RTVDisplayBox) => boolean, opacityMult: number): Promise<void> {
 
 	private updateLayoutHelper(toProcess: (b: RTVDisplayBox) => boolean, opacityMult: number) {
 		this.padBoxArray();
@@ -2700,9 +2688,6 @@ export class RTVController implements IRTVController {
 
 		this.logger.projectionBoxUpdateEnd(result);
 
-		// onExit renders enough delay to update the positioning of the boxes
-		this.updateMaxPixelCol();
-
 		// When exitCode === null, it means the process was killed,
 		// so there is nothing else to do
 		if (exitCode === null) {
@@ -2770,6 +2755,7 @@ export class RTVController implements IRTVController {
 		let [outputMsg, errorMsg, parsedResult] = await this.runProgram();
 		let returnCode = parsedResult[0];
 
+		this.updateMaxPixelCol();
 		this.updateLinesWhenOutOfDate(returnCode, e);
 
 		if (returnCode === 0 || returnCode === 2) {
@@ -2788,7 +2774,11 @@ export class RTVController implements IRTVController {
 		return parsedResult;
 	}
 
-	public async updateBoxesNoRefresh(specCell?: HTMLTableCellElement, e?: IModelContentChangedEvent, outputVars?: string[], prevEnvs?: Map<number, any>): Promise<any> {
+	public async updateBoxesNoRefresh(
+		e?: IModelContentChangedEvent,
+		rs?: [string, string, any?],
+		outputVars?: string[],
+		prevEnvs?: Map<number, any>): Promise<any> {
 		if (this.enabled) {
 			// this method will only be fired when controller is NOT enabled (i.e., in spec writing mode)
 			return;
@@ -2799,6 +2789,7 @@ export class RTVController implements IRTVController {
 			return;
 		}
 
+		this.updateMaxPixelCol();
 		this.padBoxArray();
 		this.addRemoveBoxes(e);
 
@@ -2806,7 +2797,10 @@ export class RTVController implements IRTVController {
 
 		// this.hideOutputBox();
 
-		const rs = await this.runProgram();
+		if (!rs) {
+			rs = await this.runProgram();
+		}
+
 		let errorMsg = rs[1];
 		let parsedResult = rs[2];
 		let returnCode = parsedResult[0];
@@ -2821,10 +2815,11 @@ export class RTVController implements IRTVController {
 		}
 
 		// Wait for the layout to finish
-		await this.updateContentAndLayout(outputVars, prevEnvs, true, specCell);
+		console.log(outputVars, prevEnvs);
+		await this.updateContentAndLayout(outputVars, prevEnvs, true);
 		this._eventEmitter.fire(new BoxUpdateEvent(false, false, true));
 
-		return specCell;
+		return parsedResult;
 	}
 
 	private updateData(parsedResult: any) {
