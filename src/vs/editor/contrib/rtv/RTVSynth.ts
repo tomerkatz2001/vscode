@@ -168,6 +168,11 @@ class ErrorHoverManager {
 					this.errorHover.style.opacity = '0';
 				}
 			}, fadeout);
+		})
+		.catch(err => {
+			if (err) {
+				console.error(err);
+			}
 		});
 	}
 }
@@ -267,6 +272,8 @@ export class RTVSynth {
 		// ------------------------------------------
 		// Okay, we are definitely using SnipPy here!
 		// ------------------------------------------
+		this.controller.changeViewMode(ViewMode.Cursor);
+
 		this.lineno = lineno;
 		this.varnames = varnames;
 		this.row = 0;
@@ -308,7 +315,7 @@ export class RTVSynth {
 		this.updateAllEnvs(runResults);
 
 		// Now that we have all the info, update the box again!
-		let error = await this.updateBoxValues();
+		let error = await this.updateBoxValues(true, true);
 
 		if (error) {
 			// We shouldn't start synthesis if the underlying code
@@ -317,9 +324,6 @@ export class RTVSynth {
 			this.stopSynthesis();
 			return;
 		}
-
-		// First, hide all the other boxes!
-		this.controller.changeViewMode(ViewMode.Cursor);
 
 		// Get all cell contents for the variable
 		this.setupTableCellContents();
@@ -548,6 +552,7 @@ export class RTVSynth {
 			// const included = this.includedTimes.has(env['time']);
 
 			env[varname] = cell.innerText.trim();
+			console.log(`env[${varname}] = ${env[varname]}`);
 			this.includedTimes.add(time);
 
 			// [Lisa, 5/30] original code for input checking,
@@ -600,7 +605,7 @@ export class RTVSynth {
 		let envs = [];
 		let optEnvs = [];
 
-		let boxEnvs = this.box!.getEnvs(); // instead of this.boxEnvs!
+		let boxEnvs = this.boxEnvs!; // this.box!.getEnvs(); // instead of this.boxEnvs!
 
 		for (const env of boxEnvs) {
 			const time = env['time'];
@@ -616,7 +621,6 @@ export class RTVSynth {
 		for (const [time, env] of this.prevEnvs!) {
 			previousEnvs[time.toString()] = env;
 		}
-
 
 		let problem = new SynthProblem(this.varnames!, previousEnvs, envs, optEnvs);
 		this.logger.synthSubmit(problem);
@@ -646,31 +650,39 @@ export class RTVSynth {
 				let isString = cell.innerText[0] === '\'' || cell.innerText[0] === '"';
 
 				let dest: HTMLElement = cell;
-				while (dest.firstChild) {
+				while (dest.firstChild && (!dest.classList.contains('monaco-tokenized-source') || dest.childNodes.length == 1)) {
 					dest = dest.firstChild as HTMLElement;
 				}
 
-				// We need to carefully pick the offset based on the type
+				if (dest.childNodes.length > 1) {
+					offset = dest.childNodes.length - 1;
+				} else if (!offset) {
+					// We need to carefully pick the offset based on the type
 
-				if (!offset) {
-					if (dest.childNodes.length > 1) {
-						offset = dest.childNodes.length - 1;
-					} else {
-						// Select the actual text
-						while (dest.firstChild) {
-							dest = dest.firstChild as HTMLElement;
-						}
-
-						offset = isString ? cell.innerText.length - 1 : cell.innerText.length;
+					// Select the actual text
+					while (dest.firstChild) {
+						dest = dest.firstChild as HTMLElement;
 					}
+
+					offset = isString ? cell.innerText.length - 1 : cell.innerText.length;
 				}
 
-				range.selectNodeContents(dest);
-				range.setStart(dest, offset);
-				range.collapse(true);
+				try {
+					range.selectNodeContents(dest);
+					range.setStart(dest, offset);
+					range.collapse(true);
 
-				sel.removeAllRanges();
-				sel.addRange(range);
+					sel.removeAllRanges();
+					sel.addRange(range);
+				} catch {
+					// TODO Better error handling
+					range.selectNodeContents(dest);
+					range.setStart(dest, 0);
+					range.collapse(true);
+
+					sel.removeAllRanges();
+					sel.addRange(range);
+				}
 
 				return true;
 			} else {
@@ -783,9 +795,10 @@ export class RTVSynth {
 			} else {
 				await this.controller.updateBoxesNoRefresh(undefined, runResult, this.varnames, this.prevEnvs);
 			}
+
+			this.boxEnvs = this.box!.getEnvs();
+			this.setupTableCellContents();
 		}
-		this.boxEnvs = this.box!.getEnvs();
-		this.setupTableCellContents();
 
 		return undefined;
 	}
@@ -1006,8 +1019,7 @@ export class RTVSynth {
 
 								// }
 								if (env[varname] !== cellContent.innerText) {
-									let updateBoxContent = false;
-									const validInput = await this.toggleElement(env, cellContent, varname, true, updateBoxContent);
+									const validInput = await this.toggleElement(env, cellContent, varname, true, false);
 
 									if (validInput) {
 										let cell: HTMLTableCellElement = this.findCell(cellContent)!;
