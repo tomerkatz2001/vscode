@@ -129,7 +129,7 @@ export class RTVSynthDisplayBox implements IRTVDisplayBox{
 		let envs = this._allEnvs;
 
 		// Compute set of vars in all envs
-		this._allVars = new Set<string>();
+		// this._allVars = new Set<string>();
 
 		let vars = this._allVars;
 
