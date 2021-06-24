@@ -5,6 +5,8 @@ import { getUtils } from 'vs/editor/contrib/rtv/RTVUtils';
 import { Utils, RunResult, SynthResult, SynthProblem, IRTVLogger, IRTVController, IRTVDisplayBox, ViewMode, SynthProcess, DelayedRunAtMostOne } from './RTVInterfaces';
 import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
+import { RTVDisplayBox } from 'vs/editor/contrib/rtv/RTVDisplay';
+import { RTVSynthDisplayBox } from 'vs/editor/contrib/rtv/RTVSynthDisplay'
 
 // const SYNTHESIZING_MESSAGE: string = '# Please wait. Synthesizing...';
 // const SPEC_AWAIT_INDICATOR: string = '??';
@@ -272,7 +274,8 @@ export class RTVSynth {
 		// ------------------------------------------
 		// Okay, we are definitely using SnipPy here!
 		// ------------------------------------------
-		this.controller.changeViewMode(ViewMode.Cursor);
+		// this.controller.changeViewMode(ViewMode.Cursor);
+		this.controller.changeViewMode(ViewMode.Stealth);
 
 		this.lineno = lineno;
 		this.varnames = varnames;
@@ -324,6 +327,9 @@ export class RTVSynth {
 			this.stopSynthesis();
 			return;
 		}
+		let oldBox = this.box as RTVDisplayBox;
+		this.box = new RTVSynthDisplayBox(this.editor, oldBox, oldBox.getLine());
+
 
 		// Get all cell contents for the variable
 		this.setupTableCellContents();
@@ -387,6 +393,9 @@ export class RTVSynth {
 
 			this.lineno = undefined;
 			this.varnames = [];
+			if (this.box && this.box.isSynthBox()) {
+				(this.box as RTVSynthDisplayBox).destroy();
+			}
 			this.box = undefined;
 			this.boxEnvs = undefined;
 			this.allEnvs = undefined;
@@ -654,9 +663,11 @@ export class RTVSynth {
 					dest = dest.firstChild as HTMLElement;
 				}
 
+				// [Lisa, 6/23] will this ever get executed??
 				if (dest.childNodes.length > 1) {
 					offset = dest.childNodes.length - 1;
-				} else if (!offset) {
+				// } else if (!offset) {
+				} else {
 					// We need to carefully pick the offset based on the type
 
 					// Select the actual text
@@ -788,12 +799,19 @@ export class RTVSynth {
 		// First, update our envs
 		this.updateAllEnvs(content);
 
+		// TODO: flag for testing, remove later
+		let oldCode = false;
 		// only create new boxes when `updateBoxContent` is true
 		if (updateBoxContent) {
 			if (redraw) {
-				this.box!.updateContent(content[2], false, this.varnames, this.prevEnvs);
+				await this.box!.updateContent(content[2], false, this.varnames, this.prevEnvs);
 			} else {
-				await this.controller.updateBoxesNoRefresh(undefined, runResult, this.varnames, this.prevEnvs);
+				if (oldCode) {
+					await this.controller.updateBoxesNoRefresh(undefined, runResult, this.varnames, this.prevEnvs);
+				} else {
+					// TODO: change the SynthBox version to async as well
+					await this.box!.updateContent(content[2], false, this.varnames, this.prevEnvs);
+				}
 			}
 
 			this.boxEnvs = this.box!.getEnvs();

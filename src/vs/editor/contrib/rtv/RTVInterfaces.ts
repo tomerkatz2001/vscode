@@ -43,6 +43,11 @@ export interface IRTVDisplayBox {
 	 * the table and rebuilding it from scratch.
 	 */
 	updateContent(allEnvs?: any[], updateInPlace?: boolean, outputVars?: string[], prevEnvs?: Map<number, any>): void;
+
+	/**
+	 * Returns if the box is a SynthBox
+	 */
+	isSynthBox(): boolean;
 }
 
 export class BoxUpdateEvent {

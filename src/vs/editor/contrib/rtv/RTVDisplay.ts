@@ -52,11 +52,11 @@ function indent(s: string): number {
 	return s.length - s.trimLeft().length;
 }
 
-function isHtmlEscape(s: string): boolean {
+export function isHtmlEscape(s: string): boolean {
 	return s.startsWith('```html\n') && s.endsWith('```');
 }
 
-function removeHtmlEscape(s: string): string {
+export function removeHtmlEscape(s: string): string {
 	let x = '```html\n'.length;
 	let y = '```'.length;
 	return s.substring(x, s.length - y);
@@ -166,7 +166,7 @@ class DeltaVarSet {
 	}
 }
 
-class RTVLine {
+export class RTVLine {
 	private _div: HTMLDivElement;
 	constructor(
 		editor: ICodeEditor,
@@ -214,9 +214,13 @@ class RTVLine {
 		this._div.style.opacity = opacity.toString();
 	}
 
+	public getElement(): HTMLDivElement {
+		return this._div;
+	}
+
 }
 
-class TableElement {
+export class TableElement {
 	constructor(
 		public content: string,
 		public loopID: string,
@@ -431,7 +435,7 @@ class RTVRunButton {
 
 }
 
-class RTVDisplayBox implements IRTVDisplayBox {
+export class RTVDisplayBox implements IRTVDisplayBox {
 	private _box: HTMLDivElement;
 	private _line: RTVLine;
 	private _zoom: number = 1;
@@ -518,6 +522,10 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		return this._allEnvs;
 	}
 
+	public getLine(): RTVLine {
+		return this._line;
+	}
+
 	public getCellContent() {
 		return this._cellDictionary;
 	}
@@ -545,6 +553,18 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		// Set content to true. All other layout properties will be set during
 		// layout pass
 		this._hasContent = true;
+	}
+
+	public isSynthBox() {
+		return false;
+	}
+
+	public getModeService() {
+		return this._modeService;
+	}
+
+	public getOpenerService() {
+		return this._openerService;
 	}
 
 	public modVars() {
@@ -757,7 +777,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		return envs.filter((e, i, a) => focusCtrl.matches(e['$'], e['#']));
 	}
 
-	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer) {
+	private async addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer) {
 		if (this._controller.colBorder || elmt.leftBorder) {
 			cell.style.borderLeft = '1px solid #454545';
 		}
@@ -776,10 +796,11 @@ class RTVDisplayBox implements IRTVDisplayBox {
 			cell.align = 'center';
 		} */
 
-		this.addCellContent(cell, elmt, r);
+		await this.addCellContent(cell, elmt, r);
 	}
 
-	private addCellContent(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, editable: boolean = false) {
+	// [Lisa, 6/23] changed to async
+	private async addCellContent(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, editable: boolean = false) : Promise<void>{
 		let s = elmt.content;
 		let cellContent: HTMLElement;
 		if (s === '') {
@@ -814,16 +835,24 @@ class RTVDisplayBox implements IRTVDisplayBox {
 			}
 		}
 
-		// Remove any existing content
-		cell.childNodes.forEach((child) => cell.removeChild(child));
+		return new Promise((resolve, _reject) => {
+			// The 0 timeout seems odd, but it's really a thing in browsers.
+			// We need to let layout threads catch up after we updated content to
+			// get the correct sizes for boxes.
+			setTimeout(() => {
+				// Remove any existing content
+				cell.childNodes.forEach((child) => cell.removeChild(child));
 
-		if (editable) {
-			// make the cell editable if applicable
-			cellContent.contentEditable = 'true';
-		}
+				if (editable) {
+					// make the cell editable if applicable
+					cellContent.contentEditable = 'true';
+				}
 
-		// Add the new content
-		cell.appendChild(cellContent);
+				// Add the new content
+				cell.appendChild(cellContent);
+				resolve();
+			}, 0);
+		});
 	}
 
 	public getCellId(varname: string, idx: number): string {
@@ -834,40 +863,69 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		return document.getElementById(this.getCellId(varname, idx)) as HTMLTableCellElement;
 	}
 
-	private updateTableByRows(renderer: MarkdownRenderer, rows: TableElement[][]) {
+	// [Lisa, 6/23] rewritten to async
+	private async updateTableByRows(renderer: MarkdownRenderer, rows: TableElement[][]) {
 		for (let colIdx = 0; colIdx < rows[0].length; colIdx++) {
 			for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
 				let elmt = rows[rowIdx][colIdx];
 				// Get the cell
 				let cell = this.getCell(elmt.vname!, rowIdx - 1)!;
-				this.addCellContent(cell, elmt, renderer);
+				await this.addCellContent(cell, elmt, renderer);
 			}
 		}
 	}
 
-	private updateTableByCols(
+	// [Lisa, 6/23] rewritten to async
+	private async updateTableByCols(
 		renderer: MarkdownRenderer,
 		rows: TableElement[][]) {
-		rows.forEach((row: TableElement[], rowIdx: number) => {
-			if (rowIdx === 0) {
-				// Skip the header.
-				return;
-			}
-			row.forEach((elmt: TableElement, _colIdx: number) => {
-				// Get the cell
-				let cell = this.getCell(elmt.vname!, rowIdx - 1)!;
-				let editable;
-				if (cell !== null) {
-					this.addCellContent(cell, elmt, renderer, editable);
+
+			for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+				const row = rows[rowIdx];
+				if (rowIdx === 0) {
+					// Skip the header.
+					return;
 				}
-			});
-		});
+
+				for (let _colIdx = 0; _colIdx < row.length; _colIdx++) {
+					const elmt = row[_colIdx];
+					// Get the cell
+					let cell = this.getCell(elmt.vname!, rowIdx - 1)!;
+					let editable;
+					if (cell !== null) {
+						await this.addCellContent(cell, elmt, renderer, editable);
+					}
+				}
+			}
 	}
 
-	private populateTableByCols(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
-		rows.forEach((row: TableElement[], rowIdx: number) => {
+
+	// private updateTableByCols(
+	// 	renderer: MarkdownRenderer,
+	// 	rows: TableElement[][]) {
+	// 	rows.forEach((row: TableElement[], rowIdx: number) => {
+	// 		if (rowIdx === 0) {
+	// 			// Skip the header.
+	// 			return;
+	// 		}
+	// 		row.forEach((elmt: TableElement, _colIdx: number) => {
+	// 			// Get the cell
+	// 			let cell = this.getCell(elmt.vname!, rowIdx - 1)!;
+	// 			let editable;
+	// 			if (cell !== null) {
+	// 				this.addCellContent(cell, elmt, renderer, editable);
+	// 			}
+	// 		});
+	// 	});
+	// }
+
+	// [Lisa, 6/23] rewritten as async
+	private async populateTableByCols(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
+		for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+			const row: TableElement[] = rows[rowIdx];
 			let newRow = table.insertRow(-1);
-			row.forEach((elmt: TableElement, colIdx: number) => {
+			for (let colIdx = 0; colIdx < row.length; colIdx++) {
+				const elmt : TableElement = row[colIdx];
 				let newCell = newRow.insertCell(-1);
 
 				// Skip the headers
@@ -876,12 +934,30 @@ class RTVDisplayBox implements IRTVDisplayBox {
 					newCell.id = this.getCellId(elmt.vname!, rowIdx - 1);
 				}
 
-				this.addCellContentAndStyle(newCell, elmt, renderer);
-			});
-		});
+				await this.addCellContentAndStyle(newCell, elmt, renderer);
+			}
+		}
 	}
 
-	private populateTableByRows(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
+	// private populateTableByCols(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
+	// 	rows.forEach((row: TableElement[], rowIdx: number) => {
+	// 		let newRow = table.insertRow(-1);
+	// 		row.forEach((elmt: TableElement, colIdx: number) => {
+	// 			let newCell = newRow.insertCell(-1);
+
+	// 			// Skip the headers
+	// 			if (rowIdx > 0) {
+	// 				// The first row (header) has the varname!
+	// 				newCell.id = this.getCellId(elmt.vname!, rowIdx - 1);
+	// 			}
+
+	// 			this.addCellContentAndStyle(newCell, elmt, renderer);
+	// 		});
+	// 	});
+	// }
+
+	// [Lisa, 6/23] rewritten to async
+	private async populateTableByRows(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
 		let tableCellsByLoop = this._controller.tableCellsByLoop;
 		for (let colIdx = 0; colIdx < rows[0].length; colIdx++) {
 			let newRow = table.insertRow(-1);
@@ -895,7 +971,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 					newCell.id = this.getCellId(varname, rowIdx - 1);
 				}
 
-				this.addCellContentAndStyle(newCell, elmt, renderer);
+				await this.addCellContentAndStyle(newCell, elmt, renderer);
 				if (elmt.iter !== '') {
 					if (tableCellsByLoop[elmt.iter] === undefined) {
 						tableCellsByLoop[elmt.iter] = [];
@@ -1014,7 +1090,7 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		return false;
 	}
 
-	public updateContent(allEnvs?: any[], updateInPlace?: boolean, outputVars?: string[], prevEnvs?: Map<number, any>) {
+	public async updateContent(allEnvs?: any[], updateInPlace?: boolean, outputVars?: string[], prevEnvs?: Map<number, any>) {
 
 		// if computeEnvs returns false, there is no content to display
 		let done =this.computeEnvs(allEnvs);
@@ -1191,9 +1267,9 @@ class RTVDisplayBox implements IRTVDisplayBox {
 		if (updateInPlace && this.hasContent()) {
 			this._cellDictionary = {};
 			if (this._controller.byRowOrCol === RowColMode.ByRow) {
-				this.updateTableByRows(renderer, rows);
+				await this.updateTableByRows(renderer, rows);
 			} else {
-				this.updateTableByCols(renderer, rows);
+				await this.updateTableByCols(renderer, rows);
 			}
 		} else {
 			// Remove the contents
@@ -1209,9 +1285,9 @@ class RTVDisplayBox implements IRTVDisplayBox {
 
 			this._cellDictionary = {};
 			if (this._controller.byRowOrCol === RowColMode.ByRow) {
-				this.populateTableByRows(table, renderer, rows);
+				await this.populateTableByRows(table, renderer, rows);
 			} else {
-				this.populateTableByCols(table, renderer, rows);
+				await this.populateTableByCols(table, renderer, rows);
 			}
 			this._box.appendChild(table);
 
@@ -2291,7 +2367,7 @@ export class RTVController implements IRTVController {
 
 	public async updateContentAndLayout(outputVars?: string[], prevEnvs?: Map<number, any>, updateInPlace?: boolean): Promise<void> {
 		this.tableCellsByLoop = {};
-		this.updateContent(outputVars, prevEnvs, updateInPlace);
+		await this.updateContent(outputVars, prevEnvs, updateInPlace);
 		return new Promise((resolve, _reject) => {
 			// The 0 timeout seems odd, but it's really a thing in browsers.
 			// We need to let layout threads catch up after we updated content to
@@ -2304,17 +2380,31 @@ export class RTVController implements IRTVController {
 		});
 	}
 
-	private updateContent(outputVars?: string[], prevEnvs?: Map<number, any>, updateInPlace?: boolean) {
+
+	// [Lisa, 6/23] rewritten to async
+	private async updateContent(outputVars?: string[], prevEnvs?: Map<number, any>, updateInPlace?: boolean) {
 		this.padBoxArray();
 		if (this.loopFocusController !== null) {
 			// if we are focused on a loop, compute envs at the controlling box first
 			// so that it's loop iterations are set properly, so that getLoopID works
 			this.loopFocusController.controllingBox.computeEnvs();
 		}
-		this._boxes.forEach((b) => {
-			b.updateContent(undefined, updateInPlace, outputVars, prevEnvs);
-		});
+		await Promise.all(this._boxes.map(async (b) => {
+			await b.updateContent(undefined, updateInPlace, outputVars, prevEnvs);
+		}));
 	}
+
+	// private updateContent(outputVars?: string[], prevEnvs?: Map<number, any>, updateInPlace?: boolean) {
+	// 	this.padBoxArray();
+	// 	if (this.loopFocusController !== null) {
+	// 		// if we are focused on a loop, compute envs at the controlling box first
+	// 		// so that it's loop iterations are set properly, so that getLoopID works
+	// 		this.loopFocusController.controllingBox.computeEnvs();
+	// 	}
+	// 	this._boxes.forEach((b) => {
+	// 		b.updateContent(undefined, updateInPlace, outputVars, prevEnvs);
+	// 	});
+	// }
 
 	private updateLayoutHelper(toProcess: (b: RTVDisplayBox) => boolean, opacityMult: number) {
 		this.padBoxArray();
