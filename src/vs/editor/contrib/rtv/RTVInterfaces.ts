@@ -87,6 +87,7 @@ export interface IRTVController extends IEditorContribution {
 	// Misc.
 	viewMode: ViewMode;
 	changeViewMode(m: ViewMode): void;
+	resetChangedLinesWhenOutOfDate(): void;
 }
 
 /**

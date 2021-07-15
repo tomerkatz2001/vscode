@@ -219,12 +219,12 @@
 				"VSCODE_EXTHOST_WILL_SEND_SOCKET": null,
 				"VSCODE_SKIP_PRELAUNCH": "1",
 				"PYTHON3": "/Users/lisa/.pyenv/shims/python3",
-				"RUNPY": "/Users/lisa/Desktop/ucsd-pl/SnipPy-Plus/vscode/src/run.py",
-				"IMGSUM": "/Users/lisa/Desktop/ucsd-pl/SnipPy-Plus/vscode/src/img-summary.py",
-				"SNIPPY_UTILS": "/Users/lisa/Desktop/ucsd-pl/SnipPy-Plus/vscode/src/snippy.py",
+				"RUNPY": "/Users/lisa/Desktop/projects/SnipPyPlus/vscode/src/run.py",
+				"IMGSUM": "/Users/lisa/Desktop/projects/SnipPyPlus/vscode/src/img-summary.py",
+				"SNIPPY_UTILS": "/Users/lisa/Desktop/projects/SnipPyPlus/vscode/src/snippy.py",
 				"JAVA": "/usr/bin/java",
 				// "HEAP": "12G",
-				"SYNTH": "/Users/lisa/Desktop/ucsd-pl/SnipPy-Plus/synthesizer/target/synthesizer-0.3-SNAPSHOT-jar-with-dependencies.jar"
+				"SYNTH": "/Users/lisa/Desktop/projects/SnipPyPlus/synthesizer/target/synthesizer-0.3-SNAPSHOT-jar-with-dependencies.jar"
 			},
 			"cleanUp": "wholeBrowser",
 			"urlFilter": "*workbench.html*",

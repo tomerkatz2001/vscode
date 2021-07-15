@@ -313,7 +313,7 @@ export class RTVSynthDisplayBox implements IRTVDisplayBox{
 			// The 0 timeout seems odd, but it's really a thing in browsers.
 			// We need to let layout threads catch up after we updated content to
 			// get the correct sizes for boxes.
-			setTimeout(() => {
+			// setTimeout(() => {
 
 				// Remove any existing content
 				cell.childNodes.forEach((child) => cell.removeChild(child));
@@ -326,7 +326,7 @@ export class RTVSynthDisplayBox implements IRTVDisplayBox{
 				// Add the new content
 				cell.appendChild(cellContent);
 				resolve();
-			}, 0);
+			// }, 0);
 		});
 	}
 

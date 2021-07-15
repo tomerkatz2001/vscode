@@ -406,6 +406,7 @@ export class RTVSynth {
 			this.controller.changeViewMode(ViewMode.Full);
 			this.editor.focus();
 			this.controller.enable();
+			this.controller.resetChangedLinesWhenOutOfDate();
 			this.controller.updateBoxes();
 		}
 	}
