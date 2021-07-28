@@ -306,3 +306,28 @@ const pyodideWorkerInitListener = (event: MessageEvent) =>
 
 pyodideWorker.onerror = console.error;
 pyodideWorker.addEventListener('message', pyodideWorkerInitListener);
+
+// temporarily move the following three functions/class from RTVDisplay
+// to resolve a dependency cycle between RTVDisplay and RTVSynthDisplay: RTVDisplay (-> RTVSynth -> RTVSynthDisplay) -> RTVDisplay
+
+export function isHtmlEscape(s: string): boolean {
+	return s.startsWith('```html\n') && s.endsWith('```');
+}
+
+export function removeHtmlEscape(s: string): string {
+	let x = '```html\n'.length;
+	let y = '```'.length;
+	return s.substring(x, s.length - y);
+}
+
+export class TableElement {
+	constructor(
+		public content: string,
+		public loopID: string,
+		public iter: string,
+		public controllingLineNumber: number,
+		public vname?: string,
+		public env?: any,
+		public leftBorder?: boolean
+	) {}
+}
