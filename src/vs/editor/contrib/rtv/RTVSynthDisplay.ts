@@ -280,7 +280,8 @@ export class RTVSynthDisplayBox implements IRTVDisplayBox{
 			}
 	}
 
-	private async updateCell(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, editable: boolean = false) : Promise<void>{
+	// [Lisa, 7/14] remove async
+	private async updateCell(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, editable: boolean = false){
 
 		let s = elmt.content;
 		let cellContent: HTMLElement;
@@ -309,7 +310,20 @@ export class RTVSynthDisplayBox implements IRTVDisplayBox{
 			}
 		}
 
-		return new Promise((resolve, _reject) => {
+
+		// // Remove any existing content
+		// cell.childNodes.forEach((child) => cell.removeChild(child));
+
+		// if (editable) {
+		// 	// make the TableCellElement `td` editable if applicable
+		// 	cell.contentEditable = 'true';
+		// }
+
+		// // Add the new content
+		// cell.appendChild(cellContent);
+
+
+		return new Promise<void>((resolve, _reject) => {
 			// The 0 timeout seems odd, but it's really a thing in browsers.
 			// We need to let layout threads catch up after we updated content to
 			// get the correct sizes for boxes.

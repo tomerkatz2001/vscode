@@ -800,20 +800,19 @@ export class RTVSynth {
 		// First, update our envs
 		this.updateAllEnvs(content);
 
-		// TODO: flag for testing, remove later
-		let oldCode = false;
+
 		// only create new boxes when `updateBoxContent` is true
 		if (updateBoxContent) {
-			if (redraw) {
-				await this.box!.updateContent(content[2], false, this.varnames, this.prevEnvs);
-			} else {
-				if (oldCode) {
-					await this.controller.updateBoxesNoRefresh(undefined, runResult, this.varnames, this.prevEnvs);
-				} else {
-					// TODO: change the SynthBox version to async as well
-					await this.box!.updateContent(content[2], false, this.varnames, this.prevEnvs);
-				}
-			}
+			// boolean `redraw` is useless now, so merge the following conditional stmts
+			// if (redraw) {
+			// 	await this.box!.updateContent(content[2], false, this.varnames, this.prevEnvs);
+			// } else {
+			// 	// We should be updating the box content of a Synth Box here, so the line below is replaced by an `updateContent` call
+			// 	// await this.controller.updateBoxesNoRefresh(undefined, runResult, this.varnames, this.prevEnvs);
+			// 	await this.box!.updateContent(content[2], false, this.varnames, this.prevEnvs);
+			// }
+
+			await this.box!.updateContent(content[2], false, this.varnames, this.prevEnvs);
 
 			this.boxEnvs = this.box!.getEnvs();
 			this.setupTableCellContents();

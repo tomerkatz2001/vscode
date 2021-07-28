@@ -777,7 +777,31 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 		return envs.filter((e, i, a) => focusCtrl.matches(e['$'], e['#']));
 	}
 
-	private async addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer) {
+	// [Lisa, 6/23] changed to async
+	// private async addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer) {
+	// 	if (this._controller.colBorder || elmt.leftBorder) {
+	// 		cell.style.borderLeft = '1px solid #454545';
+	// 	}
+	// 	let padding = this._controller.cellPadding + 'px';
+	// 	cell.style.paddingLeft = padding;
+	// 	cell.style.paddingRight = padding;
+	// 	cell.style.paddingTop = '0';
+	// 	cell.style.paddingBottom = '0';
+	// 	cell.style.boxSizing = 'content-box';
+
+	// 	cell.align = 'center';
+
+	// 	/* if (this._controller.byRowOrCol === RowColMode.ByCol) {
+	// 		cell.align = 'center';
+	// 	} else {
+	// 		cell.align = 'center';
+	// 	} */
+
+	// 	await this.addCellContent(cell, elmt, r);
+	// }
+
+	// ORIGINAL
+	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer) {
 		if (this._controller.colBorder || elmt.leftBorder) {
 			cell.style.borderLeft = '1px solid #454545';
 		}
@@ -796,11 +820,67 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 			cell.align = 'center';
 		} */
 
-		await this.addCellContent(cell, elmt, r);
+		this.addCellContent(cell, elmt, r);
 	}
 
 	// [Lisa, 6/23] changed to async
-	private async addCellContent(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, editable: boolean = false) : Promise<void>{
+	// private async addCellContent(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, editable: boolean = false) : Promise<void>{
+	// 	let s = elmt.content;
+	// 	let cellContent: HTMLElement;
+	// 	if (s === '') {
+	// 		// Make empty strings into a space to make sure it's allocated a space
+	// 		// Otherwise, the divs in a row could become invisible if they are
+	// 		// all empty
+	// 		cellContent = document.createElement('div');
+	// 		cellContent.innerHTML = '&nbsp';
+	// 	}
+	// 	else if (isHtmlEscape(s)) {
+	// 		cellContent = document.createElement('div');
+	// 		cellContent.innerHTML = removeHtmlEscape(s);
+	// 	} else {
+	// 		let renderedText = r.render(new MarkdownString(s));
+	// 		cellContent = renderedText.element;
+	// 	}
+
+	// 	if (this._controller.mouseShortcuts) {
+	// 		if (elmt.iter === 'header') {
+	// 			cellContent = this.wrapAsVarMenuButton(cellContent, s.substr(2, s.length - 4));
+	// 		} else if (elmt.iter !== '') {
+	// 			cellContent = this.wrapAsLoopMenuButton(cellContent, elmt.iter);
+	// 		}
+	// 	}
+
+	// 	if (this.lineNumber === elmt.controllingLineNumber) {
+	// 		const name = elmt.vname!;
+	// 		if (name in this._cellDictionary) {
+	// 			this._cellDictionary[name].push(cellContent);
+	// 		} else {
+	// 			this._cellDictionary[name] = [cellContent];
+	// 		}
+	// 	}
+
+	// 	return new Promise((resolve, _reject) => {
+	// 		// The 0 timeout seems odd, but it's really a thing in browsers.
+	// 		// We need to let layout threads catch up after we updated content to
+	// 		// get the correct sizes for boxes.
+	// 		// setTimeout(() => {
+	// 			// Remove any existing content
+	// 			cell.childNodes.forEach((child) => cell.removeChild(child));
+
+	// 			if (editable) {
+	// 				// make the cell editable if applicable
+	// 				cellContent.contentEditable = 'true';
+	// 			}
+
+	// 			// Add the new content
+	// 			cell.appendChild(cellContent);
+	// 			resolve();
+	// 		// }, 0);
+	// 	});
+	// }
+
+	// ORIGINAL
+	private addCellContent(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, editable: boolean = false) {
 		let s = elmt.content;
 		let cellContent: HTMLElement;
 		if (s === '') {
@@ -835,24 +915,16 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 			}
 		}
 
-		return new Promise((resolve, _reject) => {
-			// The 0 timeout seems odd, but it's really a thing in browsers.
-			// We need to let layout threads catch up after we updated content to
-			// get the correct sizes for boxes.
-			// setTimeout(() => {
-				// Remove any existing content
-				cell.childNodes.forEach((child) => cell.removeChild(child));
+		// Remove any existing content
+		cell.childNodes.forEach((child) => cell.removeChild(child));
 
-				if (editable) {
-					// make the cell editable if applicable
-					cellContent.contentEditable = 'true';
-				}
+		if (editable) {
+			// make the cell editable if applicable
+			cellContent.contentEditable = 'true';
+		}
 
-				// Add the new content
-				cell.appendChild(cellContent);
-				resolve();
-			// }, 0);
-		});
+		// Add the new content
+		cell.appendChild(cellContent);
 	}
 
 	public getCellId(varname: string, idx: number): string {
@@ -864,85 +936,80 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 	}
 
 	// [Lisa, 6/23] rewritten to async
-	private async updateTableByRows(renderer: MarkdownRenderer, rows: TableElement[][]) {
+	// private async updateTableByRows(renderer: MarkdownRenderer, rows: TableElement[][]) {
+	// 	for (let colIdx = 0; colIdx < rows[0].length; colIdx++) {
+	// 		for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
+	// 			let elmt = rows[rowIdx][colIdx];
+	// 			// Get the cell
+	// 			let cell = this.getCell(elmt.vname!, rowIdx - 1)!;
+	// 			await this.addCellContent(cell, elmt, renderer);
+	// 		}
+	// 	}
+	// }
+
+	// ORIGINAL
+	private updateTableByRows(renderer: MarkdownRenderer, rows: TableElement[][]) {
 		for (let colIdx = 0; colIdx < rows[0].length; colIdx++) {
 			for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
 				let elmt = rows[rowIdx][colIdx];
 				// Get the cell
 				let cell = this.getCell(elmt.vname!, rowIdx - 1)!;
-				await this.addCellContent(cell, elmt, renderer);
+				this.addCellContent(cell, elmt, renderer);
 			}
 		}
 	}
 
 	// [Lisa, 6/23] rewritten to async
-	private async updateTableByCols(
-		renderer: MarkdownRenderer,
-		rows: TableElement[][]) {
-
-			for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-				const row = rows[rowIdx];
-				if (rowIdx === 0) {
-					// Skip the header.
-					return;
-				}
-
-				for (let _colIdx = 0; _colIdx < row.length; _colIdx++) {
-					const elmt = row[_colIdx];
-					// Get the cell
-					let cell = this.getCell(elmt.vname!, rowIdx - 1)!;
-					let editable;
-					if (cell !== null) {
-						await this.addCellContent(cell, elmt, renderer, editable);
-					}
-				}
-			}
-	}
-
-
-	// private updateTableByCols(
+	// private async updateTableByCols(
 	// 	renderer: MarkdownRenderer,
 	// 	rows: TableElement[][]) {
-	// 	rows.forEach((row: TableElement[], rowIdx: number) => {
-	// 		if (rowIdx === 0) {
-	// 			// Skip the header.
-	// 			return;
-	// 		}
-	// 		row.forEach((elmt: TableElement, _colIdx: number) => {
-	// 			// Get the cell
-	// 			let cell = this.getCell(elmt.vname!, rowIdx - 1)!;
-	// 			let editable;
-	// 			if (cell !== null) {
-	// 				this.addCellContent(cell, elmt, renderer, editable);
+
+	// 		for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+	// 			const row = rows[rowIdx];
+	// 			if (rowIdx === 0) {
+	// 				// Skip the header.
+	// 				return;
 	// 			}
-	// 		});
-	// 	});
+
+	// 			for (let _colIdx = 0; _colIdx < row.length; _colIdx++) {
+	// 				const elmt = row[_colIdx];
+	// 				// Get the cell
+	// 				let cell = this.getCell(elmt.vname!, rowIdx - 1)!;
+	// 				let editable;
+	// 				if (cell !== null) {
+	// 					await this.addCellContent(cell, elmt, renderer, editable);
+	// 				}
+	// 			}
+	// 		}
 	// }
 
-	// [Lisa, 6/23] rewritten as async
-	private async populateTableByCols(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
-		for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-			const row: TableElement[] = rows[rowIdx];
-			let newRow = table.insertRow(-1);
-			for (let colIdx = 0; colIdx < row.length; colIdx++) {
-				const elmt : TableElement = row[colIdx];
-				let newCell = newRow.insertCell(-1);
-
-				// Skip the headers
-				if (rowIdx > 0) {
-					// The first row (header) has the varname!
-					newCell.id = this.getCellId(elmt.vname!, rowIdx - 1);
-				}
-
-				await this.addCellContentAndStyle(newCell, elmt, renderer);
+	// ORIGINAL
+	private updateTableByCols(
+		renderer: MarkdownRenderer,
+		rows: TableElement[][]) {
+		rows.forEach((row: TableElement[], rowIdx: number) => {
+			if (rowIdx === 0) {
+				// Skip the header.
+				return;
 			}
-		}
+			row.forEach((elmt: TableElement, _colIdx: number) => {
+				// Get the cell
+				let cell = this.getCell(elmt.vname!, rowIdx - 1)!;
+				let editable;
+				if (cell !== null) {
+					this.addCellContent(cell, elmt, renderer, editable);
+				}
+			});
+		});
 	}
 
-	// private populateTableByCols(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
-	// 	rows.forEach((row: TableElement[], rowIdx: number) => {
+	// [Lisa, 6/23] rewritten as async
+	// private async populateTableByCols(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
+	// 	for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+	// 		const row: TableElement[] = rows[rowIdx];
 	// 		let newRow = table.insertRow(-1);
-	// 		row.forEach((elmt: TableElement, colIdx: number) => {
+	// 		for (let colIdx = 0; colIdx < row.length; colIdx++) {
+	// 			const elmt : TableElement = row[colIdx];
 	// 			let newCell = newRow.insertCell(-1);
 
 	// 			// Skip the headers
@@ -951,13 +1018,57 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 	// 				newCell.id = this.getCellId(elmt.vname!, rowIdx - 1);
 	// 			}
 
-	// 			this.addCellContentAndStyle(newCell, elmt, renderer);
-	// 		});
-	// 	});
+	// 			await this.addCellContentAndStyle(newCell, elmt, renderer);
+	// 		}
+	// 	}
 	// }
 
+	// ORIGINAL
+	private populateTableByCols(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
+		rows.forEach((row: TableElement[], rowIdx: number) => {
+			let newRow = table.insertRow(-1);
+			row.forEach((elmt: TableElement, colIdx: number) => {
+				let newCell = newRow.insertCell(-1);
+
+				// Skip the headers
+				if (rowIdx > 0) {
+					// The first row (header) has the varname!
+					newCell.id = this.getCellId(elmt.vname!, rowIdx - 1);
+				}
+
+				this.addCellContentAndStyle(newCell, elmt, renderer);
+			});
+		});
+	}
+
 	// [Lisa, 6/23] rewritten to async
-	private async populateTableByRows(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
+	// private async populateTableByRows(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
+	// 	let tableCellsByLoop = this._controller.tableCellsByLoop;
+	// 	for (let colIdx = 0; colIdx < rows[0].length; colIdx++) {
+	// 		let newRow = table.insertRow(-1);
+	// 		for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+	// 			let elmt = rows[rowIdx][colIdx];
+	// 			let newCell = newRow.insertCell(-1);
+
+	// 			if (rowIdx > 0 && colIdx > 0) {
+	// 				let varname = rows[0][colIdx].content;
+	// 				varname = varname.substr(2, varname.length - 4);
+	// 				newCell.id = this.getCellId(varname, rowIdx - 1);
+	// 			}
+
+	// 			await this.addCellContentAndStyle(newCell, elmt, renderer);
+	// 			if (elmt.iter !== '') {
+	// 				if (tableCellsByLoop[elmt.iter] === undefined) {
+	// 					tableCellsByLoop[elmt.iter] = [];
+	// 				}
+	// 				tableCellsByLoop[elmt.iter].push(newCell);
+	// 			}
+	// 		}
+	// 	}
+	// }
+
+	// ORIGINAL
+	private populateTableByRows(table: HTMLTableElement, renderer: MarkdownRenderer, rows: TableElement[][]) {
 		let tableCellsByLoop = this._controller.tableCellsByLoop;
 		for (let colIdx = 0; colIdx < rows[0].length; colIdx++) {
 			let newRow = table.insertRow(-1);
@@ -971,7 +1082,7 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 					newCell.id = this.getCellId(varname, rowIdx - 1);
 				}
 
-				await this.addCellContentAndStyle(newCell, elmt, renderer);
+				this.addCellContentAndStyle(newCell, elmt, renderer);
 				if (elmt.iter !== '') {
 					if (tableCellsByLoop[elmt.iter] === undefined) {
 						tableCellsByLoop[elmt.iter] = [];
@@ -1090,7 +1201,221 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 		return false;
 	}
 
-	public async updateContent(allEnvs?: any[], updateInPlace?: boolean, outputVars?: string[], prevEnvs?: Map<number, any>) {
+	// [Lisa, 6/23] changed to async
+	// public async updateContent(allEnvs?: any[], updateInPlace?: boolean, outputVars?: string[], prevEnvs?: Map<number, any>) {
+
+	// 	// if computeEnvs returns false, there is no content to display
+	// 	let done =this.computeEnvs(allEnvs);
+	// 	if (done) {
+	// 		return;
+	// 	}
+
+	// 	let outVarNames: string[];
+	// 	if (!outputVars) {
+	// 		outVarNames = [];
+	// 	} else {
+	// 		outVarNames = outputVars!;
+	// 	}
+
+	// 	let envs = this._allEnvs;
+
+	// 	// Compute set of vars in all envs
+	// 	this._allVars = new Set<string>();
+	// 	let added_loop_vars = false;
+	// 	let added_loop_iter = false;
+	// 	for (const env of envs) {
+	// 		// always add "#" first, if we haven't done it already
+	// 		if (!added_loop_iter && env['#'] !== '') {
+	// 			added_loop_iter = true;
+	// 			this._allVars.add('#');
+	// 		}
+
+	// 		// then add active loop variables, if we haven't done it already
+	// 		if (!added_loop_vars && env['$'] !== '') {
+	// 			added_loop_vars = true;
+	// 			// env['$'] is a comma-seperated list of line numbers
+	// 			let loop_ids: string[] = env['$'].split(',');
+	// 			loop_ids.forEach( loop_lineno => {
+	// 				let loop_vars = this._controller.writes[loop_lineno];
+	// 				if (loop_vars !== undefined) {
+	// 					loop_vars.forEach( v => {
+	// 						this._allVars.add(v);
+	// 					});
+	// 				}
+	// 			});
+	// 		}
+
+	// 		// then add everything else
+	// 		for (let key in env) {
+	// 			if (key !== 'prev_lineno' &&
+	// 				key !== 'next_lineno' &&
+	// 				key !== 'lineno' &&
+	// 				key !== 'time' &&
+	// 				key !== '$' &&
+	// 				key !== '#') {
+	// 				this._allVars.add(key);
+	// 			}
+	// 		}
+	// 	}
+
+	// 	let startingVars: Set<string>;
+	// 	if (this._controller.displayOnlyModifiedVars) {
+	// 		startingVars = this.modVars();
+	// 	} else {
+	// 		startingVars = this._allVars;
+	// 	}
+
+	// 	envs = this.filterLoops(envs);
+
+	// 	if (envs.length === 0) {
+	// 		this.setContentFalse();
+	// 		return;
+	// 	}
+
+	// 	let vars = this._deltaVarSet
+	// 		.applyTo(startingVars, this._allVars)
+
+	// 	if (prevEnvs) {
+	// 		const oldVars = vars;
+	// 		vars = new Set();
+	// 		for (const v of oldVars) {
+	// 			// remove any variables newly defined by the synthsizer
+	// 			let rs = true;
+	// 			if (outVarNames.includes(v)) {
+	// 				for (const env of envs) {
+	// 					const time = env['time'];
+	// 					const prev = prevEnvs.get(time);
+	// 					if (prev) {
+	// 						rs = v in prev;
+	// 					}
+	// 				}
+	// 			}
+
+	// 			if (rs) {
+	// 				vars.add(v);
+	// 			}
+	// 		}
+	// 	}
+
+	// 	this._displayedVars = vars;
+
+	// 	if (vars.size === 0) {
+	// 		this.setContentFalse();
+	// 		return;
+	// 	}
+
+	// 	// Generate header
+	// 	let rows: TableElement[][] = [];
+	// 	let header: TableElement[] = [];
+	// 	vars.forEach((v: string) => {
+	// 		let name = '**' + v + '**';
+	// 		if (outVarNames.includes(v)) {
+	// 			name = '```html\n<strong>' + v + '</strong><sub>in</sub>```'
+	// 		} else {
+	// 			name = '**' + v + '**'
+	// 		}
+	// 		header.push(new TableElement(name, 'header', 'header', 0, ''));
+	// 	});
+	// 	outVarNames.forEach((ov: string, i: number) => {
+	// 		header.push(new TableElement('```html\n<strong>' + ov + '</strong><sub>out</sub>```', 'header', 'header', 0, '', undefined, i === 0));
+	// 	});
+
+	// 	rows.push(header);
+
+	// 	// Generate all rows
+	// 	for (let i = 0; i < envs.length; i++) {
+	// 		let env = envs[i];
+	// 		let loopID = env['$'];
+	// 		let iter = env['#'];
+	// 		let row: TableElement[] = [];
+	// 		vars.forEach((v: string) => {
+	// 			let v_str: string;
+	// 			let varName = v;
+	// 			let varEnv = env;
+
+	// 			if (outVarNames.includes(v)) {
+	// 				varName += '_in';
+	// 				if (prevEnvs && prevEnvs.has(env['time'])) {
+	// 					varEnv = prevEnvs.get(env['time']);
+	// 				}
+	// 			}
+
+	// 			if (varEnv[v] === undefined) {
+	// 				v_str = '';
+	// 			} else if (isHtmlEscape(varEnv[v])) {
+	// 				v_str = varEnv[v];
+	// 			} else {
+	// 				v_str = '```python\n' + varEnv[v] + '\n```';
+	// 			}
+
+	// 			row.push(new TableElement(v_str, loopID, iter, this.lineNumber, varName, varEnv));
+	// 		});
+	// 		outVarNames.forEach((v: string, i: number) => {
+	// 			let v_str: string;
+	// 			if (env[v] === undefined) {
+	// 				v_str = '';
+	// 			} else if (isHtmlEscape(env[v])) {
+	// 				v_str = env[v];
+	// 			} else {
+	// 				v_str = '```python\n' + env[v] + '\n```';
+	// 			}
+	// 			row.push(new TableElement(v_str, loopID, iter, this.lineNumber, v, env, i === 0));
+	// 		});
+	// 		rows.push(row);
+	// 	}
+
+	// 	// Set border
+	// 	if (this._controller.boxBorder) {
+	// 		this._box.style.border = '';
+	// 	} else {
+	// 		this._box.style.border = '0';
+	// 	}
+
+	// 	const renderer = new MarkdownRenderer(
+	// 		{ 'editor': this._editor },
+	// 		this._modeService,
+	// 		this._openerService);
+
+	// 	if (updateInPlace && this.hasContent()) {
+	// 		this._cellDictionary = {};
+	// 		if (this._controller.byRowOrCol === RowColMode.ByRow) {
+	// 			await this.updateTableByRows(renderer, rows);
+	// 		} else {
+	// 			await this.updateTableByCols(renderer, rows);
+	// 		}
+	// 	} else {
+	// 		// Remove the contents
+	// 		this._box.textContent = '';
+
+	// 		// Create html table from rows
+	// 		let table = document.createElement('table');
+	// 		table.style.borderSpacing = '0px';
+
+	// 		// TODO Delete me: We do this for the whole box now.
+	// 		// table.style.paddingLeft = '13px';
+	// 		// table.style.paddingRight = '13px';
+
+	// 		this._cellDictionary = {};
+	// 		if (this._controller.byRowOrCol === RowColMode.ByRow) {
+	// 			await this.populateTableByRows(table, renderer, rows);
+	// 		} else {
+	// 			await this.populateTableByCols(table, renderer, rows);
+	// 		}
+	// 		this._box.appendChild(table);
+
+	// 		this.addStalenessIndicator();
+
+	// 		//this.addConfigButton();
+	// 		if (this._controller.mouseShortcuts) {
+	// 			this.addPlusButton();
+	// 		}
+	// 	}
+
+	// }
+
+
+	// ORIGINAL
+	public updateContent(allEnvs?: any[], updateInPlace?: boolean, outputVars?: string[], prevEnvs?: Map<number, any>) {
 
 		// if computeEnvs returns false, there is no content to display
 		let done =this.computeEnvs(allEnvs);
@@ -1267,9 +1592,9 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 		if (updateInPlace && this.hasContent()) {
 			this._cellDictionary = {};
 			if (this._controller.byRowOrCol === RowColMode.ByRow) {
-				await this.updateTableByRows(renderer, rows);
+				this.updateTableByRows(renderer, rows);
 			} else {
-				await this.updateTableByCols(renderer, rows);
+				this.updateTableByCols(renderer, rows);
 			}
 		} else {
 			// Remove the contents
@@ -1285,9 +1610,9 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 
 			this._cellDictionary = {};
 			if (this._controller.byRowOrCol === RowColMode.ByRow) {
-				await this.populateTableByRows(table, renderer, rows);
+				this.populateTableByRows(table, renderer, rows);
 			} else {
-				await this.populateTableByCols(table, renderer, rows);
+				this.populateTableByCols(table, renderer, rows);
 			}
 			this._box.appendChild(table);
 
@@ -2388,29 +2713,30 @@ export class RTVController implements IRTVController {
 
 
 	// [Lisa, 6/23] rewritten to async
-	private async updateContent(outputVars?: string[], prevEnvs?: Map<number, any>, updateInPlace?: boolean) {
-		this.padBoxArray();
-		if (this.loopFocusController !== null) {
-			// if we are focused on a loop, compute envs at the controlling box first
-			// so that it's loop iterations are set properly, so that getLoopID works
-			this.loopFocusController.controllingBox.computeEnvs();
-		}
-		await Promise.all(this._boxes.map(async (b) => {
-			await b.updateContent(undefined, updateInPlace, outputVars, prevEnvs);
-		}));
-	}
-
-	// private updateContent(outputVars?: string[], prevEnvs?: Map<number, any>, updateInPlace?: boolean) {
+	// private async updateContent(outputVars?: string[], prevEnvs?: Map<number, any>, updateInPlace?: boolean) {
 	// 	this.padBoxArray();
 	// 	if (this.loopFocusController !== null) {
 	// 		// if we are focused on a loop, compute envs at the controlling box first
 	// 		// so that it's loop iterations are set properly, so that getLoopID works
 	// 		this.loopFocusController.controllingBox.computeEnvs();
 	// 	}
-	// 	this._boxes.forEach((b) => {
-	// 		b.updateContent(undefined, updateInPlace, outputVars, prevEnvs);
-	// 	});
+	// 	await Promise.all(this._boxes.map(async (b) => {
+	// 		await b.updateContent(undefined, updateInPlace, outputVars, prevEnvs);
+	// 	}));
 	// }
+
+	// ORIGINAL
+	private updateContent(outputVars?: string[], prevEnvs?: Map<number, any>, updateInPlace?: boolean) {
+		this.padBoxArray();
+		if (this.loopFocusController !== null) {
+			// if we are focused on a loop, compute envs at the controlling box first
+			// so that it's loop iterations are set properly, so that getLoopID works
+			this.loopFocusController.controllingBox.computeEnvs();
+		}
+		this._boxes.forEach((b) => {
+			b.updateContent(undefined, updateInPlace, outputVars, prevEnvs);
+		});
+	}
 
 	private updateLayoutHelper(toProcess: (b: RTVDisplayBox) => boolean, opacityMult: number) {
 		this.padBoxArray();
