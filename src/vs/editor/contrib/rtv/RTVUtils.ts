@@ -10,7 +10,7 @@ import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 // import { runAtThisOrScheduleAtNextAnimationFrame } from 'vs/base/browser/dom';
 // import { MainThreadFileSystem } from 'vs/workbench/api/browser/mainThreadFileSystem';
 
-// Helper functions
+// Helper functions / class
 export function getOSEnvVariable(v: string): string {
 	let result = process.env[v];
 	if (result === undefined) {
@@ -18,6 +18,32 @@ export function getOSEnvVariable(v: string): string {
 	}
 	return result;
 }
+
+// temporarily move the following three functions/class from RTVDisplay
+// to resolve a dependency cycle between RTVDisplay and RTVSynthDisplay: RTVDisplay (-> RTVSynth -> RTVSynthDisplay) -> RTVDisplay
+
+export function isHtmlEscape(s: string): boolean {
+	return s.startsWith('```html\n') && s.endsWith('```');
+}
+
+export function removeHtmlEscape(s: string): string {
+	let x = '```html\n'.length;
+	let y = '```'.length;
+	return s.substring(x, s.length - y);
+}
+
+export class TableElement {
+	constructor(
+		public content: string,
+		public loopID: string,
+		public iter: string,
+		public controllingLineNumber: number,
+		public vname?: string,
+		public env?: any,
+		public leftBorder?: boolean
+	) {}
+}
+
 
 const PY3 = getOSEnvVariable('PYTHON3');
 const RUNPY = getOSEnvVariable('RUNPY');

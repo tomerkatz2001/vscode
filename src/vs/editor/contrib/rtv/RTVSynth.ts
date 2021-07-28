@@ -328,7 +328,7 @@ export class RTVSynth {
 			return;
 		}
 		let oldBox = this.box as RTVDisplayBox;
-		this.box = new RTVSynthDisplayBox(this.editor, oldBox, oldBox.getLine());
+		this.box = new RTVSynthDisplayBox(this.editor, oldBox.getLine().getElement(), oldBox.getElement(), oldBox.getModeService(), oldBox.getOpenerService(), oldBox.getEnvs(), oldBox.allVars(), oldBox.lineNumber);
 
 
 		// Get all cell contents for the variable

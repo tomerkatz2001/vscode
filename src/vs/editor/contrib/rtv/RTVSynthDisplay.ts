@@ -2,7 +2,7 @@ import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { MarkdownRenderer } from 'vs/editor/browser/core/markdownRenderer';
 import { MarkdownString } from 'vs/base/common/htmlContent';
 import { IRTVDisplayBox } from 'vs/editor/contrib/rtv/RTVInterfaces';
-import { TableElement, RTVDisplayBox, RTVLine, isHtmlEscape, removeHtmlEscape } from 'vs/editor/contrib/rtv/RTVDisplay';
+import { TableElement, isHtmlEscape, removeHtmlEscape } from 'vs/editor/contrib/rtv/RTVUtils';
 import { IModeService } from 'vs/editor/common/services/modeService';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
 
@@ -15,19 +15,22 @@ export class RTVSynthDisplayBox implements IRTVDisplayBox{
 	private _openerService: IOpenerService;
 	// private _deltaVarSet: DeltaVarSet;
 	private _cellDictionary: { [k: string]: [HTMLElement] } = {}; // each HTMLElement is a `td` TableCellElement
-	public lineNumber: number
 	constructor(
 		private readonly _editor: ICodeEditor,
-		readonly originalBox: RTVDisplayBox,
-		readonly originalLine: RTVLine
+		readonly originalLineNode: HTMLElement,
+		readonly originalBoxNode: HTMLElement,
+		readonly modeService: IModeService,
+		readonly openerService: IOpenerService,
+		readonly envs: any[],
+		readonly vars: Set<string>,
+		readonly lineNumber: number
 	) {
 		let editor_div = this._editor.getDomNode();
 		if (editor_div === null) {
 			throw new Error('Cannot find Monaco Editor');
 		}
-		this.lineNumber = originalBox.lineNumber;
-		this._box = originalBox.getElement().cloneNode(true) as HTMLDivElement;
-		this._line = originalLine.getElement().cloneNode(true) as HTMLDivElement;
+		this._box = originalBoxNode.cloneNode(true) as HTMLDivElement;
+		this._line = originalLineNode.cloneNode(true) as HTMLDivElement;
 
 		for (
 			let elm: Node = this._box;
@@ -55,10 +58,10 @@ export class RTVSynthDisplayBox implements IRTVDisplayBox{
 			}
 		}
 
-		this._allEnvs = originalBox.getEnvs();
-		this._allVars = originalBox.allVars();
-		this._modeService = originalBox.getModeService();
-		this._openerService = originalBox.getOpenerService();
+		this._allEnvs = envs;
+		this._allVars = vars;
+		this._modeService = modeService;
+		this._openerService = openerService;
 		// TODO: change cell ids in cellDictionary accordingly `line-var-idx-synth`
 		this._box.id = 'rtv-synth-box';
 		this._box.style.opacity = '1';
