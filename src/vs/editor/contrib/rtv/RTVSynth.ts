@@ -403,11 +403,11 @@ export class RTVSynth {
 			this.editorState = undefined;
 
 			// Then reset the Projection Boxes
-			this.controller.changeViewMode(ViewMode.Full);
-			this.editor.focus();
 			this.controller.enable();
 			this.controller.resetChangedLinesWhenOutOfDate();
 			this.controller.updateBoxes();
+			this.controller.changeViewMode(ViewMode.Full);
+			this.editor.focus();
 		}
 	}
 
@@ -664,9 +664,10 @@ export class RTVSynth {
 					dest = dest.firstChild as HTMLElement;
 				}
 
-				// [Lisa, 6/23] will this ever get executed??
+				// the following conditional is buggy for negative numbers
 				if (dest.childNodes.length > 1) {
-					offset = dest.childNodes.length - 1;
+					let isNegNum = dest.firstChild!.textContent == '-';
+					offset = isNegNum ? cell.innerText.length : dest.childNodes.length - 1;
 				// } else if (!offset) {
 				} else {
 					// We need to carefully pick the offset based on the type
@@ -1012,7 +1013,7 @@ export class RTVSynth {
 							// 		// selection.removeAllRanges();
 							// 		// selection.addRange(range);
 							// 	}
-							this.synthTimer.run(500, async () => {
+							this.synthTimer.run(1000, async () => {
 								// the following pasted from snippy-plus-temp
 
 								// do not create a new box when synth succeeds

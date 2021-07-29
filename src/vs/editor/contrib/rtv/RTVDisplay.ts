@@ -2283,7 +2283,7 @@ export class RTVController implements IRTVController {
 
 	public async updateContentAndLayout(outputVars?: string[], prevEnvs?: Map<number, any>, updateInPlace?: boolean): Promise<void> {
 		this.tableCellsByLoop = {};
-		await this.updateContent(outputVars, prevEnvs, updateInPlace);
+		this.updateContent(outputVars, prevEnvs, updateInPlace);
 		return new Promise((resolve, _reject) => {
 			// The 0 timeout seems odd, but it's really a thing in browsers.
 			// We need to let layout threads catch up after we updated content to
