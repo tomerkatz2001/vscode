@@ -6,7 +6,7 @@ import { Utils, RunResult, SynthResult, SynthProblem, IRTVLogger, IRTVController
 import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { RTVDisplayBox } from 'vs/editor/contrib/rtv/RTVDisplay';
-import { RTVSynthDisplayBox } from 'vs/editor/contrib/rtv/RTVSynthDisplay'
+import { RTVSynthDisplayBox } from 'vs/editor/contrib/rtv/RTVSynthDisplayOriginal'
 
 // const SYNTHESIZING_MESSAGE: string = '# Please wait. Synthesizing...';
 // const SPEC_AWAIT_INDICATOR: string = '??';

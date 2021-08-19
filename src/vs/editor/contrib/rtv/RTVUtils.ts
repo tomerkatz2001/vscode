@@ -40,7 +40,8 @@ export class TableElement {
 		public controllingLineNumber: number,
 		public vname?: string,
 		public env?: any,
-		public leftBorder?: boolean
+		public leftBorder?: boolean,
+		public editable?: boolean
 	) {}
 }
 

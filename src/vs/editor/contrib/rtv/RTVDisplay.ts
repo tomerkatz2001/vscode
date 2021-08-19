@@ -45,7 +45,8 @@ import { DelayedRunAtMostOne, RunProcess, RunResult, IRTVController, IRTVLogger,
 import { getUtils, isHtmlEscape, removeHtmlEscape, TableElement } from 'vs/editor/contrib/rtv/RTVUtils';
 import { Button } from 'vs/base/browser/ui/button/button';
 import { attachButtonStyler } from 'vs/platform/theme/common/styler';
-import { RTVSynth } from './RTVSynth';
+// import { RTVSynth } from './RTVSynth';
+import { RTVSynthController } from 'vs/editor/contrib/rtv/RTVSynthController';
 import { Emitter, Event } from 'vs/base/common/event';
 
 function indent(s: string): number {
@@ -1665,7 +1666,8 @@ export class RTVController implements IRTVController {
 	private _showErrorDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 	private _outputBox: RTVOutputDisplayBox| null = null;
 	private _runButton: RTVRunButton | null = null;
-	private _synthesis: RTVSynth;
+	// private _synthesis: RTVSynth;
+	private _synthesis: RTVSynthController;
 	private enabled: boolean = true;
 
 	get onUpdateEvent(): Event<BoxUpdateEvent> {
@@ -1697,7 +1699,8 @@ export class RTVController implements IRTVController {
 		this._editor.onKeyDown((e) => { this.onKeyDown(e); });
 		//this._modelService.onModelModeChanged((e) => { console.log('BBBB');  });
 
-		this._synthesis = new RTVSynth(_editor, this, this._themeService);
+		// this._synthesis = new RTVSynth(_editor, this, this._themeService);
+		this._synthesis = new RTVSynthController(_editor, this, this._themeService);
 		this.logger = this.utils.logger(this._editor);
 
 		this.updateMaxPixelCol();
