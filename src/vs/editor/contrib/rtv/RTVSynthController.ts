@@ -2,7 +2,7 @@ import { Range } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { getUtils } from 'vs/editor/contrib/rtv/RTVUtils';
-import { Utils, RunResult, SynthResult, SynthProblem, IRTVLogger, IRTVController, ViewMode, SynthProcess, DelayedRunAtMostOne } from './RTVInterfaces';
+import { Utils, RunResult, SynthResult, SynthProblem, IRTVLogger, IRTVController, ViewMode, SynthProcess } from './RTVInterfaces';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { RTVDisplayBox } from 'vs/editor/contrib/rtv/RTVDisplay';
 import { RTVSynthDisplayBox } from 'vs/editor/contrib/rtv/RTVSynthDisplay';
@@ -103,17 +103,10 @@ export class RTVSynthController {
 	private _synthBox?: RTVSynthDisplayBox = undefined;
 	private logger: IRTVLogger;
 	enabled: boolean;
-	includedTimes: Set<number> = new Set();
-	// allEnvs?: any[] = undefined;
-	prevEnvs?: Map<number, any>;
-	boxEnvs?: any[] = undefined;
-	varnames?: string[] = undefined;
-	row?: number = undefined;
+	// varnames?: string[] = undefined;
 	lineno?: number = undefined;
 	utils: Utils;
 	process: SynthProcess;
-	rowsValid?: boolean[];
-	synthTimer: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 	editorState?: EditorStateManager = undefined;
 	// errorBox: ErrorHoverManager;
 
@@ -126,14 +119,6 @@ export class RTVSynthController {
 		this.logger = this.utils.logger(editor);
 		this.process = this.utils.synthesizer();
 		this.enabled = false;
-		this._synthService = new RTVSynthService();
-		// this._synthBox = new RTVSynthDisplayBox(editor);
-
-		// explicit the binding with the service and the view
-		// this.synthDisplay.bindKeystroke(this.handleKeystroke);
-		// shift + enter only involves the front end behavior\
-		// controller runs run.py to get results, service update box content ds on the back end
-		this._synthService.bindBoxContentChanged(this.onBoxContentChanged);
 
 		// In case the user click's out of the boxes.
 		editor.onDidFocusEditorText(() => {
@@ -173,12 +158,35 @@ export class RTVSynthController {
 		return this.enabled;
 	}
 
-	public isSynthesizing() {
-		return this.editorState!.state === EditorState.Synthesizing;
-	}
-
 	onBoxContentChanged = (data: {[k: string]:[v: any]}) => {
 		this._synthBox!.updateBoxContent(data);
+	}
+
+	handleRequestSynth = async () => {
+		let error = await this.synthesizeFragment();
+		return error;
+	}
+
+	handleExitSynth = (accept: boolean = false) => {
+		if (accept && (this.editorState!.state === EditorState.HasProgram) || !accept) {
+			this.stopSynthesis();
+		} else {
+			this._synthBox!.addError("No program available to accept. Please use ESC to exit synthesis.");
+		}
+	}
+
+	handleValidateInput = async (input: string) => {
+		let error = await this.utils.validate(input);
+		return error;
+	}
+
+	handleUpdateBoxContent = async (updateSynthBox: boolean, includedTimes: Set<number>) => {
+		let error = await this.updateBoxContent(updateSynthBox, includedTimes);
+		return error;
+	}
+
+	handleSynthState = () => {
+		return this.editorState!.state === EditorState.Synthesizing;
 	}
 
 
@@ -225,11 +233,9 @@ export class RTVSynthController {
 		this.RTVController.changeViewMode(ViewMode.Stealth);
 
 		this.lineno = lineno;
-		this.varnames = varnames;
-		this.row = 0;
 		this.editorState = new EditorStateManager(l_operand, this.lineno, this.editor, this.RTVController);
 
-		this.logger.synthStart(this.varnames, this.lineno);
+		this.logger.synthStart(varnames, this.lineno);
 
 		r_operand = r_operand.substr(0, r_operand.length - 2).trim();
 
@@ -239,7 +245,7 @@ export class RTVSynthController {
 
 		let range = new Range(lineno, startCol, lineno, endCol);
 
-		let defaultValue = await this.defaultValue(r_operand);
+		let defaultValue = await this.defaultValue(r_operand, varnames);
 		let txt: string;
 
 
@@ -256,15 +262,25 @@ export class RTVSynthController {
 
 		// Update the projection box with the new value
 		const runResults: any = await this.RTVController.updateBoxes();
-		let error = runResults? runResults[1] : undefined;
-		if (error) {
-			// TODO: show that updateBoxes failed with the default value
-			this.stopSynthesis();
-			return;
-		}
+		// TODO
+		// let error = runResults? runResults[1] : undefined;
+		// if (error) {
+		// 	// TODO: show that updateBoxes failed with the default value
+		// 	this.stopSynthesis();
+		// 	return;
+		// }
 
 		// Keep the view mode up to date.
 		this.RTVController.disable();
+
+		this._synthService = new RTVSynthService(varnames, lineno);
+		// this._synthBox = new RTVSynthDisplayBox(editor);
+
+		// explicit the binding with the service and the view
+		// this.synthDisplay.bindKeystroke(this.handleKeystroke);
+		// shift + enter only involves the front end behavior\
+		// controller runs run.py to get results, service update box content ds on the back end
+		this._synthService.bindBoxContentChanged(this.onBoxContentChanged);
 
 		let oldBox : RTVDisplayBox = this.RTVController.getBox(lineno) as RTVDisplayBox;
 		this._synthBox = new RTVSynthDisplayBox(
@@ -274,22 +290,24 @@ export class RTVSynthController {
 							oldBox.getModeService(),
 							oldBox.getOpenerService(),
 							this.lineno!,
-							this.varnames!,
+							varnames!,
 							this._themeService);
-		this._synthBox.bindSynth(this.synthesizeFragment);
-		this._synthBox.bindExitSynth(this.exitSynthesis);
-		this._synthBox.bindValidateInput(this.validateInput);
-		this._synthBox.bindUpdateBoxContent(this.updateBoxContent);
-		this._synthBox.bindSynthState(this.isSynthesizing);
+
+		this._synthBox.bindSynth(this.handleRequestSynth);
+		this._synthBox.bindExitSynth(this.handleExitSynth);
+		this._synthBox.bindValidateInput(this.handleValidateInput);
+		this._synthBox.bindUpdateBoxContent(this.handleUpdateBoxContent);
+		this._synthBox.bindSynthState(this.handleSynthState);
+		this._synthBox.show();
 
 		// TODO??
 		// this.boxEnvs = this.box.getEnvs();
 
 		// TODO Cleanup all available envs
-		this._synthService!.updateAllEnvs(runResults); // allEnvs updated by synthService
+		this._synthService!.updateAllEnvs(runResults, undefined); // allEnvs updated by synthService
 
 		// Now that we have all the info, update the box again!
-		error = await this.updateBoxContent(true); // service updates the envs, display updates cell contents
+		let error = await this.updateBoxContent(true, undefined); // service updates the envs, display updates cell contents
 
 		// TODO: let SynthDisplay handle this
 		if (error) {
@@ -323,11 +341,7 @@ export class RTVSynthController {
 			this.enabled = false;
 			this.process.stop();
 
-			// Clear the state
-			this.includedTimes = new Set();
-
 			this.lineno = undefined;
-			this.varnames = [];
 			this._synthService = undefined;
 			this._synthBox?.destroy();
 			this._synthBox = undefined;
@@ -347,14 +361,6 @@ export class RTVSynthController {
 	// UI requests handlers
 	// -----------------------------------------------------------------------------------
 
-	public exitSynthesis(accept: boolean = false) {
-		if (accept && (this.editorState!.state === EditorState.HasProgram) || !accept) {
-			this.stopSynthesis();
-		} else {
-			this._synthBox!.addError("No program available to accept. Please use ESC to exit synthesis.");
-		}
-	}
-
 
 	public async validateInput(
 		env: any,
@@ -367,13 +373,15 @@ export class RTVSynthController {
 		return false;
 	}
 
-	public async synthesizeFragment(cell: HTMLTableCellElement): Promise<boolean> {
+	public async synthesizeFragment(cell?: HTMLElement): Promise<boolean> {
 		// Build and write the synth_example.json file content
 		let envs = [];
 		let optEnvs = [];
 
 		let boxEnvs = this._synthService!.boxEnvs;
 		let includedTimes = this._synthService!.includedTimes;
+		let prevEnvs = this._synthService!.prevEnvs;
+		let varnames = this._synthService!.varnames;
 
 		for (const env of boxEnvs) {
 			const time = env['time'];
@@ -386,11 +394,11 @@ export class RTVSynthController {
 		}
 
 		let previousEnvs: { [t: string]: any } = {};
-		for (const [time, env] of this.prevEnvs!) {
+		for (const [time, env] of prevEnvs!) {
 			previousEnvs[time.toString()] = env;
 		}
 
-		let problem = new SynthProblem(this.varnames!, previousEnvs, envs, optEnvs);
+		let problem = new SynthProblem(varnames!, previousEnvs, envs, optEnvs);
 		this.logger.synthSubmit(problem);
 		this.editorState!.synthesizing();
 
@@ -412,10 +420,11 @@ export class RTVSynthController {
 			} else {
 				this.editorState!.failed();
 				if (rs.result) {
+					this._synthBox!.addError(rs.result, undefined, 500);
 					// We have an error message!
-					if (cell) {
-						this._synthBox!.addError(rs.result, cell, 500);
-					}
+					// if (cell) {
+					// 	this._synthBox!.addError(rs.result, cell, 500);
+					// }
 				}
 			}
 		} catch (err) {
@@ -435,7 +444,7 @@ export class RTVSynthController {
 	// -----------------------------------------------------------------------------------
 
 
-	private async defaultValue(currentVal: string): Promise<string> {
+	private async defaultValue(currentVal: string, varnames: string[]): Promise<string> {
 		// If the user specified a default value, use that.
 		if (currentVal !== '') {
 			return currentVal;
@@ -475,7 +484,7 @@ export class RTVSynthController {
 			earliestTime--;
 		}
 
-		for (const varname of this.varnames!) {
+		for (const varname of varnames) {
 			let val = '0';
 
 			for (let line in this.RTVController.envs) {
@@ -511,12 +520,7 @@ export class RTVSynthController {
 	}
 
 	private async runProgram(): Promise<[string, string, any?]> {
-		let values: any = {};
-		for (let env of this.boxEnvs!) {
-			if (this.includedTimes.has(env['time'])) {
-				values[`(${env['lineno']},${env['time']})`] = env;
-			}
-		}
+		let values = this._synthService!.getValues();
 
 		const runResults: RunResult = await this.utils.runProgram(
 			this.RTVController.getProgram(),
@@ -569,7 +573,7 @@ export class RTVSynthController {
 		if (updateSynthBox) {
 			// the call below = updateBoxEnvs + updateRowsValid
 			// further calls `updateBoxContent` on `synthDisplay`
-			this._synthService!.updateBoxContent(content[2], this.varnames, this.prevEnvs);
+			this._synthService!.updateBoxContent(content[2]);
 		}
 
 		return undefined;

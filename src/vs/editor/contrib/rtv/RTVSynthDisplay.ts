@@ -118,7 +118,6 @@ export class RTVSynthDisplayBox {
 	private _synthTimer: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 	private _firstEditableCellId?: string = undefined;
 
-	ksHandler?: Function;
 	exitSynthHandler?: Function;
 	requestValidateInput?: Function;
 	requestSynth?: Function;
@@ -397,10 +396,15 @@ export class RTVSynthDisplayBox {
 		this._cursorPos.startPos = range.startOffset ?? undefined;
 		this._cursorPos.endPos = range.endOffset ?? undefined;
 		this._cursorPos.collapsed = range.collapsed ?? undefined;
+		const row = node.id!.split('-')[2];
+		this._currRow = +row;
 	}
 
 	// TODO
 	private addListeners(cell: HTMLElement) {
+		const [varname, idx] = cell.id.split('-').slice(1);
+		const env = this._boxEnvs![+idx];
+
 		cell.onclick = (e: MouseEvent) => {
 			const selection = window.getSelection()!;
 			const range = selection.getRangeAt(0)!;
@@ -408,8 +412,7 @@ export class RTVSynthDisplayBox {
 		}
 
 		cell.onblur = () => {
-			// TODO
-			//this.toggleIfChanged();
+			this.toggleIfChanged(env, varname, cell);
 		}
 
 		cell.onkeydown = (e: KeyboardEvent) => {
@@ -419,11 +422,6 @@ export class RTVSynthDisplayBox {
 			const range = selection.getRangeAt(0)!;
 
 			this.updateCursorPos(range, cell);
-
-			const cellInfo = cell.id.split('-');
-			const varname = cellInfo[1];
-			const idx = cellInfo[2];
-			const env = this._boxEnvs![+idx];
 
 
 			switch(e.key) {
@@ -445,28 +443,30 @@ export class RTVSynthDisplayBox {
 								await this.synthesizeFragment(cell);
 							}
 						})
+					} else {
+						// without Shift: accept and exit
+						this.exitSynthHandler!(true);
 					}
-					// without Shift: accept and exit
-					this.exitSynthHandler!(true);
 					break;
 
-				case 'Tab':
-					/*
-					0. check if a synth update is about to return. if so, wait??
-					1. update cursor position
-					2. record tmpVal of the node before move
-					3. ask controller to check if tmpVal is valid
-					4. if so, highlight current row and move cursor to next cell available and select the entire node
-					6. if not, add an error message
-					7. move cursor back to the recorded position
-					*/
-					while (this.synthesizing!()) {
-						// do nothing
-					}
-					e.preventDefault();
-					//await
-					this.focusNextRow(cell, e.shiftKey);
-					break;
+				// case 'Tab':
+				// 	/*
+				// 	0. check if a synth update is about to return. if so, wait??
+				// 	1. update cursor position
+				// 	2. record tmpVal of the node before move
+				// 	3. ask controller to check if tmpVal is valid
+				// 	4. if so, highlight current row and move cursor to next cell available and select the entire node
+				// 	6. if not, add an error message
+				// 	7. move cursor back to the recorded position
+				// 	*/
+				// 	let a = this.synthesizing!();
+				// 	while (a) {
+				// 		// do nothing
+				// 	}
+				// 	// e.preventDefault();
+				// 	//await
+				// 	this.focusNextRow(cell, e.shiftKey);
+				// 	break;
 
 				case 'Escape':
 					// stop synth
@@ -474,22 +474,28 @@ export class RTVSynthDisplayBox {
 					e.preventDefault();
 					this.exitSynthHandler!();
 					break;
+
 				default:
+					if (e.key === 'Tab') {
+						e.preventDefault();
+						this.focusNextRow(cell, e.shiftKey);
+					}
 					this._synthTimer.run(1000, async () => {
 						if (env[varname] !== cell.innerText) {
 							const validInput = await this.toggleElement(env, cell, varname, true, false);
 
 							if (validInput) {
 								// let cell: HTMLTableCellElement = this.findCell(cell)!;
-								await this.synthesizeFragment(cell);
-
+								let tabKey = e.key === 'Tab';
+								await this.synthesizeFragment(cell, tabKey);
 							}
+
 						}
 					}).catch(err => {
 						if (err) {
 							console.error(err);
 						}
-					})
+					});
 					// TODO: update cursorPos
 					/*
 					0. immediately ask controller to discard any ongoing synth requests
@@ -507,7 +513,6 @@ export class RTVSynthDisplayBox {
 					9. if so, move cursor accordingly
 					10. if not, don't move (reselect the original)
 					*/
-					this.ksHandler!(e);
 					break;
 			}
 			return rs;
@@ -515,9 +520,13 @@ export class RTVSynthDisplayBox {
 
 	}
 
-	private async synthesizeFragment(cell: HTMLElement) {
-		const success = await this.requestSynth!(cell);
+	private async synthesizeFragment(cell: HTMLElement, justMoved: boolean = false) {
+		const success = await this.requestSynth!();
 		if (success) {
+			if (justMoved) {
+				this.select(this._cursorPos!.node);
+				return;
+			}
 			const sel = window.getSelection()!;
 			let offset = sel.anchorOffset;
 			const range = document.createRange();
@@ -566,7 +575,6 @@ export class RTVSynthDisplayBox {
 		}
 	}
 
-	// TODO
 	private async toggleIfChanged(
 		env: any,
 		varname: string,
@@ -609,7 +617,7 @@ export class RTVSynthDisplayBox {
 		}
 
 		if (on) {
-			let error = await this.requestValidateInput!(env, cell, varname, undefined, false);
+			let error = await this.requestValidateInput!(cell.textContent!);
 			if (error) {
 				this.addError(error, cell, 500);
 				return false;
@@ -707,7 +715,7 @@ export class RTVSynthDisplayBox {
 			}
 		}
 
-		this.select(nextCell!.childNodes[0]);
+		this.select(nextCell!);
 		// TODO
 		/*
 		1. given the current cell, find the next/prev cell of the same var to select using this._cells

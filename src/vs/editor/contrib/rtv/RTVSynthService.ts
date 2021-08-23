@@ -20,16 +20,20 @@ export class RTVSynthService {
 	private _boxEnvs: any[] = [];
 	private _boxVars: Set<string> = new Set<string>();
 	// private _boxContent?: Map<string, Map<TableElement, number>[]>;
-	private _lineNumber?: number;
+	private _lineNumber: number;
 	private _rowsValid: boolean[] = []; // to delete
 	private _includedTimes: Set<number> = new Set();
-	private _varnames?: string[]
+	private _varnames: string[];
 	private _rows?: TableElement[][];
 	private onBoxContentChanged?: Function;
 
 	constructor(
+		varnames: string[],
+		lineno: number
 	) {
 		this._allEnvs = [];
+		this._varnames = varnames;
+		this._lineNumber = lineno;
 	}
 
 	get boxEnvs(): any[] {
@@ -38,6 +42,14 @@ export class RTVSynthService {
 
 	get includedTimes(): Set<number> {
 		return this._includedTimes;
+	}
+
+	get prevEnvs(): Map<number, any> {
+		return this._prevEnvs!;
+	}
+
+	get varnames(): string[] {
+		return this._varnames!;
 	}
 
 	bindBoxContentChanged(callback: Function) {
@@ -53,10 +65,10 @@ export class RTVSynthService {
 			});
 	}
 
-	public updateBoxContent(newEnvs: any, outputVars?: string[], prevEnvs?: Map<number, any>) {
-		this._varnames = outputVars!;
-		this.updateBoxEnvs(newEnvs, prevEnvs);
+	public updateBoxContent(newEnvs: any) {
+		this.updateBoxEnvs(newEnvs);
 		this.updateRowsValid();
+		this._commit();
 	}
 
 
@@ -101,9 +113,8 @@ export class RTVSynthService {
 	/**
 	 * Updates `boxEnvs' and builds `rows`
 	 * @param newEnvs
-	 * @param prevEnvs
 	 */
-	public updateBoxEnvs(newEnvs: any[], prevEnvs?: Map<number, any>) {
+	public updateBoxEnvs(newEnvs: any[]) {
 
 		let outVarNames: string[];
 		if (!this._varnames) {
@@ -117,7 +128,7 @@ export class RTVSynthService {
 		let envs = this._boxEnvs;
 		let vars = this._boxVars;
 
-		if (prevEnvs) {
+		if (this._prevEnvs) {
 			const oldVars = vars;
 			vars = new Set();
 			for (const v of oldVars) {
@@ -126,7 +137,7 @@ export class RTVSynthService {
 				if (outVarNames.includes(v)) {
 					for (const env of envs) {
 						const time = env['time'];
-						const prev = prevEnvs.get(time);
+						const prev = this._prevEnvs.get(time);
 						if (prev) {
 							rs = v in prev;
 						}
@@ -139,7 +150,24 @@ export class RTVSynthService {
 			}
 		}
 
+		// Generate header
 		let rows: TableElement[][] = [];
+		// let header: TableElement[] = [];
+		// vars.forEach((v: string) => {
+		// 	let name = '**' + v + '**';
+		// 	if (outVarNames.includes(v)) {
+		// 		name = '```html\n<strong>' + v + '</strong><sub>in</sub>```'
+		// 	} else {
+		// 		name = '**' + v + '**'
+		// 	}
+		// 	header.push(new TableElement(name, 'header', 'header', 0, ''));
+		// });
+		// outVarNames.forEach((ov: string, i: number) => {
+		// 	header.push(new TableElement('```html\n<strong>' + ov + '</strong><sub>out</sub>```', 'header', 'header', 0, '', undefined, i === 0));
+		// });
+
+		// rows.push(header);
+
 		// Generate all rows
 		for (let i = 0; i < envs.length; i++) {
 			let env = envs[i];
@@ -153,8 +181,8 @@ export class RTVSynthService {
 
 				if (outVarNames.includes(v)) {
 					varName += '_in';
-					if (prevEnvs && prevEnvs.has(env['time'])) {
-						varEnv = prevEnvs.get(env['time']);
+					if (this._prevEnvs && this._prevEnvs.has(env['time'])) {
+						varEnv = this._prevEnvs.get(env['time']);
 					}
 				}
 
@@ -235,6 +263,16 @@ export class RTVSynthService {
 				}
 			}
 		}
+	}
+
+	public getValues() : any{
+		let values: any = {};
+		for (let env of this._boxEnvs!) {
+			if (this._includedTimes.has(env['time'])) {
+				values[`(${env['lineno']},${env['time']})`] = env;
+			}
+		}
+		return values;
 	}
 
 
