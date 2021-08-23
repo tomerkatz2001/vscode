@@ -158,8 +158,13 @@ export class RTVSynthController {
 		return this.enabled;
 	}
 
-	onBoxContentChanged = (data: {[k: string]:[v: any]}) => {
-		this._synthBox!.updateBoxContent(data);
+	onBoxContentChanged = (data: {[k: string]:[v: any]}, init: boolean = false) => {
+		if (init) {
+			this._synthBox!.populateBoxContent(data);
+		}
+		else {
+			this._synthBox!.updateBoxContent(data);
+		}
 	}
 
 	handleRequestSynth = async () => {
@@ -272,8 +277,9 @@ export class RTVSynthController {
 
 		// Keep the view mode up to date.
 		this.RTVController.disable();
+		let oldBox : RTVDisplayBox = this.RTVController.getBox(lineno) as RTVDisplayBox;
 
-		this._synthService = new RTVSynthService(varnames, lineno);
+		this._synthService = new RTVSynthService(varnames, lineno, oldBox.allVars());
 		// this._synthBox = new RTVSynthDisplayBox(editor);
 
 		// explicit the binding with the service and the view
@@ -282,7 +288,6 @@ export class RTVSynthController {
 		// controller runs run.py to get results, service update box content ds on the back end
 		this._synthService.bindBoxContentChanged(this.onBoxContentChanged);
 
-		let oldBox : RTVDisplayBox = this.RTVController.getBox(lineno) as RTVDisplayBox;
 		this._synthBox = new RTVSynthDisplayBox(
 							this.editor,
 							oldBox.getLine().getElement(),
@@ -298,7 +303,6 @@ export class RTVSynthController {
 		this._synthBox.bindValidateInput(this.handleValidateInput);
 		this._synthBox.bindUpdateBoxContent(this.handleUpdateBoxContent);
 		this._synthBox.bindSynthState(this.handleSynthState);
-		this._synthBox.show();
 
 		// TODO??
 		// this.boxEnvs = this.box.getEnvs();
@@ -307,7 +311,7 @@ export class RTVSynthController {
 		this._synthService!.updateAllEnvs(runResults, undefined); // allEnvs updated by synthService
 
 		// Now that we have all the info, update the box again!
-		let error = await this.updateBoxContent(true, undefined); // service updates the envs, display updates cell contents
+		let error = await this.updateBoxContent(true, undefined, true); // service updates the envs, display updates cell contents
 
 		// TODO: let SynthDisplay handle this
 		if (error) {
@@ -547,7 +551,8 @@ export class RTVSynthController {
 	 **/
 	private async updateBoxContent(
 		updateSynthBox: boolean = true,
-		includedTimes?: Set<number>
+		includedTimes?: Set<number>,
+		init: boolean = false
 	): Promise<string | undefined> {
 		const runResult = await this.runProgram();
 		const errorMsg = runResult[1];
@@ -573,7 +578,7 @@ export class RTVSynthController {
 		if (updateSynthBox) {
 			// the call below = updateBoxEnvs + updateRowsValid
 			// further calls `updateBoxContent` on `synthDisplay`
-			this._synthService!.updateBoxContent(content[2]);
+			this._synthService!.updateBoxContent(content[2], init);
 		}
 
 		return undefined;

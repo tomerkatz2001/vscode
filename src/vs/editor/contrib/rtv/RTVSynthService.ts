@@ -23,17 +23,20 @@ export class RTVSynthService {
 	private _lineNumber: number;
 	private _rowsValid: boolean[] = []; // to delete
 	private _includedTimes: Set<number> = new Set();
-	private _varnames: string[];
+	private _outputVars: string[];
+	// private _header?: TableElement[];
 	private _rows?: TableElement[][];
 	private onBoxContentChanged?: Function;
 
 	constructor(
-		varnames: string[],
-		lineno: number
+		outputVars: string[],
+		lineno: number,
+		boxVars: Set<string>
 	) {
 		this._allEnvs = [];
-		this._varnames = varnames;
+		this._outputVars = outputVars;
 		this._lineNumber = lineno;
+		this._boxVars = boxVars;
 	}
 
 	get boxEnvs(): any[] {
@@ -49,26 +52,26 @@ export class RTVSynthService {
 	}
 
 	get varnames(): string[] {
-		return this._varnames!;
+		return this._outputVars!;
 	}
 
 	bindBoxContentChanged(callback: Function) {
 		this.onBoxContentChanged = callback;
 	}
 
-	_commit() {
+	_commit(init: boolean = false) {
 		this.onBoxContentChanged!(
 			{
 				'rows': this._rows,
 				'includedTimes': this._includedTimes,
 				'boxEnvs': this._boxEnvs
-			});
+			}, init);
 	}
 
-	public updateBoxContent(newEnvs: any) {
+	public updateBoxContent(newEnvs: any, init: boolean = false) {
 		this.updateBoxEnvs(newEnvs);
 		this.updateRowsValid();
-		this._commit();
+		this._commit(init);
 	}
 
 
@@ -117,13 +120,12 @@ export class RTVSynthService {
 	public updateBoxEnvs(newEnvs: any[]) {
 
 		let outVarNames: string[];
-		if (!this._varnames) {
+		if (!this._outputVars) {
 			outVarNames = [];
 		} else {
-			outVarNames = this._varnames!;
+			outVarNames = this._outputVars!;
 		}
 
-		// TODO: currently only works for single var assignment (broken for loops)
 		this._boxEnvs = this.computeEnvs(newEnvs);
 		let envs = this._boxEnvs;
 		let vars = this._boxVars;
@@ -152,21 +154,21 @@ export class RTVSynthService {
 
 		// Generate header
 		let rows: TableElement[][] = [];
-		// let header: TableElement[] = [];
-		// vars.forEach((v: string) => {
-		// 	let name = '**' + v + '**';
-		// 	if (outVarNames.includes(v)) {
-		// 		name = '```html\n<strong>' + v + '</strong><sub>in</sub>```'
-		// 	} else {
-		// 		name = '**' + v + '**'
-		// 	}
-		// 	header.push(new TableElement(name, 'header', 'header', 0, ''));
-		// });
-		// outVarNames.forEach((ov: string, i: number) => {
-		// 	header.push(new TableElement('```html\n<strong>' + ov + '</strong><sub>out</sub>```', 'header', 'header', 0, '', undefined, i === 0));
-		// });
+		let header: TableElement[] = [];
+		vars.forEach((v: string) => {
+			let name = '**' + v + '**';
+			if (outVarNames.includes(v)) {
+				name = '```html\n<strong>' + v + '</strong><sub>in</sub>```'
+			} else {
+				name = '**' + v + '**'
+			}
+			header.push(new TableElement(name, 'header', 'header', 0, ''));
+		});
+		outVarNames.forEach((ov: string, i: number) => {
+			header.push(new TableElement('```html\n<strong>' + ov + '</strong><sub>out</sub>```', 'header', 'header', 0, '', undefined, i === 0));
+		});
 
-		// rows.push(header);
+		rows.push(header);
 
 		// Generate all rows
 		for (let i = 0; i < envs.length; i++) {
@@ -250,14 +252,15 @@ export class RTVSynthService {
 			this._rowsValid[0] = true;
 		}
 
-		const outputVars: Set<string> = new Set(this._varnames!);
+		const outputVars: Set<string> = new Set(this._outputVars!);
 		const rows = this._rows!;
-		for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+		// indices start from 1 to skip the header
+		for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
 			const row = rows[rowIdx];
 			for (let _colIdx = 0; _colIdx < row.length; _colIdx++) {
 				const cellVar = row[_colIdx].vname!;
 				if (outputVars.has(cellVar)) {
-					if (this._rowsValid[rowIdx]) {
+					if (this._rowsValid[rowIdx - 1]) {
 						row[_colIdx].editable = true;
 					}
 				}

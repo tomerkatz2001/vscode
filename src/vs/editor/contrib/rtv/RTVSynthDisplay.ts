@@ -123,6 +123,8 @@ export class RTVSynthDisplayBox {
 	requestSynth?: Function;
 	requestUpdateBoxContent?: Function;
 	synthesizing?: Function;
+	private _table?: HTMLTableElement;
+	private _cellStyle?: CSSStyleDeclaration;
 
 	constructor(
 		private readonly _editor: ICodeEditor,
@@ -150,22 +152,26 @@ export class RTVSynthDisplayBox {
 			elm.firstChild;
 			elm = elm.firstChild
 		) {
-			// if (elm.nodeName === 'TABLE') {
-			// 	this._table = elm as HTMLTableElement;
-			// 	continue;
-			// }
-			if (elm.nodeName === 'TBODY') {
-				let rows = Array.from(elm.childNodes!).slice(1); // skip the header
-				rows.forEach((r) => {
-					let cells = Array.from(r.childNodes!) as HTMLTableCellElement[]; // td elements
-					cells.forEach((cell) => {
-						if (cell.id !== '') { // should be always true
-							cell.id = this.transformCellId(cell.id);
-						}
-					});
-				});
+			if (elm.nodeName === 'TABLE') {
+				this._table = elm as HTMLTableElement;
+				continue;
+			}
+			if (elm.nodeName === 'TD' && !this._cellStyle) {
+				this._cellStyle = (elm as HTMLElement).style;
 				break;
 			}
+			// if (elm.nodeName === 'TBODY') {
+			// 	let rows = Array.from(elm.childNodes!).slice(1); // skip the header
+			// 	rows.forEach((r) => {
+			// 		let cells = Array.from(r.childNodes!) as HTMLTableCellElement[]; // td elements
+			// 		cells.forEach((cell) => {
+			// 			if (cell.id !== '') { // should be always true
+			// 				cell.id = this.transformCellId(cell.id);
+			// 			}
+			// 		});
+			// 	});
+			// 	break;
+			// }
 		}
 
 	}
@@ -226,9 +232,9 @@ export class RTVSynthDisplayBox {
 		return this._box!;
 	}
 
-	public transformCellId(cellId: string) : string {
-		return `${cellId}-synth`;
-	}
+	// public transformCellId(cellId: string) : string {
+	// 	return `${cellId}-synth`;
+	// }
 
 	public getCellId(varname: string, idx: number): string {
 		return `${this.lineNumber}-${varname}-${idx}-synth`;
@@ -241,6 +247,91 @@ export class RTVSynthDisplayBox {
 	// ------------
 	// front-end updates
 	// ------------
+
+	public populateBoxContent(data: {[k: string]: [v: any]}) {
+		const rows: TableElement[][] = data['rows'];
+		const includedTimes: Set<number> = data['includedTimes'] as unknown as Set<number>;
+		const boxEnvs: any[] = data['boxEnvs'];
+
+		const renderer = new MarkdownRenderer(
+							{ 'editor': this._editor },
+							this._modeService,
+							this._openerService);
+		const outputVars = new Set(this.outputVars);
+
+		this._includedTimes = includedTimes;
+		this._boxEnvs = boxEnvs;
+		this._firstEditableCellId = undefined;
+		this._rows = rows;
+		this._cells = new Map<string, HTMLTableCellElement[]>();
+
+
+
+		// remove existing cells
+		this._table!.childNodes.forEach((child) => {
+			this._table!.removeChild(child)
+		});
+
+		this.show();
+
+
+		// update cell contents and add event listeners
+		for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+			let newRow = this._table!.insertRow(-1);
+			const row = rows[rowIdx];
+			for (let _colIdx = 0; _colIdx < row.length; _colIdx++) {
+				let newCell = newRow.insertCell(-1);
+				const elmt = row[_colIdx];
+				const vname = elmt.vname!;
+
+				// skip the headers
+				if (rowIdx == 0) {
+					this.addCellContentAndStyle(newCell, elmt, renderer, true);
+				} else {
+					newCell.id = this.getCellId(elmt.vname!, rowIdx - 1);
+					this.addCellContentAndStyle(newCell, elmt, renderer, false);
+					if (!this._firstEditableCellId && vname === this.outputVars[0] && elmt.editable && elmt.content.trim() !== '') {
+						this._firstEditableCellId = this.getCellId(vname, rowIdx - 1);
+					}
+
+					// build this._cells
+					if (outputVars.has(vname)) {
+						let vcells = this._cells!.get(vname) ?? [];
+						vcells.push(newCell);
+						this._cells!.set(vname, vcells);
+					}
+
+					// finally, re-highlight rows and remove highlight of rows that are no longer valid
+					const env = this._boxEnvs![rowIdx - 1];
+					if (env) {
+						if (this._includedTimes.has(env['time'])) {
+							if (elmt.editable == false) {
+								this._includedTimes.delete(env['time']);
+								this.removeHighlight(this.findParentRow(newCell));
+							}
+							else if (elmt.editable) {
+								this.highlightRow(this.findParentRow(newCell));
+							}
+						}
+					}
+				}
+
+			}
+		}
+	}
+
+	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, header: boolean = false) {
+		cell.style.borderLeft = this._cellStyle!.borderLeft;
+		cell.style.paddingLeft = this._cellStyle!.paddingLeft;
+		cell.style.paddingRight = this._cellStyle!.paddingRight;
+		cell.style.paddingTop = this._cellStyle!.paddingTop;
+		cell.style.paddingBottom = this._cellStyle!.paddingBottom;
+		cell.style.boxSizing = this._cellStyle!.boxSizing;
+		cell.align = 'center';
+
+		this.updateCell(cell, elmt, r, header);
+
+	}
 
 	public updateBoxContent(data: {[k: string]: [v: any]}) {
 		const rows: TableElement[][] = data['rows'];
@@ -260,18 +351,18 @@ export class RTVSynthDisplayBox {
 		this._cells = new Map<string, HTMLTableCellElement[]>();
 
 		// update cell contents and add event listeners
-		for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+		// skip the header
+		for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
 			const row = rows[rowIdx];
 			for (let _colIdx = 0; _colIdx < row.length; _colIdx++) {
 				const elmt = row[_colIdx];
 				const vname = elmt.vname!;
 				// Get the cell
-				// Note: use `rowIdx` instead of `... - 1` here because we didn't include the header row in the first place
-				let cell = this.getCell(vname, rowIdx)!;
+				let cell = this.getCell(vname, rowIdx - 1)!;
 				if (cell !== null) {
 					cell = this.updateCell(cell, elmt, renderer);
 					if (!this._firstEditableCellId && vname === this.outputVars[0] && elmt.editable && elmt.content.trim() !== '') {
-						this._firstEditableCellId = this.getCellId(vname, rowIdx);
+						this._firstEditableCellId = this.getCellId(vname, rowIdx - 1);
 					}
 
 					// build this._cells
@@ -282,7 +373,7 @@ export class RTVSynthDisplayBox {
 					}
 
 					// finally, re-highlight rows and remove highlight of rows that are no longer valid
-					const env = this._boxEnvs![rowIdx];
+					const env = this._boxEnvs![rowIdx - 1];
 					if (env) {
 						if (this._includedTimes.has(env['time'])) {
 							if (elmt.editable == false) {
@@ -300,7 +391,7 @@ export class RTVSynthDisplayBox {
 		}
 	}
 
-	private updateCell(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer): HTMLTableCellElement{
+	private updateCell(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, header: boolean = false): HTMLTableCellElement{
 
 		let s = elmt.content;
 		let cellContent: HTMLElement;
@@ -321,7 +412,7 @@ export class RTVSynthDisplayBox {
 
 
 		// Remove any existing content
-		cell.childNodes.forEach((child) => cell.removeChild(child));
+		cell.childNodes?.forEach((child) => cell.removeChild(child));
 
 		if (elmt.editable) {
 			// make the TableCellElement `td` editable if applicable
@@ -333,7 +424,7 @@ export class RTVSynthDisplayBox {
 		// Add the new content
 		cell.appendChild(cellContent);
 
-		if (outputVars.has(elmt.vname!)) {
+		if (!header && outputVars.has(elmt.vname!)) {
 			this.addListeners(cell);
 		}
 
