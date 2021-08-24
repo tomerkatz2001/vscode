@@ -1,30 +1,14 @@
 import { TableElement, isHtmlEscape } from 'vs/editor/contrib/rtv/RTVUtils';
 
-
-// core logic, Your Controller will call this layer's objects to get or update Models, or other requests.
-
-/**
- * boxContent = {
- * 		<var>: [
-* 					{
-* 						<val>: <editable>
-* 					},
-* 					...
- * 				],
- * 		...
- * 		}
- */
 export class RTVSynthService {
-	private _allEnvs: any[];
+	private _allEnvs: any[] = [];
 	private _prevEnvs?: Map<number, any>;
 	private _boxEnvs: any[] = [];
 	private _boxVars: Set<string> = new Set<string>();
-	// private _boxContent?: Map<string, Map<TableElement, number>[]>;
 	private _lineNumber: number;
-	private _rowsValid: boolean[] = []; // to delete
+	private _rowsValid: boolean[] = [];
 	private _includedTimes: Set<number> = new Set();
 	private _outputVars: string[];
-	// private _header?: TableElement[];
 	private _rows?: TableElement[][];
 	private onBoxContentChanged?: Function;
 
@@ -33,7 +17,6 @@ export class RTVSynthService {
 		lineno: number,
 		boxVars: Set<string>
 	) {
-		this._allEnvs = [];
 		this._outputVars = outputVars;
 		this._lineNumber = lineno;
 		this._boxVars = boxVars;
@@ -75,6 +58,11 @@ export class RTVSynthService {
 	}
 
 
+	/**
+	 * Updates `allEnvs` and `prevEnvs`
+	 * @param runResults
+	 * @param includedTimes
+	 */
 	public updateAllEnvs(runResults: any, includedTimes?: Set<number>): void {
 		if (includedTimes) {
 			this._includedTimes = includedTimes;
@@ -216,6 +204,9 @@ export class RTVSynthService {
 
 	}
 
+	/**
+	 * updates `rowsValid` to compute cells that are editable
+	 */
 	public updateRowsValid() {
 		const boxEnvs = this._boxEnvs;
 		if (boxEnvs.some(env => Object.keys(env).length <= 2)) {
@@ -236,8 +227,6 @@ export class RTVSynthService {
 				// This row is no longer valid. Remove it from the included time!
 				if (!rs && this._includedTimes.has(time)) {
 					this._includedTimes.delete(time);
-					// SynthDisplay will remove highlight as necessary when updating the box content
-					// this.removeHighlight(this.findParentRow(this.box!.getCell(this.varnames![0], i)!));
 				}
 
 				return rs;
@@ -268,6 +257,10 @@ export class RTVSynthService {
 		}
 	}
 
+	/**
+	 *
+	 * @returns values for a synth requests
+	 */
 	public getValues() : any{
 		let values: any = {};
 		for (let env of this._boxEnvs!) {
@@ -279,6 +272,11 @@ export class RTVSynthService {
 	}
 
 
+	/**
+	 * Helpfer function that computes `boxEnvs`
+	 * @param allEnvs
+	 * @returns
+	 */
 	public computeEnvs(allEnvs: any[]) : any[]{
 		// Get all envs at this line number
 		let envs;
@@ -288,7 +286,7 @@ export class RTVSynthService {
 	}
 
 
-	// copied from `RTVDisplay.ts`
+	// helper function copied from `RTVDisplay.ts`
 	private addMissingLines(envs: any[]): any[] {
 		let last = function <T>(a: T[]): T { return a[a.length - 1]; };
 		let active_loop_iters: number[] = [];
@@ -319,7 +317,7 @@ export class RTVSynthService {
 		return envs2;
 	}
 
-	// copied from `RTVDisplay.ts`
+	// helper function copied from `RTVDisplay.ts`
 	private bringToLoopCount(envs: any[], active_loop_iters: number[], loopId: string, iterCount: number) {
 		while (active_loop_iters[active_loop_iters.length - 1] < iterCount) {
 			envs.push({ '#': active_loop_iters.join(','), '$': loopId });

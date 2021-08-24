@@ -8,9 +8,6 @@ import { RTVDisplayBox } from 'vs/editor/contrib/rtv/RTVDisplay';
 import { RTVSynthDisplayBox } from 'vs/editor/contrib/rtv/RTVSynthDisplay';
 import { RTVSynthService } from 'vs/editor/contrib/rtv/RTVSynthService';
 
-// const SYNTHESIZING_MESSAGE: string = '# Please wait. Synthesizing...';
-// const SPEC_AWAIT_INDICATOR: string = '??';
-
 enum EditorState {
 	Synthesizing,
 	Failed,
@@ -103,12 +100,10 @@ export class RTVSynthController {
 	private _synthBox?: RTVSynthDisplayBox = undefined;
 	private logger: IRTVLogger;
 	enabled: boolean;
-	// varnames?: string[] = undefined;
 	lineno?: number = undefined;
 	utils: Utils;
 	process: SynthProcess;
 	editorState?: EditorStateManager = undefined;
-	// errorBox: ErrorHoverManager;
 
 	constructor(
 		private readonly editor: ICodeEditor,
@@ -190,10 +185,6 @@ export class RTVSynthController {
 		return error;
 	}
 
-	handleSynthState = () => {
-		return this.editorState!.state === EditorState.Synthesizing;
-	}
-
 
 	// -----------------------------------------------------------------------------------
 	// Interface
@@ -233,7 +224,7 @@ export class RTVSynthController {
 		}
 
 		// ------------------------------------------
-		// Really Start Synthesis
+		// Really Starts Synthesis
 		// ------------------------------------------
 		this.RTVController.changeViewMode(ViewMode.Stealth);
 
@@ -267,25 +258,20 @@ export class RTVSynthController {
 
 		// Update the projection box with the new value
 		const runResults: any = await this.RTVController.updateBoxes();
-		// TODO
-		// let error = runResults? runResults[1] : undefined;
-		// if (error) {
-		// 	// TODO: show that updateBoxes failed with the default value
-		// 	this.stopSynthesis();
-		// 	return;
-		// }
+
+		let error: any = runResults? runResults[0] !== 0 : undefined;
+		if (error) {
+			// TODO: inform user that updateBoxes failed with the default value
+			this.stopSynthesis();
+			console.error('default value failed');
+			return;
+		}
 
 		// Keep the view mode up to date.
 		this.RTVController.disable();
+
 		let oldBox : RTVDisplayBox = this.RTVController.getBox(lineno) as RTVDisplayBox;
-
 		this._synthService = new RTVSynthService(varnames, lineno, oldBox.allVars());
-		// this._synthBox = new RTVSynthDisplayBox(editor);
-
-		// explicit the binding with the service and the view
-		// this.synthDisplay.bindKeystroke(this.handleKeystroke);
-		// shift + enter only involves the front end behavior\
-		// controller runs run.py to get results, service update box content ds on the back end
 		this._synthService.bindBoxContentChanged(this.onBoxContentChanged);
 
 		this._synthBox = new RTVSynthDisplayBox(
@@ -297,23 +283,17 @@ export class RTVSynthController {
 							this.lineno!,
 							varnames!,
 							this._themeService);
-
 		this._synthBox.bindSynth(this.handleRequestSynth);
 		this._synthBox.bindExitSynth(this.handleExitSynth);
 		this._synthBox.bindValidateInput(this.handleValidateInput);
 		this._synthBox.bindUpdateBoxContent(this.handleUpdateBoxContent);
-		this._synthBox.bindSynthState(this.handleSynthState);
-
-		// TODO??
-		// this.boxEnvs = this.box.getEnvs();
 
 		// TODO Cleanup all available envs
 		this._synthService!.updateAllEnvs(runResults, undefined); // allEnvs updated by synthService
 
 		// Now that we have all the info, update the box again!
-		let error = await this.updateBoxContent(true, undefined, true); // service updates the envs, display updates cell contents
+		error = await this.updateBoxContent(true, undefined, true); // service updates the envs, display updates cell contents
 
-		// TODO: let SynthDisplay handle this
 		if (error) {
 			// We shouldn't start synthesis if the underlying code
 			// doesn't even excute.
@@ -329,7 +309,6 @@ export class RTVSynthController {
 			return;
 		}
 
-		// TODO: check if the following code work with the replaced SynthBox
 		// Last chance to make sure the synthesizer is working
 		if (!this.process.connected()) {
 			// Show the error message
@@ -349,7 +328,6 @@ export class RTVSynthController {
 			this._synthService = undefined;
 			this._synthBox?.destroy();
 			this._synthBox = undefined;
-			// this.boxEnvs = undefined;
 			this.editorState = undefined;
 
 			// Then reset the Projection Boxes
@@ -365,19 +343,7 @@ export class RTVSynthController {
 	// UI requests handlers
 	// -----------------------------------------------------------------------------------
 
-
-	public async validateInput(
-		env: any,
-		cell: HTMLElement,
-		varname: string,
-		force?: boolean,
-		updateBoxContent: boolean = true
-	): Promise<boolean> {
-
-		return false;
-	}
-
-	public async synthesizeFragment(cell?: HTMLElement): Promise<boolean> {
+	public async synthesizeFragment(): Promise<boolean> {
 		// Build and write the synth_example.json file content
 		let envs = [];
 		let optEnvs = [];
@@ -425,10 +391,6 @@ export class RTVSynthController {
 				this.editorState!.failed();
 				if (rs.result) {
 					this._synthBox!.addError(rs.result, undefined, 500);
-					// We have an error message!
-					// if (cell) {
-					// 	this._synthBox!.addError(rs.result, cell, 500);
-					// }
 				}
 			}
 		} catch (err) {
@@ -572,12 +534,8 @@ export class RTVSynthController {
 		// First, update our envs
 		this._synthService!.updateAllEnvs(content, includedTimes);
 
-
-		//
 		// only create new boxes when `updateBoxContent` is true
 		if (updateSynthBox) {
-			// the call below = updateBoxEnvs + updateRowsValid
-			// further calls `updateBoxContent` on `synthDisplay`
 			this._synthService!.updateBoxContent(content[2], init);
 		}
 

@@ -99,32 +99,35 @@ export class ErrorHoverManager {
 	}
 }
 
-// Create RTVSynthDisplayBox at first, but keep the HTML element (a clone of the original PB) hidden.
-// Only change opacity to 1 when we're sure about to start synth, by calling `RTVSynthDisplayBox.
 export class RTVSynthDisplayBox {
+
+	private _modeService: IModeService;
+	private _openerService: IOpenerService;
+
+	// core elements
 	private _box: HTMLDivElement;
 	private _line: HTMLDivElement;
 	private _errorBox: ErrorHoverManager;
-	private _modeService: IModeService;
-	private _openerService: IOpenerService;
-	private _cells?: Map<string, HTMLTableCellElement[]> = undefined;
+
 	// from service
 	private _includedTimes: Set<number> = new Set<number>();
 	private _rows: TableElement[][] = [[]];
+	private _boxEnvs: any[] = [];
+
+	// helper data structures/info
+	private _cells?: Map<string, HTMLTableCellElement[]> = undefined;
 	private _currRow: number;
 	private _cursorPos?: CursorPos;
-	// private _tmpVal?: string;
-	private _boxEnvs: any[] = [];
 	private _synthTimer: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 	private _firstEditableCellId?: string = undefined;
+	private _table?: HTMLTableElement;
+	private _cellStyle?: CSSStyleDeclaration;
 
 	exitSynthHandler?: Function;
 	requestValidateInput?: Function;
 	requestSynth?: Function;
 	requestUpdateBoxContent?: Function;
-	synthesizing?: Function;
-	private _table?: HTMLTableElement;
-	private _cellStyle?: CSSStyleDeclaration;
+
 
 	constructor(
 		private readonly _editor: ICodeEditor,
@@ -152,26 +155,16 @@ export class RTVSynthDisplayBox {
 			elm.firstChild;
 			elm = elm.firstChild
 		) {
+			// find the table node
 			if (elm.nodeName === 'TABLE') {
 				this._table = elm as HTMLTableElement;
 				continue;
 			}
+			// make a copy of existing cell style to be inherited
 			if (elm.nodeName === 'TD' && !this._cellStyle) {
 				this._cellStyle = (elm as HTMLElement).style;
 				break;
 			}
-			// if (elm.nodeName === 'TBODY') {
-			// 	let rows = Array.from(elm.childNodes!).slice(1); // skip the header
-			// 	rows.forEach((r) => {
-			// 		let cells = Array.from(r.childNodes!) as HTMLTableCellElement[]; // td elements
-			// 		cells.forEach((cell) => {
-			// 			if (cell.id !== '') { // should be always true
-			// 				cell.id = this.transformCellId(cell.id);
-			// 			}
-			// 		});
-			// 	});
-			// 	break;
-			// }
 		}
 
 	}
@@ -192,22 +185,20 @@ export class RTVSynthDisplayBox {
 		this.requestUpdateBoxContent = handler;
 	}
 
-	bindSynthState(handler: Function) {
-		this.synthesizing = handler;
-	}
-
 	// ------------
 	// property getters and setters
 	// ------------
 	public show() {
-		this._box.style.opacity = '1';
-		this._line.style.opacity = '1';
-		let editor_div = this._editor.getDomNode();
-		if (editor_div === null) {
-			throw new Error('Cannot find Monaco Editor');
+		if (this.isHidden()) {
+			this._box.style.opacity = '1';
+			this._line.style.opacity = '1';
+			let editor_div = this._editor.getDomNode();
+			if (editor_div === null) {
+				throw new Error('Cannot find Monaco Editor');
+			}
+			editor_div.appendChild(this._line);
+			editor_div.appendChild(this._box);
 		}
-		editor_div.appendChild(this._line);
-		editor_div.appendChild(this._box);
 	}
 
 	public hide() {
@@ -215,8 +206,8 @@ export class RTVSynthDisplayBox {
 		this._line.style.opacity = '0';
 	}
 
-	public isSynthBox() {
-		return true;
+	private isHidden() {
+		return this._box.style.opacity === '0';
 	}
 
 	public destroy() {
@@ -231,10 +222,6 @@ export class RTVSynthDisplayBox {
 	public getElement(): HTMLElement {
 		return this._box!;
 	}
-
-	// public transformCellId(cellId: string) : string {
-	// 	return `${cellId}-synth`;
-	// }
 
 	public getCellId(varname: string, idx: number): string {
 		return `${this.lineNumber}-${varname}-${idx}-synth`;
@@ -452,23 +439,6 @@ export class RTVSynthDisplayBox {
 		return rs as HTMLTableRowElement;
 	}
 
-	// private findCell(cellContent: HTMLElement): HTMLTableCellElement | undefined {
-	// 	let cell: HTMLTableCellElement | undefined = undefined;
-
-	// 	for (
-	// 		let cellIter: Node = cellContent;
-	// 		cellIter.parentNode;
-	// 		cellIter = cellIter.parentNode
-	// 	) {
-	// 		if (cellIter.nodeName === 'TD') {
-	// 			cell = cellIter as HTMLTableCellElement;
-	// 			break;
-	// 		}
-	// 	}
-
-	// 	return cell;
-	// }
-
 	private highlightRow(row: HTMLTableRowElement) {
 		let theme = this._themeService.getColorTheme();
 		row.style.fontWeight = '900';
@@ -483,7 +453,7 @@ export class RTVSynthDisplayBox {
 		if (!this._cursorPos) {
 			this._cursorPos = new CursorPos(node);
 		}
-		this._cursorPos.node = range.startContainer as HTMLElement;
+		this._cursorPos.node = node;
 		this._cursorPos.startPos = range.startOffset ?? undefined;
 		this._cursorPos.endPos = range.endOffset ?? undefined;
 		this._cursorPos.collapsed = range.collapsed ?? undefined;
@@ -491,7 +461,6 @@ export class RTVSynthDisplayBox {
 		this._currRow = +row;
 	}
 
-	// TODO
 	private addListeners(cell: HTMLElement) {
 		const [varname, idx] = cell.id.split('-').slice(1);
 		const env = this._boxEnvs![+idx];
@@ -519,13 +488,6 @@ export class RTVSynthDisplayBox {
 				case 'Enter':
 					e.preventDefault();
 
-					// with Shift:
-					/*
-					1. check if input is valid
-					2. if so, highlight this row, ask controller to request synth
-						3. if result available, insert program accordingly
-					4. if not, show error message
-					*/
 					if (e.shiftKey) {
 						this._synthTimer.run(1, async () => {
 							const validInput = await this.toggleElement(env, cell, varname, undefined, false);
@@ -540,25 +502,6 @@ export class RTVSynthDisplayBox {
 					}
 					break;
 
-				// case 'Tab':
-				// 	/*
-				// 	0. check if a synth update is about to return. if so, wait??
-				// 	1. update cursor position
-				// 	2. record tmpVal of the node before move
-				// 	3. ask controller to check if tmpVal is valid
-				// 	4. if so, highlight current row and move cursor to next cell available and select the entire node
-				// 	6. if not, add an error message
-				// 	7. move cursor back to the recorded position
-				// 	*/
-				// 	let a = this.synthesizing!();
-				// 	while (a) {
-				// 		// do nothing
-				// 	}
-				// 	// e.preventDefault();
-				// 	//await
-				// 	this.focusNextRow(cell, e.shiftKey);
-				// 	break;
-
 				case 'Escape':
 					// stop synth
 					rs = false;
@@ -567,6 +510,8 @@ export class RTVSynthDisplayBox {
 					break;
 
 				default:
+					// TODO: how do we handle the situation where `Tab` is pressed immediately after a regular keystroke?
+					// - currently we _don't_ process any synth request under this situation
 					if (e.key === 'Tab') {
 						e.preventDefault();
 						this.focusNextRow(cell, e.shiftKey);
@@ -576,9 +521,7 @@ export class RTVSynthDisplayBox {
 							const validInput = await this.toggleElement(env, cell, varname, true, false);
 
 							if (validInput) {
-								// let cell: HTMLTableCellElement = this.findCell(cell)!;
-								let tabKey = e.key === 'Tab';
-								await this.synthesizeFragment(cell, tabKey);
+								await this.synthesizeFragment(cell);
 							}
 
 						}
@@ -587,23 +530,6 @@ export class RTVSynthDisplayBox {
 							console.error(err);
 						}
 					});
-					// TODO: update cursorPos
-					/*
-					0. immediately ask controller to discard any ongoing synth requests
-					1. set tmpVal to whatever's in the cell
-					2. record cursorPos
-					3. remove any error box
-					... 1000ms later ...
-					4. if cellcontent is the same as env[varname], prompt the user to use Shift+Enter to include this row
-					5. if not the same, ask controller to check valid input (including parser check)
-					6. if so, controller sends synth request
-						if not, prompt the user with error msg
-					7. when results are available, editor inserts synth'd fragment, service updates backend data accordingly,
-						consequently, display updates box values when backend data is up to date
-					8. check if cursorPos is the same as before (same node)
-					9. if so, move cursor accordingly
-					10. if not, don't move (reselect the original)
-					*/
 					break;
 			}
 			return rs;
@@ -611,13 +537,9 @@ export class RTVSynthDisplayBox {
 
 	}
 
-	private async synthesizeFragment(cell: HTMLElement, justMoved: boolean = false) {
+	private async synthesizeFragment(cell: HTMLElement) {
 		const success = await this.requestSynth!();
 		if (success) {
-			if (justMoved) {
-				this.select(this._cursorPos!.node);
-				return;
-			}
 			const sel = window.getSelection()!;
 			let offset = sel.anchorOffset;
 			const range = document.createRange();
@@ -629,11 +551,9 @@ export class RTVSynthDisplayBox {
 				dest = dest.firstChild as HTMLElement;
 			}
 
-			// the following conditional is buggy for negative numbers
 			if (dest.childNodes.length > 1) {
 				let isNegNum = dest.firstChild!.textContent == '-';
 				offset = isNegNum ? cell.innerText.length : dest.childNodes.length - 1;
-			// } else if (!offset) {
 			} else {
 				// We need to carefully pick the offset based on the type
 
@@ -653,8 +573,9 @@ export class RTVSynthDisplayBox {
 
 					sel.removeAllRanges();
 					sel.addRange(range);
-				} catch {
+				} catch (e) {
 					// TODO Better error handling
+					console.error(e);
 					range.selectNodeContents(dest);
 					range.setStart(dest, 0);
 					range.collapse(true);
@@ -662,6 +583,10 @@ export class RTVSynthDisplayBox {
 					sel.removeAllRanges();
 					sel.addRange(range);
 				}
+			}
+			else {
+				// console.error(`cursorPos: ${this._cursorPos!.node.id}; currCell: ${cell.id}`);
+				this.select(this._cursorPos!.node);
 			}
 		}
 	}
@@ -738,7 +663,14 @@ export class RTVSynthDisplayBox {
 		return true;
 	}
 
-	// TODO
+	/**
+	 * moves the cursor to the next editable cell
+	 * @param cell
+	 * @param backwards
+	 * @param trackChanges
+	 * @param skipLine
+	 * @param updateBoxContent
+	 */
 	private async focusNextRow(
 		cell: HTMLElement,
 		backwards: boolean = false,
@@ -778,10 +710,11 @@ export class RTVSynthDisplayBox {
 			}
 		}
 
-		if (row >= this._rows.length) {
+		// this._rows include the header, so we need to ignore/skip it
+		if (row >= this._rows.length - 1) {
 			row = 0;
 		} else if (row < 0) {
-			row = this._rows.length - 1;
+			row = this._rows.length - 2;
 		}
 
 		const nextVar = this.outputVars[varIdx];
@@ -792,10 +725,10 @@ export class RTVSynthDisplayBox {
 		while (nextCell.contentEditable !== 'true') {
 			row += (backwards ? -1 : +1);
 
-			if (row >= this._rows.length) {
+			if (row >= this._rows.length - 1) {
 				row = 0;
 			} else if (row < 0) {
-				row = this._rows.length - 1;
+				row = this._rows.length - 2;
 			}
 
 			nextCell = vcells[row];
@@ -807,15 +740,12 @@ export class RTVSynthDisplayBox {
 		}
 
 		this.select(nextCell!);
-		// TODO
-		/*
-		1. given the current cell, find the next/prev cell of the same var to select using this._cells
-		2. if not editable, continue
-		3. if reached the end/head and there is no more cells from other variables to select, start over;
-		4. otherwise, repeat the steps with other variables
-		*/
 	}
 
+	/**
+	 * attempts to move the cursor to the first editable cell inside the table
+	 * @returns ... is successful
+	 */
 	public selectFirstEditableCell() : boolean {
 		const firstVar = this.outputVars[0];
 		try {
@@ -838,27 +768,16 @@ export class RTVSynthDisplayBox {
 			console.error(`No non-empty cells found for key "${firstVar}".`);
 			return false;
 		}
-
-		// const firstVar = this.outputVars[0]; // first var
-		// let cellIds = this._cells!.get(firstVar);
-		// if (cellIds && cellIds.size > 0) {
-		// 	for (let cellId of cellIds) {
-		// 		let cell = this.getCell(firstVar, cellId)!;
-		// 		if ((cell.textContent as string).trim()) {
-		// 			cell.contentEditable = 'true';
-		// 			this._currRow = cellId;
-		// 			this.select(cell);
-		// 			return true;
-		// 		}
-		// 	}
-		// 	console.error(`All cells for key "${firstVar}" were empty.`);
-		// 	return false;
-		// } else {
-		// 	console.error(`No cell found with key "${firstVar}"`);
-		// 	return false;
-		// }
 	}
 
+	/**
+	 * asks errorBox to display the error msg to be attached to the synth box
+	 * or a cell if specified
+	 * @param error
+	 * @param cell
+	 * @param timeout
+	 * @param fadeout
+	 */
 	public addError(error: string, cell?: HTMLElement, timeout?: number, fadeout?: number) {
 		this._errorBox.add(cell ?? this._box, error, timeout, fadeout);
 	}
