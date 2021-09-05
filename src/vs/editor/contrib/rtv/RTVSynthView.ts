@@ -99,7 +99,7 @@ export class ErrorHoverManager {
 	}
 }
 
-export class RTVSynthDisplayBox {
+export class RTVSynthView {
 
 	private _modeService: IModeService;
 	private _openerService: IOpenerService;
@@ -123,6 +123,7 @@ export class RTVSynthDisplayBox {
 	private _table?: HTMLTableElement;
 	private _cellStyle?: CSSStyleDeclaration;
 
+	// TODO: change type signature
 	exitSynthHandler?: Function;
 	requestValidateInput?: Function;
 	requestSynth?: Function;
@@ -227,6 +228,18 @@ export class RTVSynthDisplayBox {
 		return `${this.lineNumber}-${varname}-${idx}-synth`;
 	}
 
+	public getRowId(idx: number): string {
+		return `${this.lineNumber}-${idx}-synth`;
+	}
+
+	public getRow(idx: number): HTMLTableRowElement | null {
+		return document.getElementById(this.getRowId(idx)) as HTMLTableRowElement;
+	}
+
+	public getTableId(): string {
+		return `${this.lineNumber}-table-synth`;
+	}
+
 	public getCell(varname: string, idx: number): HTMLTableCellElement | null {
 		return document.getElementById(this.getCellId(varname, idx)) as HTMLTableCellElement;
 	}
@@ -235,77 +248,78 @@ export class RTVSynthDisplayBox {
 	// front-end updates
 	// ------------
 
-	public populateBoxContent(data: {[k: string]: [v: any]}) {
-		const rows: TableElement[][] = data['rows'];
-		const includedTimes: Set<number> = data['includedTimes'] as unknown as Set<number>;
-		const boxEnvs: any[] = data['boxEnvs'];
+	// TODO: merge with updateBoxContent
+	// public populateBoxContent(data: {[k: string]: any}) {
+	// 	const rows: TableElement[][] = data['rows'];
+	// 	const includedTimes: Set<number> = data['includedTimes'] as unknown as Set<number>;
+	// 	const boxEnvs: any[] = data['boxEnvs'];
 
-		const renderer = new MarkdownRenderer(
-							{ 'editor': this._editor },
-							this._modeService,
-							this._openerService);
-		const outputVars = new Set(this.outputVars);
+	// 	const renderer = new MarkdownRenderer(
+	// 						{ 'editor': this._editor },
+	// 						this._modeService,
+	// 						this._openerService);
+	// 	const outputVars = new Set(this.outputVars);
 
-		this._includedTimes = includedTimes;
-		this._boxEnvs = boxEnvs;
-		this._firstEditableCellId = undefined;
-		this._rows = rows;
-		this._cells = new Map<string, HTMLTableCellElement[]>();
-
-
-
-		// remove existing cells
-		this._table!.childNodes.forEach((child) => {
-			this._table!.removeChild(child)
-		});
-
-		this.show();
+	// 	this._includedTimes = includedTimes;
+	// 	this._boxEnvs = boxEnvs;
+	// 	this._firstEditableCellId = undefined;
+	// 	this._rows = rows;
+	// 	this._cells = new Map<string, HTMLTableCellElement[]>();
 
 
-		// update cell contents and add event listeners
-		for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-			let newRow = this._table!.insertRow(-1);
-			const row = rows[rowIdx];
-			for (let _colIdx = 0; _colIdx < row.length; _colIdx++) {
-				let newCell = newRow.insertCell(-1);
-				const elmt = row[_colIdx];
-				const vname = elmt.vname!;
 
-				// skip the headers
-				if (rowIdx == 0) {
-					this.addCellContentAndStyle(newCell, elmt, renderer, true);
-				} else {
-					newCell.id = this.getCellId(elmt.vname!, rowIdx - 1);
-					this.addCellContentAndStyle(newCell, elmt, renderer, false);
-					if (!this._firstEditableCellId && vname === this.outputVars[0] && elmt.editable && elmt.content.trim() !== '') {
-						this._firstEditableCellId = this.getCellId(vname, rowIdx - 1);
-					}
+	// 	// remove existing cells
+	// 	this._table!.childNodes.forEach((child) => {
+	// 		this._table!.removeChild(child)
+	// 	});
 
-					// build this._cells
-					if (outputVars.has(vname)) {
-						let vcells = this._cells!.get(vname) ?? [];
-						vcells.push(newCell);
-						this._cells!.set(vname, vcells);
-					}
+	// 	this.show();
 
-					// finally, re-highlight rows and remove highlight of rows that are no longer valid
-					const env = this._boxEnvs![rowIdx - 1];
-					if (env) {
-						if (this._includedTimes.has(env['time'])) {
-							if (elmt.editable == false) {
-								this._includedTimes.delete(env['time']);
-								this.removeHighlight(this.findParentRow(newCell));
-							}
-							else if (elmt.editable) {
-								this.highlightRow(this.findParentRow(newCell));
-							}
-						}
-					}
-				}
 
-			}
-		}
-	}
+	// 	// update cell contents and add event listeners
+	// 	for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+	// 		let newRow = this._table!.insertRow(-1);
+	// 		const row = rows[rowIdx];
+	// 		for (let _colIdx = 0; _colIdx < row.length; _colIdx++) {
+	// 			let newCell = newRow.insertCell(-1);
+	// 			const elmt = row[_colIdx];
+	// 			const vname = elmt.vname!;
+
+	// 			// skip the headers
+	// 			if (rowIdx == 0) {
+	// 				this.addCellContentAndStyle(newCell, elmt, renderer, true);
+	// 			} else {
+	// 				newCell.id = this.getCellId(elmt.vname!, rowIdx - 1);
+	// 				this.addCellContentAndStyle(newCell, elmt, renderer, false);
+	// 				if (!this._firstEditableCellId && vname === this.outputVars[0] && elmt.editable && elmt.content.trim() !== '') {
+	// 					this._firstEditableCellId = this.getCellId(vname, rowIdx - 1);
+	// 				}
+
+	// 				// build this._cells
+	// 				if (outputVars.has(vname)) {
+	// 					let vcells = this._cells!.get(vname) ?? [];
+	// 					vcells.push(newCell);
+	// 					this._cells!.set(vname, vcells);
+	// 				}
+
+	// 				// finally, re-highlight rows and remove highlight of rows that are no longer valid
+	// 				const env = this._boxEnvs![rowIdx - 1];
+	// 				if (env) {
+	// 					if (this._includedTimes.has(env['time'])) {
+	// 						if (elmt.editable == false) {
+	// 							this._includedTimes.delete(env['time']);
+	// 							this.removeHighlight(this.findParentRow(newCell));
+	// 						}
+	// 						else if (elmt.editable) {
+	// 							this.highlightRow(this.findParentRow(newCell));
+	// 						}
+	// 					}
+	// 				}
+	// 			}
+
+	// 		}
+	// 	}
+	// }
 
 	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, header: boolean = false) {
 		cell.style.borderLeft = this._cellStyle!.borderLeft;
@@ -320,7 +334,7 @@ export class RTVSynthDisplayBox {
 
 	}
 
-	public updateBoxContent(data: {[k: string]: [v: any]}) {
+	public updateBoxContent(data: {[k: string]: [v: any]}, init: boolean = false) {
 		const rows: TableElement[][] = data['rows'];
 		const includedTimes: Set<number> = data['includedTimes'] as unknown as Set<number>;
 		const boxEnvs: any[] = data['boxEnvs'];
@@ -337,42 +351,108 @@ export class RTVSynthDisplayBox {
 		this._rows = rows;
 		this._cells = new Map<string, HTMLTableCellElement[]>();
 
+		if (init) {
+			// remove existing cells
+			this._table!.childNodes.forEach((child) => {
+				this._table!.removeChild(child)
+			});
+			this._table!.id = this.getTableId();
+
+			this.show();
+		}
+
 		// update cell contents and add event listeners
-		// skip the header
-		for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
+		for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+			let newRow: HTMLTableRowElement;
+			if (init) {
+				newRow = this._table!.insertRow(-1);
+				if (rowIdx > 0) { // skip the headers
+					newRow.id = this.getRowId(rowIdx - 1);
+				}
+			}
 			const row = rows[rowIdx];
 			for (let _colIdx = 0; _colIdx < row.length; _colIdx++) {
+				let cell: HTMLTableCellElement;
+				if (init) {
+					cell = newRow!.insertCell(-1);
+				}
 				const elmt = row[_colIdx];
 				const vname = elmt.vname!;
-				// Get the cell
-				let cell = this.getCell(vname, rowIdx - 1)!;
-				if (cell !== null) {
-					cell = this.updateCell(cell, elmt, renderer);
-					if (!this._firstEditableCellId && vname === this.outputVars[0] && elmt.editable && elmt.content.trim() !== '') {
-						this._firstEditableCellId = this.getCellId(vname, rowIdx - 1);
-					}
 
-					// build this._cells
-					if (outputVars.has(vname)) {
-						let vcells = this._cells!.get(vname) ?? [];
-						vcells.push(cell);
-						this._cells!.set(vname, vcells);
+				// skip the headers
+				if (rowIdx == 0) {
+					if (init) {
+						this.addCellContentAndStyle(cell!, elmt, renderer, true);
 					}
+				} else {
+					if (init) {
+						cell!.id = this.getCellId(elmt.vname!, rowIdx - 1);
+						this.addCellContentAndStyle(cell!, elmt, renderer, false);
+					} else {
+						cell = this.getCell(vname, rowIdx - 1)!;
+					}
+					if (cell! !== null) {
+						if (!init) {
+							cell = this.updateCell(cell!, elmt, renderer);
+						}
+						if (!this._firstEditableCellId && vname === this.outputVars[0] && elmt.editable && elmt.content.trim() !== '') {
+							this._firstEditableCellId = this.getCellId(vname, rowIdx - 1);
+						}
 
-					// finally, re-highlight rows and remove highlight of rows that are no longer valid
-					const env = this._boxEnvs![rowIdx - 1];
-					if (env) {
-						if (this._includedTimes.has(env['time'])) {
-							if (elmt.editable == false) {
-								this._includedTimes.delete(env['time']);
-								this.removeHighlight(this.findParentRow(cell));
-							}
-							else if (elmt.editable) {
-								this.highlightRow(this.findParentRow(cell));
+						// build this._cells
+						if (outputVars.has(vname)) {
+							let vcells = this._cells!.get(vname) ?? [];
+							vcells.push(cell!);
+							this._cells!.set(vname, vcells);
+						}
+
+						// finally, re-highlight rows and remove highlight of rows that are no longer valid
+						const env = this._boxEnvs![rowIdx - 1];
+						if (env) {
+							if (this._includedTimes.has(env['time'])) {
+								if (elmt.editable == false) {
+									this._includedTimes.delete(env['time']);
+									this.removeHighlight(this.getRow(rowIdx - 1)!);
+								}
+								else if (elmt.editable) {
+									this.highlightRow(this.getRow(rowIdx - 1)!);
+								}
 							}
 						}
 					}
+
 				}
+
+
+				// // Get the cell
+				// let cell = this.getCell(vname, rowIdx - 1)!;
+				// if (cell !== null) {
+				// 	cell = this.updateCell(cell, elmt, renderer);
+				// 	if (!this._firstEditableCellId && vname === this.outputVars[0] && elmt.editable && elmt.content.trim() !== '') {
+				// 		this._firstEditableCellId = this.getCellId(vname, rowIdx - 1);
+				// 	}
+
+				// 	// build this._cells
+				// 	if (outputVars.has(vname)) {
+				// 		let vcells = this._cells!.get(vname) ?? [];
+				// 		vcells.push(cell);
+				// 		this._cells!.set(vname, vcells);
+				// 	}
+
+				// 	// finally, re-highlight rows and remove highlight of rows that are no longer valid
+				// 	const env = this._boxEnvs![rowIdx - 1];
+				// 	if (env) {
+				// 		if (this._includedTimes.has(env['time'])) {
+				// 			if (elmt.editable == false) {
+				// 				this._includedTimes.delete(env['time']);
+				// 				this.removeHighlight(this.findParentRow(cell));
+				// 			}
+				// 			else if (elmt.editable) {
+				// 				this.highlightRow(this.findParentRow(cell));
+				// 			}
+				// 		}
+				// 	}
+				// }
 
 			}
 		}
@@ -431,6 +511,7 @@ export class RTVSynthDisplayBox {
 		this.updateCursorPos(range, node as HTMLElement);
 	}
 
+	// TODO: add IDs to rows, tables, etc. (HTML element)
 	private findParentRow(cell: HTMLElement): HTMLTableRowElement {
 		let rs = cell;
 		while (rs.nodeName !== 'TR') {
@@ -449,6 +530,7 @@ export class RTVSynthDisplayBox {
 		row.style.fontWeight = row.style.backgroundColor = '';
 	}
 
+	// TODO: store cursor info to model
 	private updateCursorPos(range: Range, node: HTMLElement) {
 		if (!this._cursorPos) {
 			this._cursorPos = new CursorPos(node);
@@ -537,6 +619,7 @@ export class RTVSynthDisplayBox {
 
 	}
 
+	// TODO: let the model figure out the next cursor pos
 	private async synthesizeFragment(cell: HTMLElement) {
 		const success = await this.requestSynth!();
 		if (success) {
@@ -591,6 +674,7 @@ export class RTVSynthDisplayBox {
 		}
 	}
 
+	// TODO: move to controller
 	private async toggleIfChanged(
 		env: any,
 		varname: string,
@@ -613,6 +697,7 @@ export class RTVSynthDisplayBox {
 		return success;
 	}
 
+	// TODO: move to controller
 	private async toggleElement(
 		env: any,
 		cell: HTMLElement,

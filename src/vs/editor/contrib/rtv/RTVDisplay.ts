@@ -1699,7 +1699,6 @@ export class RTVController implements IRTVController {
 		this._editor.onKeyDown((e) => { this.onKeyDown(e); });
 		//this._modelService.onModelModeChanged((e) => { console.log('BBBB');  });
 
-		// this._synthesis = new RTVSynth(_editor, this, this._themeService);
 		this._synthesis = new RTVSynthController(_editor, this, this._themeService);
 		this.logger = this.utils.logger(this._editor);
 

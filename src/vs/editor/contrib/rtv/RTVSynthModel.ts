@@ -1,16 +1,17 @@
 import { TableElement, isHtmlEscape } from 'vs/editor/contrib/rtv/RTVUtils';
 
-export class RTVSynthService {
+
+export class RTVSynthModel {
 	private _allEnvs: any[] = [];
 	private _prevEnvs?: Map<number, any>;
-	private _boxEnvs: any[] = [];
+	private _boxEnvs: {[k: string]: [v: any]}[] = [];
 	private _boxVars: Set<string> = new Set<string>();
 	private _lineNumber: number;
 	private _rowsValid: boolean[] = [];
 	private _includedTimes: Set<number> = new Set();
 	private _outputVars: string[];
 	private _rows?: TableElement[][];
-	private onBoxContentChanged?: Function;
+	onBoxContentChanged?: (data: {[k: string]: any}, init?: boolean) => void;
 
 	constructor(
 		outputVars: string[],
@@ -22,7 +23,7 @@ export class RTVSynthService {
 		this._boxVars = boxVars;
 	}
 
-	get boxEnvs(): any[] {
+	get boxEnvs(): {[k: string]: [v: any]}[] {
 		return this._boxEnvs;
 	}
 
@@ -38,20 +39,20 @@ export class RTVSynthService {
 		return this._outputVars!;
 	}
 
-	bindBoxContentChanged(callback: Function) {
+	bindBoxContentChanged(callback: (data: {[k: string]: any}, init?: boolean) => void) {
 		this.onBoxContentChanged = callback;
 	}
 
 	_commit(init: boolean = false) {
 		this.onBoxContentChanged!(
 			{
-				'rows': this._rows,
-				'includedTimes': this._includedTimes,
-				'boxEnvs': this._boxEnvs
+				'rows': this._rows!,
+				'includedTimes': this._includedTimes!,
+				'boxEnvs': this._boxEnvs!
 			}, init);
 	}
 
-	public updateBoxContent(newEnvs: any, init: boolean = false) {
+	public updateBoxContent(newEnvs: {[k: string] : [v: {[k1: string]: any}]}, init: boolean = false) {
 		this.updateBoxEnvs(newEnvs);
 		this.updateRowsValid();
 		this._commit(init);
@@ -105,7 +106,7 @@ export class RTVSynthService {
 	 * Updates `boxEnvs' and builds `rows`
 	 * @param newEnvs
 	 */
-	public updateBoxEnvs(newEnvs: any[]) {
+	public updateBoxEnvs(newEnvs: {[k: string] : [v: {[k1: string]: any}]}) {
 
 		let outVarNames: string[];
 		if (!this._outputVars) {
@@ -126,7 +127,8 @@ export class RTVSynthService {
 				let rs = true;
 				if (outVarNames.includes(v)) {
 					for (const env of envs) {
-						const time = env['time'];
+						// (Lisa) Typescript's automatic fix...
+						const time = env['time'] as unknown as number;
 						const prev = this._prevEnvs.get(time);
 						if (prev) {
 							rs = v in prev;
@@ -161,40 +163,28 @@ export class RTVSynthService {
 		// Generate all rows
 		for (let i = 0; i < envs.length; i++) {
 			let env = envs[i];
-			let loopID = env['$'];
-			let iter = env['#'];
+			let loopID = env['$'] as unknown as string;
+			let iter = env['#'] as unknown as string;
 			let row: TableElement[] = [];
 			vars.forEach((v: string) => {
-				let v_str: string;
 				let varName = v;
 				let varEnv = env;
 
 				if (outVarNames.includes(v)) {
 					varName += '_in';
-					if (this._prevEnvs && this._prevEnvs.has(env['time'])) {
-						varEnv = this._prevEnvs.get(env['time']);
+					if (this._prevEnvs && this._prevEnvs.has(env['time'] as unknown as number)) {
+						varEnv = this._prevEnvs.get(env['time'] as unknown as number);
 					}
 				}
 
-				if (varEnv[v] === undefined) {
-					v_str = '';
-				} else if (isHtmlEscape(varEnv[v])) {
-					v_str = varEnv[v];
-				} else {
-					v_str = '```python\n' + varEnv[v] + '\n```';
-				}
+				let s = varEnv[v] ? varEnv[v] as unknown as string : '';
+				let v_str: string = (!s || isHtmlEscape(s)) ? s : '```python\n' + s + '\n```';
 
 				row.push(new TableElement(v_str, loopID, iter, this._lineNumber!, varName, varEnv));
 			});
 			outVarNames.forEach((v: string, i: number) => {
-				let v_str: string;
-				if (env[v] === undefined) {
-					v_str = '';
-				} else if (isHtmlEscape(env[v])) {
-					v_str = env[v];
-				} else {
-					v_str = '```python\n' + env[v] + '\n```';
-				}
+				let s = env[v] ? env[v] as unknown as string : '';
+				let v_str: string = (!s || isHtmlEscape(s)) ? s : '```python\n' + s + '\n```';
 				row.push(new TableElement(v_str, loopID, iter, this._lineNumber!, v, env, i === 0));
 			});
 			rows.push(row);
@@ -215,18 +205,19 @@ export class RTVSynthService {
 			this._rowsValid = boxEnvs.map((env, _) => Object.keys(env).length > 2);
 		} else {
 			this._rowsValid = boxEnvs.map((env, i) => {
-				let time;
+				let time: number;
 				let rs = false;
 				if (env) {
-					time = env['time'];
-					rs = !env['#'] ||
-						env['#'] === '0' ||
-						(i > 0 && this._includedTimes.has(boxEnvs[i - 1]['time']));
+					time = env['time'] as unknown as number;
+					const iter: string | undefined = env['#'] as unknown as string;
+					rs = !iter ||
+						iter === '0' ||
+						(i > 0 && this._includedTimes.has(boxEnvs[i - 1]['time'] as unknown as number));
 				}
 
 				// This row is no longer valid. Remove it from the included time!
-				if (!rs && this._includedTimes.has(time)) {
-					this._includedTimes.delete(time);
+				if (!rs && this._includedTimes.has(time!)) {
+					this._includedTimes.delete(time!);
 				}
 
 				return rs;
@@ -261,10 +252,10 @@ export class RTVSynthService {
 	 *
 	 * @returns values for a synth requests
 	 */
-	public getValues() : any{
-		let values: any = {};
+	public getValues() : {[k: string] : {[k1: string] : [v1: Object]}} {
+		let values: {[k: string] : {[k1: string] : [v1: Object]}} = {};
 		for (let env of this._boxEnvs!) {
-			if (this._includedTimes.has(env['time'])) {
+			if (this._includedTimes.has(env['time'] as unknown as number)) {
 				values[`(${env['lineno']},${env['time']})`] = env;
 			}
 		}
@@ -277,7 +268,7 @@ export class RTVSynthService {
 	 * @param allEnvs
 	 * @returns
 	 */
-	public computeEnvs(allEnvs: any[]) : any[]{
+	public computeEnvs(allEnvs: {[k: string] : [v: {[k1: string]: any}]}) : {[k: string]: [v: any]}[]{
 		// Get all envs at this line number
 		let envs;
 		envs = allEnvs[this._lineNumber!-1];
@@ -287,7 +278,7 @@ export class RTVSynthService {
 
 
 	// helper function copied from `RTVDisplay.ts`
-	private addMissingLines(envs: any[]): any[] {
+	private addMissingLines(envs: {[k: string]: [v: any]}[]): {[k: string]: [v: any]}[] {
 		let last = function <T>(a: T[]): T { return a[a.length - 1]; };
 		let active_loop_iters: number[] = [];
 		let active_loop_ids: string[] = [];
@@ -296,19 +287,19 @@ export class RTVSynthService {
 			let env = envs[i];
 			if (env.begin_loop !== undefined) {
 				if (active_loop_iters.length > 0) {
-					let loop_iters: string[] = env.begin_loop.split(',');
+					let loop_iters: string[] = (env.begin_loop as unknown as string).split(',');
 					this.bringToLoopCount(envs2, active_loop_iters, last(active_loop_ids), +loop_iters[loop_iters.length - 2]);
 				}
-				active_loop_ids.push(env['$']);
+				active_loop_ids.push(env['$'] as unknown as string);
 				active_loop_iters.push(0);
 			} else if (env.end_loop !== undefined) {
-				let loop_iters: string[] = env.end_loop.split(',');
+				let loop_iters: string[] = (env.end_loop as unknown as string).split(',');
 				this.bringToLoopCount(envs2, active_loop_iters, last(active_loop_ids), +last(loop_iters));
 				active_loop_ids.pop();
 				active_loop_iters.pop();
 				active_loop_iters[active_loop_iters.length - 1]++;
 			} else {
-				let loop_iters: string[] = env['#'].split(',');
+				let loop_iters: string[] = (env['#'] as unknown as string).split(',');
 				this.bringToLoopCount(envs2, active_loop_iters, last(active_loop_ids), +last(loop_iters));
 				envs2.push(env);
 				active_loop_iters[active_loop_iters.length - 1]++;

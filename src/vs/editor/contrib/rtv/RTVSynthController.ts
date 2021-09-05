@@ -5,8 +5,8 @@ import { getUtils } from 'vs/editor/contrib/rtv/RTVUtils';
 import { Utils, RunResult, SynthResult, SynthProblem, IRTVLogger, IRTVController, ViewMode, SynthProcess } from './RTVInterfaces';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { RTVDisplayBox } from 'vs/editor/contrib/rtv/RTVDisplay';
-import { RTVSynthDisplayBox } from 'vs/editor/contrib/rtv/RTVSynthDisplay';
-import { RTVSynthService } from 'vs/editor/contrib/rtv/RTVSynthService';
+import { RTVSynthView } from 'vs/editor/contrib/rtv/RTVSynthView';
+import { RTVSynthModel } from 'vs/editor/contrib/rtv/RTVSynthModel';
 
 enum EditorState {
 	Synthesizing,
@@ -96,8 +96,8 @@ class EditorStateManager {
 }
 
 export class RTVSynthController {
-	private _synthService?: RTVSynthService = undefined;
-	private _synthBox?: RTVSynthDisplayBox = undefined;
+	private _synthService?: RTVSynthModel = undefined;
+	private _synthBox?: RTVSynthView = undefined;
 	private logger: IRTVLogger;
 	enabled: boolean;
 	lineno?: number = undefined;
@@ -153,13 +153,8 @@ export class RTVSynthController {
 		return this.enabled;
 	}
 
-	onBoxContentChanged = (data: {[k: string]:[v: any]}, init: boolean = false) => {
-		if (init) {
-			this._synthBox!.populateBoxContent(data);
-		}
-		else {
-			this._synthBox!.updateBoxContent(data);
-		}
+	onBoxContentChanged = (data: {[k: string] : any}, init: boolean = false) => {
+		this._synthBox!.updateBoxContent(data, init);
 	}
 
 	handleRequestSynth = async () => {
@@ -271,10 +266,10 @@ export class RTVSynthController {
 		this.RTVController.disable();
 
 		let oldBox : RTVDisplayBox = this.RTVController.getBox(lineno) as RTVDisplayBox;
-		this._synthService = new RTVSynthService(varnames, lineno, oldBox.allVars());
+		this._synthService = new RTVSynthModel(varnames, lineno, oldBox.allVars());
 		this._synthService.bindBoxContentChanged(this.onBoxContentChanged);
 
-		this._synthBox = new RTVSynthDisplayBox(
+		this._synthBox = new RTVSynthView(
 							this.editor,
 							oldBox.getLine().getElement(),
 							oldBox.getElement(),
@@ -354,7 +349,7 @@ export class RTVSynthController {
 		let varnames = this._synthService!.varnames;
 
 		for (const env of boxEnvs) {
-			const time = env['time'];
+			const time = env['time'] as unknown as number;
 
 			if (includedTimes.has(time)) {
 				envs.push(env);
@@ -536,7 +531,8 @@ export class RTVSynthController {
 
 		// only create new boxes when `updateBoxContent` is true
 		if (updateSynthBox) {
-			this._synthService!.updateBoxContent(content[2], init);
+			const envs: {[k: string] : [v: {[k1: string]: any}]} = content[2];
+			this._synthService!.updateBoxContent(envs, init);
 		}
 
 		return undefined;
