@@ -1,7 +1,7 @@
-import { Range } from 'vs/editor/common/core/range';
+import { Range as RangeClass } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
-import { getUtils } from 'vs/editor/contrib/rtv/RTVUtils';
+import { getUtils, TableElement } from 'vs/editor/contrib/rtv/RTVUtils';
 import { Utils, RunResult, SynthResult, SynthProblem, IRTVLogger, IRTVController, ViewMode, SynthProcess } from './RTVInterfaces';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { RTVDisplayBox } from 'vs/editor/contrib/rtv/RTVDisplay';
@@ -72,7 +72,7 @@ class EditorStateManager {
 			startCol = model.getLineFirstNonWhitespaceColumn(this.lineno);
 			endCol = model.getLineMaxColumn(this.lineno);
 		}
-		let range = new Range(this.lineno, startCol, this.lineno, endCol);
+		let range = new RangeClass(this.lineno, startCol, this.lineno, endCol);
 
 		// Add spaces for multiline results
 		if (fragment.includes('\n')) {
@@ -96,8 +96,8 @@ class EditorStateManager {
 }
 
 export class RTVSynthController {
-	private _synthService?: RTVSynthModel = undefined;
-	private _synthBox?: RTVSynthView = undefined;
+	private _synthModel?: RTVSynthModel = undefined;
+	private _synthView?: RTVSynthView = undefined;
 	private logger: IRTVLogger;
 	enabled: boolean;
 	lineno?: number = undefined;
@@ -153,20 +153,65 @@ export class RTVSynthController {
 		return this.enabled;
 	}
 
-	onBoxContentChanged = (data: {[k: string] : any}, init: boolean = false) => {
-		this._synthBox!.updateBoxContent(data, init);
+	onBoxContentChanged = (rows: TableElement[][], init: boolean = false) => {
+		this._synthView!.updateBoxContent(rows, init);
 	}
 
-	handleRequestSynth = async () => {
-		let error = await this.synthesizeFragment();
-		return error;
+	onCursorPosChanged = (range: Range, node: HTMLElement) => {
+		this._synthModel!.updateCursorPos(range, node);
+	}
+
+	onCellElementsChanged = (cells: Map<string, HTMLTableCellElement[]>) => {
+		this._synthModel!.updateCellElements(cells);
+	}
+
+	handleRequestNextCell = (backwards: boolean, skipLine: boolean, varname: string) => {
+		return this._synthModel!.findNextCell(backwards, skipLine, varname);
+	}
+
+	handleRequestCurrNode = () => {
+		return this._synthModel!.getCurrNode();
+	}
+
+	handleResetHighlight = (idx: number, editable?: boolean) => {
+		const highlight = this._synthModel!.removeInvalidTimes(idx, editable);
+		if (highlight !== undefined) {
+			if (highlight) {
+				this._synthView!.highlightRow(idx);
+			} else {
+				this._synthView!.removeHighlight(idx);
+			}
+		}
+	}
+
+	handleRequestSynth = async (
+									idx: number,
+									varname: string,
+									cell: HTMLElement,
+									force?: boolean,
+									updateSynthBox?: boolean,
+									includeRow?: boolean
+								) => {
+		let success = false;
+		if (!includeRow) {
+			if (!this._synthModel!.cellContentChanged(idx, varname, cell.innerText)) {
+				console.error('cell content not changed');
+				return false;
+			}
+		}
+		const validInput = await this.toggleElement(idx, varname, cell, force, updateSynthBox);
+		if (validInput) {
+			success = await this.synthesizeFragment();
+		}
+
+		return success;
 	}
 
 	handleExitSynth = (accept: boolean = false) => {
 		if (accept && (this.editorState!.state === EditorState.HasProgram) || !accept) {
 			this.stopSynthesis();
 		} else {
-			this._synthBox!.addError("No program available to accept. Please use ESC to exit synthesis.");
+			this._synthView!.addError("No program available to accept. Please use ESC to exit synthesis.");
 		}
 	}
 
@@ -178,6 +223,16 @@ export class RTVSynthController {
 	handleUpdateBoxContent = async (updateSynthBox: boolean, includedTimes: Set<number>) => {
 		let error = await this.updateBoxContent(updateSynthBox, includedTimes);
 		return error;
+	}
+
+	handleToggleIfChanged = async (idx: number, varname: string, cell: HTMLElement, updateBoxContent?: boolean) => {
+		let success = await this.toggleIfChanged(idx, varname, cell, updateBoxContent);
+		return success;
+	}
+
+	handleToggleElement = async (idx: number, varname: string, cell: HTMLElement, force?: boolean, updateSynthBox?: boolean) => {
+		let validInput = await this.toggleElement(idx, varname, cell, force, updateSynthBox);
+		return validInput;
 	}
 
 
@@ -234,7 +289,7 @@ export class RTVSynthController {
 		let startCol = model.getLineFirstNonWhitespaceColumn(lineno);
 		let endCol = model.getLineMaxColumn(lineno);
 
-		let range = new Range(lineno, startCol, lineno, endCol);
+		let range = new RangeClass(lineno, startCol, lineno, endCol);
 
 		let defaultValue = await this.defaultValue(r_operand, varnames);
 		let txt: string;
@@ -266,10 +321,10 @@ export class RTVSynthController {
 		this.RTVController.disable();
 
 		let oldBox : RTVDisplayBox = this.RTVController.getBox(lineno) as RTVDisplayBox;
-		this._synthService = new RTVSynthModel(varnames, lineno, oldBox.allVars());
-		this._synthService.bindBoxContentChanged(this.onBoxContentChanged);
+		this._synthModel = new RTVSynthModel(varnames, lineno, oldBox.allVars());
+		this._synthModel.bindBoxContentChanged(this.onBoxContentChanged);
 
-		this._synthBox = new RTVSynthView(
+		this._synthView = new RTVSynthView(
 							this.editor,
 							oldBox.getLine().getElement(),
 							oldBox.getElement(),
@@ -278,13 +333,20 @@ export class RTVSynthController {
 							this.lineno!,
 							varnames!,
 							this._themeService);
-		this._synthBox.bindSynth(this.handleRequestSynth);
-		this._synthBox.bindExitSynth(this.handleExitSynth);
-		this._synthBox.bindValidateInput(this.handleValidateInput);
-		this._synthBox.bindUpdateBoxContent(this.handleUpdateBoxContent);
+		this._synthView.bindSynth(this.handleRequestSynth);
+		this._synthView.bindExitSynth(this.handleExitSynth);
+		this._synthView.bindValidateInput(this.handleValidateInput);
+		this._synthView.bindUpdateBoxContent(this.handleUpdateBoxContent);
+		this._synthView.bindToggleIfChanged(this.handleToggleIfChanged);
+		this._synthView.bindToggleElement(this.handleToggleElement);
+		this._synthView.bindUpdateCursorPos(this.onCursorPosChanged);
+		this._synthView.bindCellElementsChanged(this.onCellElementsChanged);
+		this._synthView.bindRequestNextCell(this.handleRequestNextCell);
+		this._synthView.bindRequestCurrNode(this.handleRequestCurrNode);
+		this._synthView.bindResetHighlight(this.handleResetHighlight);
 
 		// TODO Cleanup all available envs
-		this._synthService!.updateAllEnvs(runResults, undefined); // allEnvs updated by synthService
+		this._synthModel!.updateAllEnvs(runResults, undefined); // allEnvs updated by synthService
 
 		// Now that we have all the info, update the box again!
 		error = await this.updateBoxContent(true, undefined, true); // service updates the envs, display updates cell contents
@@ -292,12 +354,12 @@ export class RTVSynthController {
 		if (error) {
 			// We shouldn't start synthesis if the underlying code
 			// doesn't even excute.
-			this._synthBox.addError(error);
+			this._synthView.addError(error);
 			this.stopSynthesis();
 			return;
 		}
 
-		let selectCell = this._synthBox.selectFirstEditableCell();
+		let selectCell = this._synthView.selectFirstEditableCell();
 
 		if (!selectCell) {
 			this.stopSynthesis();
@@ -307,7 +369,7 @@ export class RTVSynthController {
 		// Last chance to make sure the synthesizer is working
 		if (!this.process.connected()) {
 			// Show the error message
-			this._synthBox.addError('Cannot start the synthesizer. Please contact the admin.', undefined, 0, 2500);
+			this._synthView.addError('Cannot start the synthesizer. Please contact the admin.', undefined, 0, 2500);
 			this.stopSynthesis();
 			return;
 		}
@@ -320,9 +382,9 @@ export class RTVSynthController {
 			this.process.stop();
 
 			this.lineno = undefined;
-			this._synthService = undefined;
-			this._synthBox?.destroy();
-			this._synthBox = undefined;
+			this._synthModel = undefined;
+			this._synthView?.destroy();
+			this._synthView = undefined;
 			this.editorState = undefined;
 
 			// Then reset the Projection Boxes
@@ -343,10 +405,10 @@ export class RTVSynthController {
 		let envs = [];
 		let optEnvs = [];
 
-		let boxEnvs = this._synthService!.boxEnvs;
-		let includedTimes = this._synthService!.includedTimes;
-		let prevEnvs = this._synthService!.prevEnvs;
-		let varnames = this._synthService!.varnames;
+		let boxEnvs = this._synthModel!.boxEnvs;
+		let includedTimes = this._synthModel!.includedTimes;
+		let prevEnvs = this._synthModel!.prevEnvs;
+		let varnames = this._synthModel!.varnames;
 
 		for (const env of boxEnvs) {
 			const time = env['time'] as unknown as number;
@@ -385,7 +447,7 @@ export class RTVSynthController {
 			} else {
 				this.editorState!.failed();
 				if (rs.result) {
-					this._synthBox!.addError(rs.result, undefined, 500);
+					this._synthView!.addError(rs.result, undefined, 500);
 				}
 			}
 		} catch (err) {
@@ -398,6 +460,69 @@ export class RTVSynthController {
 		}
 
 		return false;
+	}
+
+	// moved from View
+	private async toggleIfChanged(
+		idx: number,
+		varname: string,
+		cell: HTMLElement,
+		updateBoxContent: boolean = true
+	): Promise<boolean> {
+		// Keep track of changes
+		let success = false;
+		// if (this._synthModel) {
+			// handle (the weird) situation where the onblur event is fired before stopSynth
+			if (cell) {
+				let valueChanged = this._synthModel?.cellContentChanged(idx, varname, cell.textContent!);
+				success = valueChanged ? await this.toggleElement(idx, varname, cell, true, updateBoxContent) : true;
+			} else {
+				console.error('toggleIfChanged called, but parent can\' be found: ');
+				console.error(cell);
+			}
+		// }
+		return success;
+	}
+
+	// computes whether to toggle a cell on
+	private async toggleElement(
+		idx: number,
+		varname: string,
+		cell: HTMLElement,
+		force?: boolean,
+		updateSynthBox: boolean = true
+	): Promise<boolean> {
+		let on = this._synthModel!.toggleOn(idx, force);
+
+		if (on) {
+			let error = await this.utils.validate(cell.textContent!);
+			if (error) {
+				this._synthView!.addError(error, cell, 500);
+				return false;
+			}
+
+			this._synthModel!.updateBoxState(idx, varname, cell.innerText.trim());
+			this._synthModel!.updateIncludedTimes(idx, true);
+
+			// if error, then controller / service won't know the most recent `_includedTimes`;
+			// however, the newest info will be delivered again when another request is made
+			error = await this.updateBoxContent(updateSynthBox);
+			if (error) {
+				this._synthView!.addError(error, cell);
+				return false;
+			}
+			this._synthView!.highlightRow(idx);
+		} else {
+			this._synthModel!.updateIncludedTimes(idx, false);
+			let error = await this.updateBoxContent(updateSynthBox);
+			if (error) {
+				this._synthModel!.updateIncludedTimes(idx, true);
+				return false;
+			}
+
+			this._synthView!.removeHighlight(idx);
+		}
+		return true;
 	}
 
 	// -----------------------------------------------------------------------------------
@@ -481,7 +606,7 @@ export class RTVSynthController {
 	}
 
 	private async runProgram(): Promise<[string, string, any?]> {
-		let values = this._synthService!.getValues();
+		let values = this._synthModel!.getValues();
 
 		const runResults: RunResult = await this.utils.runProgram(
 			this.RTVController.getProgram(),
@@ -527,12 +652,12 @@ export class RTVSynthController {
 		}
 
 		// First, update our envs
-		this._synthService!.updateAllEnvs(content, includedTimes);
+		this._synthModel!.updateAllEnvs(content, includedTimes);
 
 		// only create new boxes when `updateBoxContent` is true
 		if (updateSynthBox) {
 			const envs: {[k: string] : [v: {[k1: string]: any}]} = content[2];
-			this._synthService!.updateBoxContent(envs, init);
+			this._synthModel!.updateBoxContent(envs, init);
 		}
 
 		return undefined;

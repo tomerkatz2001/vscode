@@ -8,16 +8,6 @@ import { IOpenerService } from 'vs/platform/opener/common/opener';
 import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 
-
-class CursorPos {
-	constructor (
-		public node: HTMLElement,
-		public startPos?: number,
-		public endPos?: number,
-		public collapsed?: boolean
-	) {}
-}
-
 export class ErrorHoverManager {
 	private errorHover?: HTMLElement = undefined;
 	private addHoverTimer = new DelayedRunAtMostOne();
@@ -109,25 +99,23 @@ export class RTVSynthView {
 	private _line: HTMLDivElement;
 	private _errorBox: ErrorHoverManager;
 
-	// from service
-	private _includedTimes: Set<number> = new Set<number>();
-	private _rows: TableElement[][] = [[]];
-	private _boxEnvs: any[] = [];
-
 	// helper data structures/info
-	private _cells?: Map<string, HTMLTableCellElement[]> = undefined;
-	private _currRow: number;
-	private _cursorPos?: CursorPos;
 	private _synthTimer: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 	private _firstEditableCellId?: string = undefined;
 	private _table?: HTMLTableElement;
 	private _cellStyle?: CSSStyleDeclaration;
 
-	// TODO: change type signature
-	exitSynthHandler?: Function;
-	requestValidateInput?: Function;
-	requestSynth?: Function;
-	requestUpdateBoxContent?: Function;
+	exitSynthHandler?: (accept?: boolean) => void;
+	requestValidateInput?: (input: string) => Promise<string | undefined>;
+	requestSynth?: (idx: number, varname: string, cell: HTMLElement, force?: boolean | undefined, updateSynthBox?: boolean | undefined, includeRow?: boolean | undefined) => Promise<boolean>;
+	requestUpdateBoxContent?: (updateSynthBox: boolean, includedTimes: Set<number>) => Promise<string | undefined>;
+	requestToggleIfChanged?: (idx: number, varname: string, cell: HTMLElement, updateBoxContent?: boolean | undefined) => Promise<boolean>;
+	requestToggleElement?: (idx: number, varname: string, cell: HTMLElement, force?: boolean | undefined, updateSynthBox?: boolean | undefined) => Promise<boolean>;
+	updateCursorPos?: (range: Range, node: HTMLElement) => void;
+	onCellElementsChanged?: (cells: Map<string, HTMLTableCellElement[]>) => void;
+	requestNextCell?: (backwards: boolean, skipLine: boolean, varname: string) => HTMLTableCellElement
+	requestCurrNode?: () => HTMLElement;
+	resetHighlight?: (idx: number, editable?: boolean | undefined) => void;
 
 
 	constructor(
@@ -148,7 +136,6 @@ export class RTVSynthView {
 		this._box.style.opacity = '0';
 		this._line.id = 'rtv-synth-line';
 		this._line.style.opacity = '0';
-		this._currRow = 0;
 		this._errorBox = new ErrorHoverManager(this._editor);
 
 		for (
@@ -170,20 +157,48 @@ export class RTVSynthView {
 
 	}
 
-	bindExitSynth(handler: Function) {
+	bindExitSynth(handler: (accept?: boolean) => void) {
 		this.exitSynthHandler = handler;
 	}
 
-	bindValidateInput(handler: Function) {
+	bindValidateInput(handler: (input: string) => Promise<string | undefined>) {
 		this.requestValidateInput = handler;
 	}
 
-	bindSynth(handler: Function) {
+	bindSynth(handler: (idx: number, varname: string, cell: HTMLElement, force?: boolean | undefined, updateSynthBox?: boolean | undefined, includeRow?: boolean) => Promise<boolean>) {
 		this.requestSynth = handler;
 	}
 
-	bindUpdateBoxContent(handler: Function) {
+	bindUpdateBoxContent(handler: (updateSynthBox: boolean, includedTimes: Set<number>) => Promise<string | undefined>) {
 		this.requestUpdateBoxContent = handler;
+	}
+
+	bindUpdateCursorPos(handler: (range: Range, node: HTMLElement) => void) {
+		this.updateCursorPos = handler;
+	}
+
+	bindCellElementsChanged(handler: (cells: Map<string, HTMLTableCellElement[]>) => void) {
+		this.onCellElementsChanged = handler;
+	}
+
+	bindRequestNextCell(handler: (backwards: boolean, skipLine: boolean, varname: string) => HTMLTableCellElement) {
+		this.requestNextCell = handler;
+	}
+
+	bindRequestCurrNode(handler: () => HTMLElement) {
+		this.requestCurrNode = handler;
+	}
+
+	bindToggleIfChanged(handler: (idx: number, varname: string, cell: HTMLElement, updateBoxContent?: boolean | undefined) => Promise<boolean>) {
+		this.requestToggleIfChanged = handler;
+	}
+
+	bindToggleElement(handler: (idx: number, varname: string, cell: HTMLElement, force?: boolean | undefined, updateSynthBox?: boolean | undefined) => Promise<boolean>) {
+		this.requestToggleElement = handler;
+	}
+
+	bindResetHighlight(handler: (idx: number, editable?: boolean | undefined) => void) {
+		this.resetHighlight = handler;
 	}
 
 	// ------------
@@ -248,108 +263,15 @@ export class RTVSynthView {
 	// front-end updates
 	// ------------
 
-	// TODO: merge with updateBoxContent
-	// public populateBoxContent(data: {[k: string]: any}) {
-	// 	const rows: TableElement[][] = data['rows'];
-	// 	const includedTimes: Set<number> = data['includedTimes'] as unknown as Set<number>;
-	// 	const boxEnvs: any[] = data['boxEnvs'];
-
-	// 	const renderer = new MarkdownRenderer(
-	// 						{ 'editor': this._editor },
-	// 						this._modeService,
-	// 						this._openerService);
-	// 	const outputVars = new Set(this.outputVars);
-
-	// 	this._includedTimes = includedTimes;
-	// 	this._boxEnvs = boxEnvs;
-	// 	this._firstEditableCellId = undefined;
-	// 	this._rows = rows;
-	// 	this._cells = new Map<string, HTMLTableCellElement[]>();
-
-
-
-	// 	// remove existing cells
-	// 	this._table!.childNodes.forEach((child) => {
-	// 		this._table!.removeChild(child)
-	// 	});
-
-	// 	this.show();
-
-
-	// 	// update cell contents and add event listeners
-	// 	for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-	// 		let newRow = this._table!.insertRow(-1);
-	// 		const row = rows[rowIdx];
-	// 		for (let _colIdx = 0; _colIdx < row.length; _colIdx++) {
-	// 			let newCell = newRow.insertCell(-1);
-	// 			const elmt = row[_colIdx];
-	// 			const vname = elmt.vname!;
-
-	// 			// skip the headers
-	// 			if (rowIdx == 0) {
-	// 				this.addCellContentAndStyle(newCell, elmt, renderer, true);
-	// 			} else {
-	// 				newCell.id = this.getCellId(elmt.vname!, rowIdx - 1);
-	// 				this.addCellContentAndStyle(newCell, elmt, renderer, false);
-	// 				if (!this._firstEditableCellId && vname === this.outputVars[0] && elmt.editable && elmt.content.trim() !== '') {
-	// 					this._firstEditableCellId = this.getCellId(vname, rowIdx - 1);
-	// 				}
-
-	// 				// build this._cells
-	// 				if (outputVars.has(vname)) {
-	// 					let vcells = this._cells!.get(vname) ?? [];
-	// 					vcells.push(newCell);
-	// 					this._cells!.set(vname, vcells);
-	// 				}
-
-	// 				// finally, re-highlight rows and remove highlight of rows that are no longer valid
-	// 				const env = this._boxEnvs![rowIdx - 1];
-	// 				if (env) {
-	// 					if (this._includedTimes.has(env['time'])) {
-	// 						if (elmt.editable == false) {
-	// 							this._includedTimes.delete(env['time']);
-	// 							this.removeHighlight(this.findParentRow(newCell));
-	// 						}
-	// 						else if (elmt.editable) {
-	// 							this.highlightRow(this.findParentRow(newCell));
-	// 						}
-	// 					}
-	// 				}
-	// 			}
-
-	// 		}
-	// 	}
-	// }
-
-	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, header: boolean = false) {
-		cell.style.borderLeft = this._cellStyle!.borderLeft;
-		cell.style.paddingLeft = this._cellStyle!.paddingLeft;
-		cell.style.paddingRight = this._cellStyle!.paddingRight;
-		cell.style.paddingTop = this._cellStyle!.paddingTop;
-		cell.style.paddingBottom = this._cellStyle!.paddingBottom;
-		cell.style.boxSizing = this._cellStyle!.boxSizing;
-		cell.align = 'center';
-
-		this.updateCell(cell, elmt, r, header);
-
-	}
-
-	public updateBoxContent(data: {[k: string]: [v: any]}, init: boolean = false) {
-		const rows: TableElement[][] = data['rows'];
-		const includedTimes: Set<number> = data['includedTimes'] as unknown as Set<number>;
-		const boxEnvs: any[] = data['boxEnvs'];
-
+	public updateBoxContent(rows: TableElement[][], init: boolean = false) {
 		const renderer = new MarkdownRenderer(
 							{ 'editor': this._editor },
 							this._modeService,
 							this._openerService);
 		const outputVars = new Set(this.outputVars);
 
-		this._includedTimes = includedTimes;
-		this._boxEnvs = boxEnvs;
 		this._firstEditableCellId = undefined;
-		this._rows = rows;
-		this._cells = new Map<string, HTMLTableCellElement[]>();
+		let cellElements = new Map<string, HTMLTableCellElement[]>();
 
 		if (init) {
 			// remove existing cells
@@ -372,23 +294,21 @@ export class RTVSynthView {
 			}
 			const row = rows[rowIdx];
 			for (let _colIdx = 0; _colIdx < row.length; _colIdx++) {
-				let cell: HTMLTableCellElement;
-				if (init) {
-					cell = newRow!.insertCell(-1);
-				}
+				let cell: HTMLTableCellElement | undefined;
 				const elmt = row[_colIdx];
 				const vname = elmt.vname!;
+				if (init) {
+					cell = newRow!.insertCell(-1);
+					if (rowIdx > 0) {
+						cell!.id = this.getCellId(elmt.vname!, rowIdx - 1);
+					}
+					this.addCellContentAndStyle(cell!, elmt, renderer, rowIdx == 0);
+				}
 
 				// skip the headers
-				if (rowIdx == 0) {
-					if (init) {
-						this.addCellContentAndStyle(cell!, elmt, renderer, true);
-					}
-				} else {
-					if (init) {
-						cell!.id = this.getCellId(elmt.vname!, rowIdx - 1);
-						this.addCellContentAndStyle(cell!, elmt, renderer, false);
-					} else {
+				if (rowIdx > 0) {
+					if (!cell) {
+						// not init
 						cell = this.getCell(vname, rowIdx - 1)!;
 					}
 					if (cell! !== null) {
@@ -399,63 +319,35 @@ export class RTVSynthView {
 							this._firstEditableCellId = this.getCellId(vname, rowIdx - 1);
 						}
 
-						// build this._cells
+						// build cellElements
 						if (outputVars.has(vname)) {
-							let vcells = this._cells!.get(vname) ?? [];
+							let vcells = cellElements!.get(vname) ?? [];
 							vcells.push(cell!);
-							this._cells!.set(vname, vcells);
+							cellElements!.set(vname, vcells);
 						}
 
 						// finally, re-highlight rows and remove highlight of rows that are no longer valid
-						const env = this._boxEnvs![rowIdx - 1];
-						if (env) {
-							if (this._includedTimes.has(env['time'])) {
-								if (elmt.editable == false) {
-									this._includedTimes.delete(env['time']);
-									this.removeHighlight(this.getRow(rowIdx - 1)!);
-								}
-								else if (elmt.editable) {
-									this.highlightRow(this.getRow(rowIdx - 1)!);
-								}
-							}
-						}
+						this.resetHighlight!(rowIdx - 1, elmt.editable);
 					}
 
 				}
-
-
-				// // Get the cell
-				// let cell = this.getCell(vname, rowIdx - 1)!;
-				// if (cell !== null) {
-				// 	cell = this.updateCell(cell, elmt, renderer);
-				// 	if (!this._firstEditableCellId && vname === this.outputVars[0] && elmt.editable && elmt.content.trim() !== '') {
-				// 		this._firstEditableCellId = this.getCellId(vname, rowIdx - 1);
-				// 	}
-
-				// 	// build this._cells
-				// 	if (outputVars.has(vname)) {
-				// 		let vcells = this._cells!.get(vname) ?? [];
-				// 		vcells.push(cell);
-				// 		this._cells!.set(vname, vcells);
-				// 	}
-
-				// 	// finally, re-highlight rows and remove highlight of rows that are no longer valid
-				// 	const env = this._boxEnvs![rowIdx - 1];
-				// 	if (env) {
-				// 		if (this._includedTimes.has(env['time'])) {
-				// 			if (elmt.editable == false) {
-				// 				this._includedTimes.delete(env['time']);
-				// 				this.removeHighlight(this.findParentRow(cell));
-				// 			}
-				// 			else if (elmt.editable) {
-				// 				this.highlightRow(this.findParentRow(cell));
-				// 			}
-				// 		}
-				// 	}
-				// }
-
 			}
 		}
+
+		// send vcells info back to Model
+		this.onCellElementsChanged!(cellElements);
+	}
+
+	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, header: boolean = false) {
+		cell.style.borderLeft = this._cellStyle!.borderLeft;
+		cell.style.paddingLeft = this._cellStyle!.paddingLeft;
+		cell.style.paddingRight = this._cellStyle!.paddingRight;
+		cell.style.paddingTop = this._cellStyle!.paddingTop;
+		cell.style.paddingBottom = this._cellStyle!.paddingBottom;
+		cell.style.boxSizing = this._cellStyle!.boxSizing;
+		cell.align = 'center';
+
+		this.updateCell(cell, elmt, r, header);
 	}
 
 	private updateCell(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, header: boolean = false): HTMLTableCellElement{
@@ -508,245 +400,144 @@ export class RTVSynthView {
 		range.selectNodeContents(node);
 		selection.removeAllRanges();
 		selection.addRange(range);
-		this.updateCursorPos(range, node as HTMLElement);
+		this.updateCursorPos!(range, node as HTMLElement);
 	}
 
-	// TODO: add IDs to rows, tables, etc. (HTML element)
-	private findParentRow(cell: HTMLElement): HTMLTableRowElement {
-		let rs = cell;
-		while (rs.nodeName !== 'TR') {
-			rs = rs.parentElement!;
-		}
-		return rs as HTMLTableRowElement;
-	}
-
-	private highlightRow(row: HTMLTableRowElement) {
+	public highlightRow(idx: number) {
+		let row = this.getRow(idx)!;
 		let theme = this._themeService.getColorTheme();
 		row.style.fontWeight = '900';
 		row.style.backgroundColor = String(theme.getColor(badgeBackground) ?? '');
 	}
 
-	private removeHighlight(row: HTMLTableRowElement) {
+	public removeHighlight(idx: number) {
+		let row = this.getRow(idx)!;
 		row.style.fontWeight = row.style.backgroundColor = '';
 	}
 
-	// TODO: store cursor info to model
-	private updateCursorPos(range: Range, node: HTMLElement) {
-		if (!this._cursorPos) {
-			this._cursorPos = new CursorPos(node);
-		}
-		this._cursorPos.node = node;
-		this._cursorPos.startPos = range.startOffset ?? undefined;
-		this._cursorPos.endPos = range.endOffset ?? undefined;
-		this._cursorPos.collapsed = range.collapsed ?? undefined;
-		const row = node.id!.split('-')[2];
-		this._currRow = +row;
-	}
-
 	private addListeners(cell: HTMLElement) {
-		const [varname, idx] = cell.id.split('-').slice(1);
-		const env = this._boxEnvs![+idx];
+		if (cell.id) { // won't work for cells w/o id, i.e., the header cells
+			const [varname, idx] = cell.id.split('-').slice(1);
 
-		cell.onclick = (e: MouseEvent) => {
-			const selection = window.getSelection()!;
-			const range = selection.getRangeAt(0)!;
-			this.updateCursorPos(range, cell);
-		}
-
-		cell.onblur = () => {
-			this.toggleIfChanged(env, varname, cell);
-		}
-
-		cell.onkeydown = (e: KeyboardEvent) => {
-			let rs: boolean = true;
-
-			const selection = window.getSelection()!;
-			const range = selection.getRangeAt(0)!;
-
-			this.updateCursorPos(range, cell);
-
-
-			switch(e.key) {
-				case 'Enter':
-					e.preventDefault();
-
-					if (e.shiftKey) {
-						this._synthTimer.run(1, async () => {
-							const validInput = await this.toggleElement(env, cell, varname, undefined, false);
-							if (validInput) {
-								this.highlightRow(this.findParentRow(cell));
-								await this.synthesizeFragment(cell);
-							}
-						})
-					} else {
-						// without Shift: accept and exit
-						this.exitSynthHandler!(true);
-					}
-					break;
-
-				case 'Escape':
-					// stop synth
-					rs = false;
-					e.preventDefault();
-					this.exitSynthHandler!();
-					break;
-
-				default:
-					// TODO: how do we handle the situation where `Tab` is pressed immediately after a regular keystroke?
-					// - currently we _don't_ process any synth request under this situation
-					if (e.key === 'Tab') {
-						e.preventDefault();
-						this.focusNextRow(cell, e.shiftKey);
-					}
-					this._synthTimer.run(1000, async () => {
-						if (env[varname] !== cell.innerText) {
-							const validInput = await this.toggleElement(env, cell, varname, true, false);
-
-							if (validInput) {
-								await this.synthesizeFragment(cell);
-							}
-
-						}
-					}).catch(err => {
-						if (err) {
-							console.error(err);
-						}
-					});
-					break;
+			cell.onclick = (e: MouseEvent) => {
+				const selection = window.getSelection()!;
+				const range = selection.getRangeAt(0)!;
+				this.updateCursorPos!(range, cell);
 			}
-			return rs;
-		}; // end of onkeydown
+
+			cell.onblur = async () => {
+				await this.requestToggleIfChanged!(+idx, varname, cell);
+			}
+
+			cell.onkeydown = (e: KeyboardEvent) => {
+				let rs: boolean = true;
+
+				const selection = window.getSelection()!;
+				const range = selection.getRangeAt(0)!;
+
+				this.updateCursorPos!(range, cell);
+
+				switch(e.key) {
+					case 'Enter':
+						e.preventDefault();
+
+						if (e.shiftKey) {
+							this._synthTimer.run(1, async () => {
+								const success = await this.requestSynth!(+idx, varname, cell, true, false, true);
+								if (success) {
+									this.highlightRow(+idx);
+									this.synthesizeFragment(cell);
+								}
+							});
+						} else {
+							// without Shift: accept and exit
+							this.exitSynthHandler!(true);
+						}
+						break;
+
+					case 'Escape':
+						// stop synth
+						rs = false;
+						e.preventDefault();
+						this.exitSynthHandler!();
+						break;
+
+					default:
+						// how do we handle the situation where `Tab` is pressed immediately after a regular keystroke?
+						// - currently we _don't_ process any synth request under this situation
+						if (e.key === 'Tab') {
+							e.preventDefault();
+							this.focusNextRow(cell, e.shiftKey);
+						}
+						this._synthTimer.run(1000, async () => {
+							const success = await this.requestSynth!(+idx, varname, cell, true, false, false);
+							if (success) {
+								this.synthesizeFragment(cell);
+							}
+						}).catch(err => {
+							if (err) {
+								console.error(err);
+							}
+						});
+						break;
+				}
+				return rs;
+			}; // end of onkeydown
+		}
 
 	}
 
-	// TODO: let the model figure out the next cursor pos
-	private async synthesizeFragment(cell: HTMLElement) {
-		const success = await this.requestSynth!();
-		if (success) {
-			const sel = window.getSelection()!;
-			let offset = sel.anchorOffset;
-			const range = document.createRange();
+	private synthesizeFragment(cell: HTMLElement) {
+		const sel = window.getSelection()!;
+		let offset = sel.anchorOffset;
+		const range = document.createRange();
 
-			let isString = cell.innerText[0] === '\'' || cell.innerText[0] === '"';
+		let isString = cell.innerText[0] === '\'' || cell.innerText[0] === '"';
 
-			let dest: HTMLElement = cell;
-			while (dest.firstChild && (!dest.classList.contains('monaco-tokenized-source') || dest.childNodes.length == 1)) {
+		let dest: HTMLElement = cell;
+		while (dest.firstChild && (!dest.classList.contains('monaco-tokenized-source') || dest.childNodes.length == 1)) {
+			dest = dest.firstChild as HTMLElement;
+		}
+
+		if (dest.childNodes.length > 1) {
+			let isNegNum = dest.firstChild!.textContent == '-';
+			offset = isNegNum ? cell.innerText.length : dest.childNodes.length - 1;
+		} else {
+			// Select the actual text
+			while (dest.firstChild) {
 				dest = dest.firstChild as HTMLElement;
 			}
 
-			if (dest.childNodes.length > 1) {
-				let isNegNum = dest.firstChild!.textContent == '-';
-				offset = isNegNum ? cell.innerText.length : dest.childNodes.length - 1;
-			} else {
-				// We need to carefully pick the offset based on the type
+			offset = isString ? cell.innerText.length - 1 : cell.innerText.length;
+		}
 
-				// Select the actual text
-				while (dest.firstChild) {
-					dest = dest.firstChild as HTMLElement;
-				}
+		let currNode: HTMLElement = this.requestCurrNode!();
 
-				offset = isString ? cell.innerText.length - 1 : cell.innerText.length;
+		if (currNode.id === cell.id) {
+			try {
+				range.selectNodeContents(dest);
+				range.setStart(dest, offset);
+				range.collapse(true);
+
+				sel.removeAllRanges();
+				sel.addRange(range);
+			} catch (e) {
+				// TODO Better error handling
+				console.error(e);
+				range.selectNodeContents(dest);
+				range.setStart(dest, 0);
+				range.collapse(true);
+
+				sel.removeAllRanges();
+				sel.addRange(range);
 			}
-
-			if (this._cursorPos!.node.id === cell.id) {
-				try {
-					range.selectNodeContents(dest);
-					range.setStart(dest, offset);
-					range.collapse(true);
-
-					sel.removeAllRanges();
-					sel.addRange(range);
-				} catch (e) {
-					// TODO Better error handling
-					console.error(e);
-					range.selectNodeContents(dest);
-					range.setStart(dest, 0);
-					range.collapse(true);
-
-					sel.removeAllRanges();
-					sel.addRange(range);
-				}
-			}
-			else {
-				// console.error(`cursorPos: ${this._cursorPos!.node.id}; currCell: ${cell.id}`);
-				this.select(this._cursorPos!.node);
-			}
+		}
+		else {
+			// console.error(`cursorPos: ${this._cursorPos!.node.id}; currCell: ${cell.id}`);
+			this.select(currNode);
 		}
 	}
 
-	// TODO: move to controller
-	private async toggleIfChanged(
-		env: any,
-		varname: string,
-		cell: HTMLElement,
-		updateBoxContent: boolean = true
-	): Promise<boolean> {
-		// Keep track of changes
-		let success = false;
-		if (cell) {
-			const currentValue = cell.textContent!;
-			if (env[varname] !== currentValue) {
-				success = await this.toggleElement(env, cell, varname, true, updateBoxContent);
-			} else {
-				success = true;
-			}
-		} else {
-			console.error('toggleIfChanged called, but parent can\' be found: ');
-			console.error(cell);
-		}
-		return success;
-	}
-
-	// TODO: move to controller
-	private async toggleElement(
-		env: any,
-		cell: HTMLElement,
-		varname: string,
-		force?: boolean,
-		updateSynthBox: boolean = true
-	): Promise<boolean> {
-		let time = env['time'];
-		let row = this.findParentRow(cell);
-		let on: boolean;
-
-		if (!time) {
-			on = true;
-		} else if (force !== undefined) {
-			on = force;
-		} else {
-			on = !this._includedTimes!.has(time);
-		}
-
-		if (on) {
-			let error = await this.requestValidateInput!(cell.textContent!);
-			if (error) {
-				this.addError(error, cell, 500);
-				return false;
-			}
-
-			env[varname] = cell.innerText.trim();
-			console.log(`env[${varname}] = ${env[varname]}`);
-			this._includedTimes!.add(time);
-			// if error, then controller / service won't know the most recent `_includedTimes`;
-			// however, the newest info will be delivered again when another request is made
-			error = await this.requestUpdateBoxContent!(updateSynthBox, this._includedTimes);
-			if (error) {
-				this.addError(error, cell);
-				return false;
-			}
-			this.highlightRow(row);
-		} else {
-			this._includedTimes!.delete(time);
-			let error = await this.requestUpdateBoxContent!(updateSynthBox, this._includedTimes);
-			if (error) {
-				this._includedTimes!.add(time);
-				return false;
-			}
-
-			this.removeHighlight(row);
-		}
-		return true;
-	}
 
 	/**
 	 * moves the cursor to the next editable cell
@@ -766,64 +557,16 @@ export class RTVSynthView {
 		// Extract the info from the cell ID, skip the first, which is the lineno
 		const [varname, idxStr]: string[] = cell.id.split('-').slice(1);
 		const idx: number = parseInt(idxStr);
-		const env = this._boxEnvs![idx];
 
 		if (trackChanges) {
-			const success = await this.toggleIfChanged(env, varname, cell, updateBoxContent);
+			const success = await this.requestToggleIfChanged!(idx, varname, cell, updateBoxContent);
 			if (!success) {
 				return;
 			}
 		}
 
 		// Finally, select the next value.
-
-		let varIdx: number;
-		let row = this._currRow;
-
-		if (skipLine) {
-			varIdx = 0;
-			row += backwards ? -1 : +1;
-		} else {
-			// Check what the next variable is
-			varIdx = this.outputVars.indexOf(varname) + (backwards ? -1 : +1);
-			if (varIdx < 0) {
-				varIdx = this.outputVars.length - 1;
-				row -= 1;
-			} else if (varIdx >= this.outputVars!.length) {
-				varIdx = 0;
-				row += 1;
-			}
-		}
-
-		// this._rows include the header, so we need to ignore/skip it
-		if (row >= this._rows.length - 1) {
-			row = 0;
-		} else if (row < 0) {
-			row = this._rows.length - 2;
-		}
-
-		const nextVar = this.outputVars[varIdx];
-		const vcells = this._cells!.get(nextVar)!;
-		const tmpCell = vcells[row];
-		let nextCell = tmpCell;
-
-		while (nextCell.contentEditable !== 'true') {
-			row += (backwards ? -1 : +1);
-
-			if (row >= this._rows.length - 1) {
-				row = 0;
-			} else if (row < 0) {
-				row = this._rows.length - 2;
-			}
-
-			nextCell = vcells[row];
-			if (nextCell.id === tmpCell.id) {
-				row = (row < 0) ? this._boxEnvs.length - 1 : 0;
-				nextCell = vcells[row];
-				break;
-			}
-		}
-
+		let nextCell = this.requestNextCell!(backwards, skipLine, varname);
 		this.select(nextCell!);
 	}
 
@@ -834,16 +577,14 @@ export class RTVSynthView {
 	public selectFirstEditableCell() : boolean {
 		const firstVar = this.outputVars[0];
 		try {
-			const cellInfo = this._firstEditableCellId!.split('-');
-			const cellVar = cellInfo[1];
-			const cellId = cellInfo[2];
+			const cellVar = this._firstEditableCellId!.split('-')[1];
 
 			if (firstVar !== cellVar) {
 				console.error(`No cell found with key "${firstVar}"`);
 				return false;
 			}
 
-			this._currRow = +cellId;
+			// this._currRow = +cellId; // already handled by this.select
 			let cell = document.getElementById(this._firstEditableCellId!);
 			cell!.contentEditable = 'true';
 			this.select(cell!);

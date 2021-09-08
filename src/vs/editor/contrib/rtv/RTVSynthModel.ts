@@ -1,17 +1,29 @@
 import { TableElement, isHtmlEscape } from 'vs/editor/contrib/rtv/RTVUtils';
 
+class CursorPos {
+	constructor (
+		public node?: HTMLElement,
+		public startPos?: number,
+		public endPos?: number,
+		public collapsed?: boolean,
+		public row: number = 0
+	) {}
+}
 
 export class RTVSynthModel {
+
 	private _allEnvs: any[] = [];
 	private _prevEnvs?: Map<number, any>;
-	private _boxEnvs: {[k: string]: [v: any]}[] = [];
+	private _boxEnvs: {[k: string]: any}[] = [];
 	private _boxVars: Set<string> = new Set<string>();
 	private _lineNumber: number;
 	private _rowsValid: boolean[] = [];
 	private _includedTimes: Set<number> = new Set();
 	private _outputVars: string[];
 	private _rows?: TableElement[][];
-	onBoxContentChanged?: (data: {[k: string]: any}, init?: boolean) => void;
+	private _cellElements?: Map<string, HTMLTableCellElement[]>;
+	private _cursorPos: CursorPos
+	onBoxContentChanged?: (rows: TableElement[][], init?: boolean) => void;
 
 	constructor(
 		outputVars: string[],
@@ -21,6 +33,7 @@ export class RTVSynthModel {
 		this._outputVars = outputVars;
 		this._lineNumber = lineno;
 		this._boxVars = boxVars;
+		this._cursorPos = new CursorPos(undefined, undefined, undefined, undefined, 0);
 	}
 
 	get boxEnvs(): {[k: string]: [v: any]}[] {
@@ -39,17 +52,16 @@ export class RTVSynthModel {
 		return this._outputVars!;
 	}
 
-	bindBoxContentChanged(callback: (data: {[k: string]: any}, init?: boolean) => void) {
+	bindBoxContentChanged(callback: (rows: TableElement[][], init?: boolean) => void) {
 		this.onBoxContentChanged = callback;
 	}
 
 	_commit(init: boolean = false) {
-		this.onBoxContentChanged!(
-			{
-				'rows': this._rows!,
-				'includedTimes': this._includedTimes!,
-				'boxEnvs': this._boxEnvs!
-			}, init);
+		this.onBoxContentChanged!(this._rows!, init);
+	}
+
+	public getCurrNode(): HTMLElement {
+		return this._cursorPos.node!;
 	}
 
 	public updateBoxContent(newEnvs: {[k: string] : [v: {[k1: string]: any}]}, init: boolean = false) {
@@ -314,5 +326,134 @@ export class RTVSynthModel {
 			envs.push({ '#': active_loop_iters.join(','), '$': loopId });
 			active_loop_iters[active_loop_iters.length - 1]++;
 		}
+	}
+
+
+	// comptues if a cell should be toggled on
+	public toggleOn(idx: number, force?: boolean): boolean {
+		let env = this._boxEnvs[idx];
+		let time = env['time'] as unknown as number;
+		let on: boolean;
+		if (!time) {
+			on = true;
+		} else if (force !== undefined) {
+			on = force;
+		} else {
+			on = !this._includedTimes!.has(time);
+		}
+		return on;
+	}
+
+	// updates this._boxEnvs
+	public updateBoxState(idx: number, varname: string, content: string) {
+		let env = this._boxEnvs[idx];
+		env[varname] = content;
+		this._boxEnvs[idx] = env;
+		console.log(`env[${varname}] = ${env[varname]}`);
+	}
+
+	// updates _includedTimes
+	public updateIncludedTimes(idx: number, add: boolean) {
+		const env = this._boxEnvs[idx];
+		const time = env['time'] as unknown as number;
+		if (env) {
+			if (add) {
+				this._includedTimes.add(time);
+			} else if (this._includedTimes.has(time)) {
+				this._includedTimes.delete(time);
+			}
+		}
+	}
+
+	// removes invalid times from _includedTimes and returns signal for whether to highlight a row
+	public removeInvalidTimes(idx: number, editable?: boolean) : boolean | undefined {
+		const env = this._boxEnvs![idx];
+		const time = env['time'] as unknown as number;
+		let highlight = undefined;
+		if (env) {
+			if (this._includedTimes.has(time)) {
+				if (editable == false) {
+					this._includedTimes.delete(time);
+					highlight = false;
+				} else if (editable) {
+					highlight = true;
+				}
+			}
+		}
+		return highlight;
+	}
+
+	// checks if the cell content is different from its env value
+	public cellContentChanged(idx: number, varname: string, content: string): boolean {
+		let env = this._boxEnvs[idx];
+		return env[varname] !== content;
+	}
+
+	// record cursor position and the current row (also stored in CursorPos)
+	public updateCursorPos(range: Range, node: HTMLElement) {
+		const row = node.id!.split('-')[2];
+
+		this._cursorPos.node = node;
+		this._cursorPos.startPos = range.startOffset ?? undefined;
+		this._cursorPos.endPos = range.endOffset ?? undefined;
+		this._cursorPos.collapsed = range.collapsed ?? undefined;
+		this._cursorPos.row = +row;
+	}
+
+	// record cell DOM nodes
+	public updateCellElements(cells: Map<string, HTMLTableCellElement[]>) {
+		this._cellElements = cells;
+	}
+
+	// computes the next cell where the cursor should be moved
+	public findNextCell(backwards: boolean, skipLine: boolean, varname: string): HTMLTableCellElement {
+		let varIdx: number;
+		let row = this._cursorPos!.row;
+
+		if (skipLine) {
+			varIdx = 0;
+			row += backwards ? -1 : +1;
+		} else {
+			// Check what the next variable is
+			varIdx = this._outputVars.indexOf(varname) + (backwards ? -1 : +1);
+			if (varIdx < 0) {
+				varIdx = this._outputVars.length - 1;
+				row -= 1;
+			} else if (varIdx >= this._outputVars!.length) {
+				varIdx = 0;
+				row += 1;
+			}
+		}
+
+		// this._rows include the header, so we need to ignore/skip it
+		if (row >= this._rows!.length - 1) {
+			row = 0;
+		} else if (row < 0) {
+			row = this._rows!.length - 2;
+		}
+
+		const nextVar = this._outputVars[varIdx];
+		const vcells = this._cellElements!.get(nextVar)!;
+		const tmpCell = vcells[row];
+		let nextCell = tmpCell;
+
+		while (nextCell.contentEditable !== 'true') {
+			row += (backwards ? -1 : +1);
+
+			if (row >= this._rows!.length - 1) {
+				row = 0;
+			} else if (row < 0) {
+				row = this._rows!.length - 2;
+			}
+
+			nextCell = vcells[row];
+			if (nextCell.id === tmpCell.id) {
+				row = (row < 0) ? this._boxEnvs.length - 1 : 0;
+				nextCell = vcells[row];
+				break;
+			}
+		}
+
+		return nextCell;
 	}
 }
