@@ -291,6 +291,8 @@ def compute_writes(lines):
 				did_lines_change = False
 				while lineno >= 0:
 					if lines[lineno].find(magic_var_name) != -1:
+						# (lisa) able to remove boxes at comment lines inside a function body,
+						# but not top level -- needs to handle the latter in RTVDisplay
 						lines[lineno] = "\n"
 						did_lines_change = True
 					lineno = lineno - 1

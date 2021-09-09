@@ -2,18 +2,52 @@ import re
 import io
 import base64
 import numpy as np
+import tokenize
 from PIL import Image
 
 # Code manipulation
 
 magic_var_name = "__run_py__"
 
-def strip_comment(str):
-	return re.sub(r'#.*', '', str)
+'''
+Reference:
+https://stackoverflow.com/questions/1769332/script-to-remove-python-comments-docstrings
+'''
+def remove_comments_and_docstrings(source):
+	io_obj = io.StringIO(source)
+	out = ''
+	prev_toktype = tokenize.INDENT
+	last_lineno = -1
+	last_col = 0
+	for tok in tokenize.generate_tokens(io_obj.readline):
+		token_type = tok[0]
+		token_string = tok[1]
+		start_line, start_col = tok[2]
+		end_line, end_col = tok[3]
+		ltext = tok[4]
+		if start_line > last_lineno:
+			last_col = 0
+		if start_col > last_col:
+			out += " " * (start_col - last_col)
+		if token_type == tokenize.COMMENT:
+			if prev_toktype == tokenize.INDENT or prev_toktype == tokenize.NEWLINE:
+				out += ''
+		elif token_type == tokenize.STRING:
+			if prev_toktype != tokenize.INDENT:
+				if prev_toktype != tokenize.NEWLINE:
+					if start_col > 0:
+						out += token_string
+			else:
+				out += '\n' * (end_line - start_line)
+		else:
+			out += token_string
+		prev_toktype = token_type
+		last_col = end_col
+		last_lineno = end_line
 
-def strip_comments(lines):
-	for i in range(len(lines)):
-		lines[i] = strip_comment(lines[i])
+	# add the \n character back to each line
+	res = list(map(lambda s: s + '\n', out.split('\n')))
+	return res
 
 def replace_empty_lines_with_noop(lines):
 
@@ -50,8 +84,8 @@ def replace_empty_lines_with_noop(lines):
 
 def load_code_lines(file_name):
 	with open(file_name) as f:
-		lines = f.readlines()
-	strip_comments(lines)
+		source =  f.read()
+	lines = remove_comments_and_docstrings(source)
 	replace_empty_lines_with_noop(lines)
 	return lines
 
