@@ -41,6 +41,9 @@ class LoopInfo:
 		self.indent = indent
 		self.iter = 0
 
+	def __str__(self):
+		return f'iter {self.iter}, frame {self.frame} at line {self.lineno} with indent {self.indent}'
+
 class Logger(bdb.Bdb):
 	def __init__(self, lines, values = []):
 		bdb.Bdb.__init__(self)
@@ -95,7 +98,13 @@ class Logger(bdb.Bdb):
 
 			loop_indent = self.active_loops[-1].indent
 			curr_indent = indent(curr_stmt)
-			if is_return_str(prev_stmt):
+			curr_frame_name = frame.f_code.co_name
+			prev_frame_name = self.prev_env["frame"].f_code.co_name
+			if is_return_str(prev_stmt) and curr_frame_name == prev_frame_name:
+				# we shouldn't record the end of a loop after
+				# a call to another function with a return statement,
+				# so we need to check whether prev stmt comes from the same frame
+				# as the current one
 				while len(self.active_loops) > 0:
 					self.active_loops[-1].iter += 1
 					for l in self.stmts_in_loop(self.active_loops[-1].lineno):
