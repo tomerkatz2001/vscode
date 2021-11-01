@@ -169,11 +169,12 @@ class Logger(bdb.Bdb):
 			return None
 		if isinstance(v, types.ModuleType):
 			return None
-		html = if_img_convert_to_html(v)
-		if html == None:
-			return repr(v)
-		else:
-			return add_html_escape(html)
+		return repr(v)
+		# html = if_img_convert_to_html(v)
+		# if html == None:
+		# 	return repr(v)
+		# else:
+		# 	return add_html_escape(html)
 
 	def record_env(self, frame, lineno):
 		line_time = "(%s,%d)" % (lineno, self.time)

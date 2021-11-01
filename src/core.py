@@ -1,9 +1,9 @@
 import re
 import io
 import base64
-import numpy as np
+# import numpy as np
 import tokenize
-from PIL import Image
+# from PIL import Image
 
 # Code manipulation
 

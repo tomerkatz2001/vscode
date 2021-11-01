@@ -5,8 +5,8 @@ import json
 import re
 from core import *
 import time
-import numpy as np
-from PIL import Image
+# import numpy as np
+# from PIL import Image
 
 class ImgRecorder:
 

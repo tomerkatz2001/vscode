@@ -218,13 +218,12 @@
 			"env": {
 				"VSCODE_EXTHOST_WILL_SEND_SOCKET": null,
 				"VSCODE_SKIP_PRELAUNCH": "1",
-				"PYTHON3": "/Users/lisa/.pyenv/shims/python3",
-				"RUNPY": "/Users/lisa/Desktop/projects/SnipPyPlus/vscode/src/run.py",
-				"IMGSUM": "/Users/lisa/Desktop/projects/SnipPyPlus/vscode/src/img-summary.py",
-				"SNIPPY_UTILS": "/Users/lisa/Desktop/projects/SnipPyPlus/vscode/src/snippy.py",
-				"JAVA": "/usr/bin/java",
-				// "HEAP": "12G",
-				"SYNTH": "/Users/lisa/Desktop/projects/SnipPyPlus/synthesizer/target/synthesizer-0.3-SNAPSHOT-jar-with-dependencies.jar"
+				"PYTHON3": "${input:envPYTHON3}",
+				"RUNPY": "${input:envRUNPY}",
+				"IMGSUM": "${input:envIMGSUM}",
+				"SNIPPY_UTILS": "${input:envSNIPPY_UTILS}",
+				"JAVA": "${input:envJAVA}",
+				"SYNTH": "${input:envSYNTH}"
 			},
 			"cleanUp": "wholeBrowser",
 			"urlFilter": "*workbench.html*",
@@ -534,5 +533,77 @@
 				"order": 2
 			}
 		}
+	],
+	"inputs": [
+		{
+			"id": "envPYTHON3",
+			"type": "command",
+			"command": "extension.commandvariable.file.content",
+			"args": {
+			  "fileName": "${workspaceFolder}/.env",
+			  "key": "PYTHON3",
+			  "default": ""
+			}
+		},
+		{
+			"id": "envRUNPY",
+			"type": "command",
+			"command": "extension.commandvariable.file.content",
+			"args": {
+			  "fileName": "${workspaceFolder}/.env",
+			  "key": "RUNPY",
+			  "default": ""
+			}
+		},
+		{
+			"id": "envIMGSUM",
+			"type": "command",
+			"command": "extension.commandvariable.file.content",
+			"args": {
+			  "fileName": "${workspaceFolder}/.env",
+			  "key": "IMGSUM",
+			  "default": ""
+			}
+		},
+		{
+			"id": "envSNIPPY_UTILS",
+			"type": "command",
+			"command": "extension.commandvariable.file.content",
+			"args": {
+			  "fileName": "${workspaceFolder}/.env",
+			  "key": "SNIPPY_UTILS",
+			  "default": ""
+			}
+		},
+		{
+			"id": "envJAVA",
+			"type": "command",
+			"command": "extension.commandvariable.file.content",
+			"args": {
+			  "fileName": "${workspaceFolder}/.env",
+			  "key": "JAVA",
+			  "default": ""
+			}
+		},
+		{
+			"id": "envHEAP",
+			"type": "command",
+			"command": "extension.commandvariable.file.content",
+			"args": {
+			  "fileName": "${workspaceFolder}/.env",
+			  "key": "HEAP",
+			  "default": ""
+			}
+		},
+		{
+			"id": "envSYNTH",
+			"type": "command",
+			"command": "extension.commandvariable.file.content",
+			"args": {
+			  "fileName": "${workspaceFolder}/.env",
+			  "key": "SYNTH",
+			  "default": ""
+			}
+		},
 	]
 }
