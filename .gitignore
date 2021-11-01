@@ -1,6 +1,6 @@
 .DS_Store
 .cache
-.env
+.vscode/.env
 npm-debug.log
 Thumbs.db
 node_modules/
