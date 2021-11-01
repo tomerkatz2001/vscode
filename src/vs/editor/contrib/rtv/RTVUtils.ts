@@ -68,7 +68,11 @@ class LocalRunProcess implements RunProcess {
 			this._reject = reject;
 
 			this._process.stdout.on('data', (data) => this.stdout += data);
-			this._process.stderr.on('data', (data) => this.stderr += data);
+			this._process.stderr.on('data', (data) =>
+			{
+				console.log(data.toString());
+				this.stderr += data;
+			});
 			this._process.on('exit', (exitCode) => {
 				let result = undefined;
 				if (exitCode !== null) {

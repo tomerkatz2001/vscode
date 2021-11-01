@@ -683,7 +683,16 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 
 	private isEmptyLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
+		if (this.lineNumber > 28) {
+			console.log(lineContent);
+		}
 		return lineContent.trim().length === 0;
+	}
+
+	private isCommentLine(): boolean {
+		// hides boxes from top-level comment lines
+		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
+		return lineContent.trim().startsWith('#');
 	}
 
 	private isConditionalLine(): boolean {
@@ -943,7 +952,7 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 			return true;
 		}
 
-		if (!this._controller.showBoxAtEmptyLine && this.isEmptyLine()) {
+		if (!this._controller.showBoxAtEmptyLine && (this.isEmptyLine() || this.isCommentLine())) {
 			this.setContentFalse();
 			return true;
 		}
