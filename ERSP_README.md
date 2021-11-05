@@ -67,7 +67,80 @@ choco install yarn
 ```
 
 ### Mac
-> TODO
+
+#### Homebrew (recommended)
+
+Homebrew is a package manager for macOS (and Linux). It makes package installations easier. It is recommended, but not required, that you have Homebrew installed for the installation of other dependencies required for this project. Of course, you may use other package managers such as [MacPorts](https://www.macports.org).
+
+To install Homebrew, paste the following command into your Terminal:
+```
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+#### Git
+
+MacOS should already have `git` installed. To check whether your Mac comes with `git`, try:
+```
+git version
+```
+through the terminal.
+
+If for any reason you don't have `git` installed, you can install the latest version of `git` from an installer or Homebrew, following the instructions on [this page](https://github.com/git-guides/install-git).
+
+#### Python 3
+
+_Using the Python 3 that comes with MacOS 10.15+_
+
+Starting MacOS Catalina (10.15), a `/usr/bin/python3` binary is included, which is a stub for installing the command line developer tools that include Python 3. If you're not sure whether you have the command line developer tools and hence Python 3 already installed, you may try:
+```
+/usr/bin/python3 --version
+```
+in your Terminal and see if you get a version number (installed) or a prompt to install the command line developer tools (not yet installed). If you'd like to use the very Python 3 that comes with the OS, then you're good to go once you have the command line developer tools installed.
+
+_Using your own Python 3_
+
+If you prefer not to install Python 3 through the command line developer tools, then you may download an installer directly from [Python's website](https://www.python.org), or through a package manager, e.g., Homebrew by running:
+```
+brew install python3
+```
+
+#### NodeJS 14.8.1
+14.8.1 is an LTS (long-term support) but not the most recent version of NodeJS. We are certain that NodeJS 14 (specifically, 14.8.1) works well with building this project. We're not sure about the newer versions of Node.
+
+To install NodeJS 14.8.1, you may use Homebrew:
+```
+brew isntall node@14
+```
+
+After the installation, confirm the version of the installed NodeJS:
+```
+node --version
+# output should be 14.8.1
+```
+
+#### Yarn
+
+After you have NodeJS installed, you should have `npm` (the package manager for NodeJS) installed. To verify, type the following command in your Terminal:
+```
+npm -v
+# output should be some version number
+```
+
+With `npm`, it's easy to install `yarn`. If you want to install `yarn` _globally_, i.e., enabling it to be used outside of this project, simply type the following command in your Terminal:
+```
+npm i -g yarn
+```
+
+However, if you only want to use `yarn` for this project, then you'll first change your working directory to be the absolute path of your `vscode` directory:
+```
+cd /Absolute/Path/To/vscode
+```
+then run:
+```
+npm i yarn
+```
+
+
 
 ### Linux
 This depends on your linux distribution, but almost all distributions will have these available through their package manager. For instance, in Archlinux, you can install these with:
@@ -97,7 +170,8 @@ Finished compilation with 0 errors
 ```
 in the build logs. If that number is greater than 0, you should fix the errors (printer above that line) before proceeding.
 
-After you are done, you can stop the daemon by running the following in the terminal:
+After you are done, you can stop the daemon by running the following in the terminal
+(**Note**: From now on it'll be the easiest if you work inside a Terminal opened within Visual Studio Code. To do so, go to the navigation bar and select `Terminal` -> `New Terminal`.):
 ```
 yarn kill-watch-extensionsd
 yarn kill-watch-clientd
@@ -106,7 +180,18 @@ yarn kill-watch-clientd
 #### Environment Variables
 
 We use a Visual Studio Code extension named `Command Variable` to set the necessary environment variables when running vscode inside of Visual Studio Code.
-To set the variables for your machine, open the `.env` file in the root of this repo, and update each variable to the correct value for your system.
+You should already have it installed if you have installed all the recommended extensions. If this is not the case, then go to the Extensions tab (the fifth buttom in your leftmost navigation bar) and search `Command Variable` to install it.
+
+To set the variables for your machine, open the `.env` file in the root of this repo, and update each variable to the correct value for your system. You'll need to set the following environment variables using the format specified in the comment at the top of the `.env` file:
+1. `SNIPPY_UTILS`: Absolute path to `vscode/src/snippy.py`
+2. `RUNPY`: Absolute path to `vscode/src/run.py`
+3. `IMGSUM`: Absolute path to `vscode/src/img-summary.py`
+4. `SYNTH`: Absolute path to `synthesizer/target/snippy-server-0.1-SNAPSHOT-jar-with-dependencies.jar`
+5. `PYTHON3`: Absolute path to your `python3` executable.
+(If not sure, check the output of `which python3` in your Terminal.)
+6. `JAVA`: Absolute path to your `java` executable.
+(If not sure, check the output of `which java` in your Terminal.)
+
 
 #### Running
 After successfully building `vscode` and setting up the environment variables, you can run it in Debug mode by pressing `F5`.
@@ -121,7 +206,7 @@ Error: OS environment variable PYTHON3 is not defined
 ```
 you [environment variables](#environment-variables) are not configured correctly.
 
-### Terminal
+### Terminal (i.e., with a non-VS Code editor of your choice)
 
 #### Building
 
@@ -160,6 +245,3 @@ variables automatically, and starts up the editor with Projection Boxes:
 ## TODOs
 1. [Kasra] Add a `run.sh` file.
 2. [Kasra] Fix issue where `SYNTH` cannot be empty.
-3. [Lisa] Add setup instructions for [MacOS](#mac).
-4. [Lisa] Is the [Env Vars](#environment-variables) section correct?
-5. [Lisa] Do we still need the `numpy` and `Pillow` dependencies?
