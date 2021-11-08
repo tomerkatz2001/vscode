@@ -186,7 +186,7 @@ To set the variables for your machine, open the `.env` file in the root of this 
 1. `SNIPPY_UTILS`: Absolute path to `vscode/src/snippy.py`
 2. `RUNPY`: Absolute path to `vscode/src/run.py`
 3. `IMGSUM`: Absolute path to `vscode/src/img-summary.py`
-4. `SYNTH`: Absolute path to `synthesizer/target/snippy-server-0.1-SNAPSHOT-jar-with-dependencies.jar`
+4. `SYNTH`: Absolute path to `synthesizer/target/snippy-server-0.1-SNAPSHOT-jar-with-dependencies.jar`. **NOTE:** Set this to empty (`''`) if not using synthesis.
 5. `PYTHON3`: Absolute path to your `python3` executable.
 (If not sure, check the output of `which python3` in your Terminal.)
 6. `JAVA`: Absolute path to your `java` executable.
@@ -225,7 +225,7 @@ Projection Boxes assume that the following environment variables are correctly d
 1. `SNIPPY_UTILS`: Absolute path to `vscode/src/snippy.py`
 2. `RUNPY`: Absolute path to `vscode/src/run.py`
 3. `IMGSUM`: Absolute path to `vscode/src/img-summary.py`
-4. `SYNTH`: Absolute path to `synthesizer/target/snippy-server-0.1-SNAPSHOT-jar-with-dependencies.jar`
+4. `SYNTH`: Absolute path to `synthesizer/target/snippy-server-0.1-SNAPSHOT-jar-with-dependencies.jar`. **NOTE:** Set this to empty (`''`) if not using synthesis.
 5. `PYTHON3`: Absolute path to your `python3` executable.
 6. `JAVA`: Absolute path to your `java` executable.
 
