@@ -49,7 +49,7 @@ export class TableElement {
 const PY3 = getOSEnvVariable('PYTHON3');
 const RUNPY = getOSEnvVariable('RUNPY');
 const IMGSUM = getOSEnvVariable('IMGSUM');
-const SYNTH = getOSEnvVariable('SYNTH');
+const SYNTH: string = getOSEnvVariable('SYNTH');
 const JAVA = getOSEnvVariable('JAVA');
 const HEAP = process.env['HEAP'];
 const SNIPPY_UTILS = getOSEnvVariable('SNIPPY_UTILS');
@@ -103,6 +103,22 @@ class LocalRunProcess implements RunProcess {
 		return this._promise.catch(onrejected);
 	}
 }
+
+
+class EmptySynthProcess implements SynthProcess {
+	synthesize(_problem: SynthProblem): Promise<SynthResult | undefined> {
+		return Promise.resolve(undefined);
+	}
+
+	stop(): boolean {
+		return true;
+	}
+
+	connected(): boolean {
+		return true;
+	}
+}
+
 
 class LocalSynthProcess implements SynthProcess {
 	private _resolve?: (value: SynthResult) => void = undefined;
@@ -265,7 +281,11 @@ class LocalUtils implements Utils {
 		// create a new process on init and when the existing child process is killed
 		// TODO: maybe there's a better way to handle this...?
 		if (!this._synth || !this._synth.connected()) {
-			this._synth = new LocalSynthProcess(this._logger);
+			if (SYNTH !== '') {
+				this._synth = new LocalSynthProcess(this._logger);
+			} else {
+				this._synth = new EmptySynthProcess();
+			}
 		}
 		return this._synth;
 	}
