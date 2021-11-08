@@ -1,9 +1,5 @@
 # Visual Studio Code + Projection Boxes
 
-> We are currently in the process of cleaning up this repository, and we recommend waiting until the cleanup is done _before_ forking it.
-> In the meantime, please see the [Setup](#how-to-set-up-locally) section for your local development environment setup. You can start
-> there to make sure your local machine is set up for development using your fork later.
-
 ## Table of Content
 1. [How to Fork this repository](#how-to-fork-this-repository)
 2. [How to set up locally](#how-to-set-up-locally)
@@ -14,7 +10,6 @@
 3. [Building and Running](#building-and-running)
    1. [Visual Studio Code](#visual-studio-code)
    2. [Terminal](#terminal)
-4. [TODOs](#todos)
 
 ## How to Fork this repository
 
@@ -46,14 +41,6 @@ To set up `vscode` for local development, you will first need to install the fol
 How to install them depends on your operating system and how you prefer managing your
 software/package installations. We have some suggestions for [Windows](#windows), [MacOS](#Mac)
 and [Linux](#linux) below.
-
-After installing the above, you will also need to install the `numpy` and `Pillow` Python 3 packages.
-You can install it however you wish, but the easiest way is probably with Python 3's own package manager:
-
-```
-python3 -m pip install numpy
-python3 -m pii install Pillow
-```
 
 ### Windows
 You can download the Installers from each software's website, and make sure [they are on your PATH](https://www.howtogeek.com/118594/how-to-edit-your-system-path-for-easy-command-line-access/).
@@ -168,10 +155,12 @@ Each time the project has been rebuilt, you should see a message like:
 ```
 Finished compilation with 0 errors
 ```
-in the build logs. If that number is greater than 0, you should fix the errors (printer above that line) before proceeding.
+in the build logs. If that number is greater than 0, you should fix the errors (printed above that line) before proceeding.
 
-After you are done, you can stop the daemon by running the following in the terminal
-(**Note**: From now on it'll be the easiest if you work inside a Terminal opened within Visual Studio Code. To do so, go to the navigation bar and select `Terminal` -> `New Terminal`.):
+After you are done, you can stop the daemon by running the following in the terminal:
+
+> **Note**: From now on it'll be the easiest if you work inside a Terminal opened within Visual Studio Code. To do so, go to the navigation bar and select `Terminal` -> `New Terminal`.
+
 ```
 yarn kill-watch-extensionsd
 yarn kill-watch-clientd
@@ -241,7 +230,3 @@ variables automatically, and starts up the editor with Projection Boxes:
 ```
 ./run.sh
 ```
-
-## TODOs
-1. [Kasra] Add a `run.sh` file.
-2. [Kasra] Fix issue where `SYNTH` cannot be empty.
