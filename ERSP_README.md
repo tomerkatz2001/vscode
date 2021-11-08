@@ -9,7 +9,7 @@
    4. [Linux](#linux)
 3. [Building and Running](#building-and-running)
    1. [Visual Studio Code](#visual-studio-code)
-   2. [Terminal](#terminal)
+   2. [Terminal](#terminal-ie-with-a-non-vs-code-editor-of-your-choice)
 
 ## How to Fork this repository
 
