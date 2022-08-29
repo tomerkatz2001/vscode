@@ -328,10 +328,12 @@ class RTVOutputDisplayBox {
 			let errorMsgStyled = '';
 			if (errorMsg !== '') {
 				let errors = escapeHTML(errorMsg).split('\n'); // errorMsg can be null
-				let errorStartIndex = 0;
-				let i = 0;
+				let errorStartIndex = -1;
 
-				for (i = errors.length-1; i >= 0; i--) {
+				// Try to find if there is a line number in error, starting with the end
+				// If there is an entire trace, starting at the end gives us the last
+				// frame
+				for (let i = errors.length-1; i >= 0; i--) {
 					let line = errors[i];
 					if (line.match(/line \d+/g) !== null) { // returns an Array object
 						errorStartIndex = i;
@@ -339,11 +341,25 @@ class RTVOutputDisplayBox {
 					}
 				}
 
-				let errorStartLine = errors[i];
-				errors[i] = errorStartLine.split(',').slice(1,).join(',');
-				let err = `<div style='color:red;'>${errors[errors.length - 2]}</div>`;
-				errors[errors.length-2] = err;
-				errorMsgStyled = errors.slice(errorStartIndex, -1).join('\n'); // related error starts from the fifth to the last substring
+				if (errorStartIndex == -1) {
+					// Could not find line number, just leave error as is
+					errorMsgStyled = errors.join('\n')
+				} else {
+					// Found line number, it usually looks as follows:
+					//   Traceback (most recent call last):
+					//   ...
+  					//   File "XYZ", line 7, in <func name>
+					//   NameError: name 'lll' is not defined.
+					// We make the error line red and remove everything except
+					// the last two lines (note that the last line in
+					// errors, namely errors[errors.length-1], is always an empty
+					// string, so the error line is errors[errors.length-2])
+					let errorStartLine = errors[errorStartIndex];
+					errors[errorStartIndex] = errorStartLine.split(',').slice(1,).join(',');
+					let err = `<div style='color:red;'>${errors[errors.length - 2]}</div>`;
+					errors[errors.length-2] = err;
+					errorMsgStyled = errors.slice(errorStartIndex, -1).join('\n');
+				}
 			}
 
 			this.setContent(`<b>Output:</b><pre>${escapeHTML(outputMsg)}</pre><b>Errors:</b><pre>${errorMsgStyled}</pre>`);
@@ -1069,6 +1085,18 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 		let startingVars: Set<string>;
 		if (this._controller.displayOnlyModifiedVars) {
 			startingVars = this.modVars();
+			// The following code deletes any "modified" variables that are
+			// not actually there at runtime. This can happen because run.py
+			// somtimes computes overly large sets of modified vars.
+			// For example, in  "l = [k for k in [1,2,3]]"
+			// run.py would include k because the parser identifies "for k in"
+			// as a write to k. But then k does not persist at the top level.
+			// It's easier to fix here than to fix in run.py
+			for (const v of startingVars) {
+				if (!this._allVars.has(v)) {
+					startingVars.delete(v)
+				}
+			}
 		} else {
 			startingVars = this._allVars;
 		}

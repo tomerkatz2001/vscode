@@ -1,9 +1,10 @@
 import re
 import io
 import base64
-# import numpy as np
+import numpy as np
 import tokenize
-# from PIL import Image
+from PIL import Image
+import matplotlib.pyplot as plt
 
 # Code manipulation
 
@@ -95,7 +96,25 @@ def is_ndarray_img(v):
 	return isinstance(v, np.ndarray) and v.dtype.name == 'uint8' and len(v.shape) == 3 and v.shape[2] == 3
 
 def is_list_img(v):
-	return isinstance(v, list) and len(v) > 0 and isinstance(v[0], list) and len(v[0]) > 0 and (isinstance(v[0][0], list) or isinstance(v[0][0], tuple)) and len(v[0][0]) == 3
+	if not isinstance(v, list):
+		return False
+	if not len(v) > 0:
+		return False
+	if not isinstance(v[0], list):
+		return False
+	if not len(v[0]) > 0:
+		return False
+	if not (isinstance(v[0][0], list) or isinstance(v[0][0], tuple)):
+		return False
+	if not len(v[0][0]) == 3:
+		return False
+	if not isinstance(v[0][0][0], int):
+		return False
+	if not isinstance(v[0][0][1], int):
+		return False
+	if not isinstance(v[0][0][2], int):
+		return False
+	return True
 
 def if_img_convert_to_html(v):
 	if is_list_img(v):
@@ -137,3 +156,12 @@ def ndarray_to_html(arr, **kwargs):
 
 def list_to_html(arr, **kwargs):
 	return ndarray_to_html(list_to_ndarray(arr), **kwargs)
+
+# Matplotlib
+
+def matplotlib_fig_as_html():
+	file_buffer = io.BytesIO()
+	plt.savefig(file_buffer, format = 'png')
+	encoded = base64.b64encode(file_buffer.getvalue())
+	encoded_str = str(encoded)[2:-1]
+	return f"<img src='data:image/png;base64,{encoded_str}' width=400>"
