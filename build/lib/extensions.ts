@@ -234,8 +234,7 @@ const excludedExtensions = [
 	'vscode-custom-editor-tests',
 ];
 
-const marketplaceWebExtensions = [
-	'ms-vscode.references-view'
+const marketplaceWebExtensions: string[] = [
 ];
 
 interface IBuiltInExtension {
