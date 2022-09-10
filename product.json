@@ -118,6 +118,20 @@
 				},
 				"publisherDisplayName": "Microsoft"
 			}
+		},
+		{
+			"name": "github.copilot",
+			"version": "1.44.6735",
+			"repo": "https://docs.github.com/en/copilot",
+			"metadata": {
+				"id": "23c4aeee-f844-43cd-b53e-1113e483f1a6",
+				"publisherId": {
+					"publisherId": "7c1c19cd-78eb-4dfb-8999-99caf7679002",
+					"publisherName": "github",
+					"displayName": "GitHub",
+					"flags": "verified"
+				}
+			}
 		}
 	],
 	"webBuiltInExtensions": [

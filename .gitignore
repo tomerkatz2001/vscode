@@ -37,3 +37,4 @@ vscode.db
 src/__pycache__
 .idea
 *.out
+.env
