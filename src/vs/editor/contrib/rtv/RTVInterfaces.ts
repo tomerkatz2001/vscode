@@ -217,7 +217,7 @@ export abstract class ARTVLogger implements IRTVLogger {
 export interface Utils {
 	readonly EOL: string;
 	logger(editor: ICodeEditor): IRTVLogger;
-	runProgram(program: string, values?: any): RunProcess;
+	runProgram(program: string, cwd?: string, values?: any): RunProcess;
 	runImgSummary(program: string, line: number, varname: string): RunProcess;
 	validate(input: string): Promise<string | undefined>;
 	synthesizer(): SynthProcess;
