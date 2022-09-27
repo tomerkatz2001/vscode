@@ -55,6 +55,7 @@ const indentationFilter = [
 	'!src/vs/base/node/cpuUsage.sh',
 	'!test/unit/assert.js',
 	'!resources/linux/snap/electron-launch',
+	'!GitHub.copilot*.vsix',
 
 	// except specific folders
 	'!test/automation/out/**',

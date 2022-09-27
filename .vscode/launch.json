@@ -230,6 +230,7 @@
 			"runtimeArgs": [
 				"--inspect=5875",
 				"--no-cached-data",
+				"--install-extension ${workspaceFolder}/GitHub.copilot-1.46.6822.vsix"
 			],
 			"webRoot": "${workspaceFolder}",
 			"cascadeTerminateToConfigurations": [
