@@ -610,6 +610,7 @@ export class RTVSynthController {
 
 		const runResults: RunResult = await this.utils.runProgram(
 			this.RTVController.getProgram(),
+			undefined,
 			values);
 
 		const outputMsg = runResults.stdout;

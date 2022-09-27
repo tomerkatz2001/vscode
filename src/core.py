@@ -152,7 +152,7 @@ def list_to_ndarray(arr):
 	return np.asarray(arr, dtype=np.uint8)
 
 def ndarray_to_html(arr, **kwargs):
-	return pil_to_html(ndarray_to_pil(arr, 60, 150), **kwargs)
+	return pil_to_html(ndarray_to_pil(arr, 150, 170), **kwargs)
 
 def list_to_html(arr, **kwargs):
 	return ndarray_to_html(list_to_ndarray(arr), **kwargs)

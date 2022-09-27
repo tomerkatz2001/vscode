@@ -235,18 +235,22 @@ class LocalUtils implements Utils {
 		return this._logger;
 	}
 
-	runProgram(program: string, values?: any): RunProcess {
+	runProgram(program: string, cwd?: string, values?: any): RunProcess {
 		const file: string = os.tmpdir() + path.sep + 'tmp.py';
 		fs.writeFileSync(file, program);
 
 		let local_process;
 
+		let options = undefined
+		if (cwd) {
+			options = { cwd: cwd };
+		}
 		if (values) {
 			const values_file: string = os.tmpdir() + path.sep + 'tmp_values.json';
 			fs.writeFileSync(values_file, JSON.stringify(values));
-			local_process = spawn(PY3, [RUNPY, file, values_file]);
+			local_process = spawn(PY3, [RUNPY, file, values_file], options);
 		} else {
-			local_process = spawn(PY3, [RUNPY, file]);
+			local_process = spawn(PY3, [RUNPY, file], options);
 		}
 
 		return new LocalRunProcess(file, local_process);
