@@ -265,7 +265,7 @@ class LocalUtils implements Utils {
 
 	async validate(input: string): Promise<string | undefined> {
 		return new Promise((resolve, reject) => {
-			const process = spawn(SNIPPY_UTILS, ['validate', input]);
+			const process = spawn(PY3, [SNIPPY_UTILS,'validate', input]);
 			let output: string = '';
 			let error: string = '';
 			process.stdout.on('data', (data: string) => output += data);
