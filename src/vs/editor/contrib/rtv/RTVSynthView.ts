@@ -469,17 +469,17 @@ export class RTVSynthView {
 							e.preventDefault();
 							this.focusNextRow(cell, e.shiftKey);
 						}
-						this._synthTimer.run(1000, async () => {
-							const success = await this.requestSynth!(+idx, varname, cell, true, false, false);
-							if (success) {
-								this.synthesizeFragment(cell);
-							}
-						}).catch(err => {
-							if (err) {
-								console.error(err);
-							}
-						});
-						break;
+						// this._synthTimer.run(1000, async () => {
+						// 	const success = await this.requestSynth!(+idx, varname, cell, true, false, false);
+						// 	if (success) {
+						// 		this.synthesizeFragment(cell);
+						// 	}
+						// }).catch(err => {
+						// 	if (err) {
+						// 		console.error(err);
+						// 	}
+						// });
+						// break;
 				}
 				return rs;
 			}; // end of onkeydown
