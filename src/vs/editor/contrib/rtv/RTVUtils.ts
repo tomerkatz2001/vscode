@@ -157,7 +157,7 @@ class LocalSynthProcess implements SynthProcess {
 				try {
 					// TODO Check result id
 					const rs = JSON.parse(resultStr) as SynthResult;
-					if (rs.id === this._problemIdx) {
+					if (rs.id === this._problemIdx || rs.id === 0) { // TODO remove the rs.id===0 the synthesizer dont update the result id
 						// request not discarded
 						this._resolve(rs);
 						this._resolve = undefined;
