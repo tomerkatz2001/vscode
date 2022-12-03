@@ -440,14 +440,14 @@ export class RTVSynthController {
 			this.logger.synthResult(rs);
 
 			if (rs.success) {
-				this.editorState!.program(rs.result!);
+				this.editorState!.program(rs.program!);
 				await this.updateBoxContent(true);
 
 				return true;
 			} else {
 				this.editorState!.failed();
-				if (rs.result) {
-					this._synthView!.addError(rs.result, undefined, 500);
+				if (rs.program) {
+					this._synthView!.addError(rs.program, undefined, 500);
 				}
 			}
 		} catch (err) {
