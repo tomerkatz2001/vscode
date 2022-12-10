@@ -40,6 +40,10 @@ export class RTVSynthModel {
 		return this._boxEnvs;
 	}
 
+	getLineno() {
+		return this._lineNumber;
+	}
+
 	get includedTimes(): Set<number> {
 		return this._includedTimes;
 	}
@@ -272,6 +276,61 @@ export class RTVSynthModel {
 			}
 		}
 		return values;
+	}
+
+	/**
+	 * returns all the values in this environment that are inputs to the synth's example
+	 * @param env environment to get values from
+	 * @private
+	 */
+	private getInputsValues(env: any): {[k:string]: string}{
+		let input: {[k: string] : string} = {};
+		for (let varName of this._boxVars!) {
+			let dontShowVars = ['#', '$', 'rv'];
+			if(dontShowVars.includes(varName)) {
+				continue;
+			}
+			else if(this._outputVars.includes(varName)) {
+				let envTime = env['time'] as unknown as number;
+				let pastEnv = this._prevEnvs!.get(envTime);
+				if (pastEnv && pastEnv[varName]) {
+					input[varName + "_in"] = pastEnv[varName] as unknown as string;
+				}
+			}
+			else{
+				input[varName] = env[varName] as unknown as string;
+			}
+		}
+		return input;
+	}
+
+	/**
+	 * returns all the values in this environment that are outputs to the synth's example
+	 * @param env environment to get values from
+	 * @private
+	 */
+	private getOutputValues(env: any): {[k:string]: string}{
+		let output: {[k: string] : string} = {};
+		for (let varName of this._outputVars!) {
+			output[varName] = env[varName] as unknown as string;
+		}
+		return output;
+	}
+
+	/** return the list of examples that are currently displayed. each example is formatted like this:
+	//{input: {var1: val1, var2: val2}, output: {var3: val3, var4: val4}}
+	 */
+	public getExample() : [{inputs: {[k: string] : string}, outputs: {[k: string] : string}}] {
+		// @ts-ignore
+		let examples: [{inputs: {[k: string] : string}, outputs: {[k: string] : string}}] = [];
+		for (let env of this._boxEnvs!) {
+			if (this._includedTimes.has(env['time'] as unknown as number)) {
+				let input = this.getInputsValues(env);
+				let output = this.getOutputValues(env);
+				examples.push({inputs: input, outputs: output});
+			}
+		}
+		return examples;
 	}
 
 

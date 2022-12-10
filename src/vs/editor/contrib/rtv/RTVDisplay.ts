@@ -349,7 +349,7 @@ class RTVOutputDisplayBox {
 					// Found line number, it usually looks as follows:
 					//   Traceback (most recent call last):
 					//   ...
-  					//   File "XYZ", line 7, in <func name>
+					//   gitFile "XYZ", line 7, in <func name>
 					//   NameError: name 'lll' is not defined.
 					// We make the error line red and remove everything except
 					// the last two lines (note that the last line in
@@ -861,6 +861,9 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 		return document.getElementById(this.getCellId(varname, idx)) as HTMLTableCellElement;
 	}
 
+	public getLineno(): number {
+		return this.lineNumber;
+	}
 
 	private updateTableByRows(renderer: MarkdownRenderer, rows: TableElement[][]) {
 		for (let colIdx = 0; colIdx < rows[0].length; colIdx++) {
@@ -1735,8 +1738,7 @@ export class RTVController implements IRTVController {
 		this._editor.onMouseWheel((e) => { this.onMouseWheel(e); });
 		this._editor.onKeyUp((e) => { this.onKeyUp(e); });
 		this._editor.onKeyDown((e) => { this.onKeyDown(e); });
-		//this._modelService.onModelModeChanged((e) => { console.log('BBBB');  });
-
+		//this._modelService.onModelModeChanged((e) => { console.log('BBBB');  })
 		this._synthesis = new RTVSynthController(_editor, this, this._themeService);
 		this.logger = this.utils.logger(this._editor);
 

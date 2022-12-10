@@ -447,6 +447,7 @@ export class RTVSynthView {
 								if (success) {
 									this.highlightRow(+idx);
 									this.synthesizeFragment(cell);
+									this.exitSynthHandler!();
 								}
 							});
 						} else {

@@ -19,6 +19,10 @@ export function getOSEnvVariable(v: string): string {
 	return result;
 }
 
+export function enumerate<T>(a:T[]){
+	return a.map((value, index)=> [index, value] as const);
+}
+
 // temporarily move the following three functions/class from RTVDisplay
 // to resolve a dependency cycle between RTVDisplay and RTVSynthDisplay: RTVDisplay (-> RTVSynth -> RTVSynthDisplay) -> RTVDisplay
 

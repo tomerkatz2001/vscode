@@ -1,8 +1,9 @@
 import { IEditorContribution } from 'vs/editor/common/editorCommon';
-import { ITextModel } from 'vs/editor/common/model';
+import {IModelDecorationOptions, ITextModel} from 'vs/editor/common/model';
 import { Event } from 'vs/base/common/event';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
+import {IRange} from "vs/editor/common/core/range";
 
 export interface IRTVDisplayBox {
 	/**
@@ -30,7 +31,10 @@ export interface IRTVDisplayBox {
 	 * Return the HTML <TD> element at the given row and column.
 	 */
 	getCell(varname: string, idx: number): HTMLTableCellElement | null;
-
+	/**
+	 * Return the box's related lineno.
+	*/
+	getLineno():number;
 	/**
 	 * Updates the box's values, destroys the existing
 	 * HTML table and recreates it from the new data.
@@ -67,6 +71,8 @@ export interface IRTVController extends IEditorContribution {
 	envs: { [k: string]: any[]; };
 	pythonProcess?: RunProcess;
 	onUpdateEvent: Event<BoxUpdateEvent>;
+	addDecoration(range: IRange, options: IModelDecorationOptions): string;
+	removeDecoration(id: string):void;
 
 	// Functions for running the program
 	updateBoxes(e?: IModelContentChangedEvent, outputVars?: string[], prevEnvs?: Map<number, any>): Promise<any>;
@@ -88,6 +94,7 @@ export interface IRTVController extends IEditorContribution {
 	viewMode: ViewMode;
 	changeViewMode(m: ViewMode): void;
 	resetChangedLinesWhenOutOfDate(): void;
+
 }
 
 /**
@@ -118,6 +125,9 @@ export interface IRTVLogger {
 	synthStdout(msg: string): void;
 	synthStderr(msg: string): void;
 	synthProcessEnd(): void;
+
+	// Comments
+	insertComments(lineno: number, comments: string): void;
 }
 
 export abstract class ARTVLogger implements IRTVLogger {
@@ -211,6 +221,13 @@ export abstract class ARTVLogger implements IRTVLogger {
 
 	synthProcessEnd(): void {
 		this.log('synth.process.end');
+	}
+
+	//----------------------------------------------------------------------
+	// Comments
+	//----------------------------------------------------------------------
+	insertComments(lineno: number, comments: string) {
+		this.log('comments.insert', `${lineno},${comments}`);
 	}
 }
 

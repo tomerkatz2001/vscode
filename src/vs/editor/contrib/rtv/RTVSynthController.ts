@@ -7,6 +7,7 @@ import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { RTVDisplayBox } from 'vs/editor/contrib/rtv/RTVDisplay';
 import { RTVSynthView } from 'vs/editor/contrib/rtv/RTVSynthView';
 import { RTVSynthModel } from 'vs/editor/contrib/rtv/RTVSynthModel';
+import {CommentsManager} from "vs/editor/contrib/rtv/RTVComments";
 
 enum EditorState {
 	Synthesizing,
@@ -32,6 +33,14 @@ class EditorStateManager {
 		return this._state;
 	}
 
+	/**
+	 * adds delta to the line number of the current state
+	 * @param delta
+	 */
+	moveLineno(delta: number) {
+		this.lineno += delta;
+	}
+
 	synthesizing() {
 		if (this._state === EditorState.Synthesizing) {return;}
 		this._state = EditorState.Synthesizing;
@@ -55,7 +64,6 @@ class EditorStateManager {
 		// if (fragment.startsWith('rv = ')) {
 		// 	fragment = fragment.replace('rv = ', 'return ');
 		// }
-
 		let model = this.controller.getModelForce();
 		let cursorPos = this.editor.getPosition();
 		let startCol: number;
@@ -104,6 +112,7 @@ export class RTVSynthController {
 	utils: Utils;
 	process: SynthProcess;
 	editorState?: EditorStateManager = undefined;
+	commentsManager?:CommentsManager = undefined;
 
 	constructor(
 		private readonly editor: ICodeEditor,
@@ -114,6 +123,7 @@ export class RTVSynthController {
 		this.logger = this.utils.logger(editor);
 		this.process = this.utils.synthesizer();
 		this.enabled = false;
+		this.commentsManager = new CommentsManager(RTVController, editor);
 
 		// In case the user click's out of the boxes.
 		editor.onDidFocusEditorText(() => {
@@ -440,6 +450,9 @@ export class RTVSynthController {
 			this.logger.synthResult(rs);
 
 			if (rs.success) {
+				//let box : RTVDisplayBox = this.RTVController.getBox(this.lineno!) as RTVDisplayBox;
+				let linesDelta= this.commentsManager!.insertExamples(this._synthModel!, varnames, prevEnvs);
+				this.editorState!.moveLineno(linesDelta);
 				this.editorState!.program(rs.program!);
 				await this.updateBoxContent(true);
 
