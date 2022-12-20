@@ -44,6 +44,10 @@ export class RTVSynthModel {
 		return this._lineNumber;
 	}
 
+	public moveLineoBy(delta: number) {
+		this._lineNumber += delta;
+	}
+
 	get includedTimes(): Set<number> {
 		return this._includedTimes;
 	}

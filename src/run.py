@@ -418,6 +418,7 @@ def remove_frame_data(data):
 
 def main(file, values_file = None):
 	lines = load_code_lines(file)
+	print(lines)
 	values = []
 
 	if values_file:

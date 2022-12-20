@@ -37,7 +37,7 @@ class EditorStateManager {
 	 * adds delta to the line number of the current state
 	 * @param delta
 	 */
-	moveLineno(delta: number) {
+	moveLinenoBy(delta: number) {
 		this.lineno += delta;
 	}
 
@@ -112,18 +112,17 @@ export class RTVSynthController {
 	utils: Utils;
 	process: SynthProcess;
 	editorState?: EditorStateManager = undefined;
-	commentsManager?:CommentsManager = undefined;
 
 	constructor(
 		private readonly editor: ICodeEditor,
 		private readonly RTVController: IRTVController,
-		@IThemeService readonly _themeService: IThemeService
+		@IThemeService readonly _themeService: IThemeService,
+		private readonly  commentsManager: CommentsManager
 	) {
 		this.utils = getUtils();
 		this.logger = this.utils.logger(editor);
 		this.process = this.utils.synthesizer();
 		this.enabled = false;
-		this.commentsManager = new CommentsManager(RTVController, editor);
 
 		// In case the user click's out of the boxes.
 		editor.onDidFocusEditorText(() => {
@@ -245,7 +244,10 @@ export class RTVSynthController {
 		return validInput;
 	}
 
-
+	private  moveLinenoBy(linesDelta: number) {
+		this.editorState!.moveLinenoBy(linesDelta);
+		this._synthModel!.moveLineoBy(linesDelta);
+	}
 	// -----------------------------------------------------------------------------------
 	// Interface
 	// -----------------------------------------------------------------------------------
@@ -451,8 +453,8 @@ export class RTVSynthController {
 
 			if (rs.success) {
 				//let box : RTVDisplayBox = this.RTVController.getBox(this.lineno!) as RTVDisplayBox;
-				let linesDelta= this.commentsManager!.insertExamples(this._synthModel!, varnames, prevEnvs);
-				this.editorState!.moveLineno(linesDelta);
+				let linesDelta= this.commentsManager.insertExamples(this._synthModel!, varnames, prevEnvs);
+				this.moveLinenoBy(linesDelta);
 				this.editorState!.program(rs.program!);
 				await this.updateBoxContent(true);
 

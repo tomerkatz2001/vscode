@@ -7,6 +7,7 @@ import {Selection} from "vs/editor/common/core/selection";
 // eslint-disable-next-line no-duplicate-imports
 import {getUtils} from "vs/editor/contrib/rtv/RTVUtils";
 import {RTVSynthModel} from "vs/editor/contrib/rtv/RTVSynthModel";
+import {DecorationManager, DecorationType} from "vs/editor/contrib/rtv/RTVDecorations";
 
 const  SYNTHESIZED_COMMENT_START = `#! Start of synth number: `;
 const SYNTHESIZED_COMMENT_END = `#! End of synth number: `;
@@ -65,129 +66,7 @@ export class ParsedComment{
 }
 
 
-/**
- * Class that holds and has the responsibility of the underline of the comment block
- */
-class DecorationManager{
-	commentId: number; // The id of the "start synth" comment this  instance relates.
-	lineno : number = 0; // the lineno of the comment. needs to change on every change!
-	decorations: {[index: number]: Decoration} = {}; //map of all the current decorations {env idx -> Decoration}
-	constructor(private readonly controller: IRTVController, commentId: number){
-		this.commentId = commentId;
-	}
 
-	public addDecoration(lineno: number ,envIdx:number, type: DecorationType, onHoverText?: string){
-		if(type === DecorationType.invalid && this.decorations[envIdx]){
-			return;
-		}
-		if(this.decorations[envIdx] && this.decorations[envIdx].type ==type &&type == DecorationType.conteradiction && this.decorations[envIdx].range.startLineNumber == lineno) // both are conteradictions
-		{
-			this.decorations[envIdx].addContradictionLine(this.controller, onHoverText);
-			return;
-		}
-		this.removeDecoration(envIdx);
-		let model  = this.controller.getModelForce();
-		let range = new Range(lineno,model.getLineFirstNonWhitespaceColumn(lineno), lineno, model.getLineLastNonWhitespaceColumn(lineno));
-		this.decorations[envIdx] = new Decoration(this.controller, range , type, onHoverText ); // insert new
-	}
-
-	private removeDecoration(envIdx: number){
-		if(this.decorations[envIdx]){ // if alrady have decoration
-			this.decorations[envIdx].remove(this.controller);
-			delete this.decorations[envIdx]
-		}
-	}
-	/**
-	 * removes the decoration from the envs. will not remomve contradiction decoration.
-	 * @param envIdxs - list of all the envs you want to remove decoration from
-	 */
-	public removeDecorations(envIdxs: number[]){
-		for(let envIdx of envIdxs){
-			if(this.decorations[envIdx] && this.decorations[envIdx].type != DecorationType.conteradiction){
-				this.removeDecoration(envIdx);
-			}
-		}
-	}
-
-	public removeAllDecoration(){
-
-		for(let envIdx in this.decorations){
-			this.removeDecoration(Number(envIdx))
-		}
-	}
-
-
-
-
-}
-
-enum DecorationType{conteradiction,invalid, passTest, failedTest};
-
-class Decoration{
-	id : string;
-	type : DecorationType;
-	range :Range;
-	contradiction: string[] =[];
-	displayMessage: any = null;
-	constructor(controller: IRTVController, range :Range, type:DecorationType, onHover?: string){
-		this.type = type;
-		this.range = range;
-		let className = "";
-		switch(type){
-			case DecorationType.conteradiction:
-				className="squiggly-error";
-				break;
-			case DecorationType.invalid:
-				className = "squiggly-warning";
-				break;
-			case DecorationType.passTest:
-				className = "squiggly-info";
-				break;
-			case DecorationType.failedTest:
-				className = "squiggly-error";
-				break;
-		}
-
-		this.updateDisplayMessage(onHover);
-		this.id = controller.addDecoration(range, { className: className, hoverMessage:this.displayMessage });
-
-	}
-
-	public remove(controller: IRTVController){
-		controller.removeDecoration(this.id);
-		this.id = '';
-	}
-
-	public addContradictionLine(controller: IRTVController, lineno? : string){
-		this.updateDisplayMessage(lineno);
-		this.remove(controller);
-		this.id = controller.addDecoration(this.range, { className: "squiggly-error", hoverMessage:this.displayMessage });
-
-	}
-
-	private updateDisplayMessage(onHover? :string){
-		if(onHover && this.type == DecorationType.conteradiction){
-			if(!this.contradiction.includes(onHover)){
-			this.contradiction.push(onHover);
-			}
-		}
-		if(onHover && this.type === DecorationType.failedTest){
-			this.displayMessage = onHover;
-			return;
-		}
-		if(this.type === DecorationType.passTest){
-			this.displayMessage = "This env is not longer part of the real running program, but if it were it whould be valid."
-			return;
-		}
-		if(this.type === DecorationType.invalid){
-			this.displayMessage = {value: "This specification is no longer valid."};
-			return;
-		}
-		if(this.contradiction.length!==0){
-			this.displayMessage = {value: "This specification is in contradiction with the specifications on lines: " + this.contradiction.toString()};
-		}
-	}
-}
 // this class is in charge of all the comments in the file.
 export class CommentsManager{
 	private logger: IRTVLogger;
@@ -204,6 +83,7 @@ export class CommentsManager{
 		this.comments[this.synthCounter] = new DecorationManager(this.controller, this.synthCounter);
 		this.synthCounter ++ ;
 	}
+
 	/**
 	 * @param box- the box you want its values to be inserted
 	 * @param outVars - The variables that synthesized
@@ -232,46 +112,7 @@ export class CommentsManager{
 			examples += `${leftSide} => ${rightSide} \n`
 
 		}
-		/*
-		for(let env_idx=0; env_idx<box.getEnvs().length; env_idx ++){
-			let leftSide=`#! ${++examplesCounter}) `;
-			let rightSide = "";
-			for(let varName in boxContent){
-				let element = boxContent[varName][env_idx];
-				if(outVars.includes(varName)){
-					rightSide = rightSide + varName + " = " + element.innerText + ", ";
-				}
-				else{
-					if(varName == "#" || element.innerText==""){
-						continue;
-					}
-					let elementTime = box.getEnvs()[env_idx]["time"];
-					if(varName.endsWith("_in") && prevEnvs && prevEnvs.get(elementTime) ){  // if it is an "in" var
-						let prevValue = prevEnvs.get(elementTime)[varName.slice(0, -3)]; //remove the "_in" suffix
-						if(prevValue){
-							leftSide += leftSide + varName + " = " + prevValue.trim() + ", ";
-						}
-					}
-					else{ // normal var
-						if(element.innerText.trim()){
-							leftSide = leftSide + varName + " = " + element.innerText.trim() + ", ";
-						}
-					}
-				}
-
-				if(leftSide!= "" && rightSide != ""){ // i.e not an empty line
-					leftSide = leftSide.slice(0,-2); // removes the , at the end
-					rightSide = rightSide.slice(0,-2);
-					examples +=  leftSide + " => " + rightSide + `\n` ;
-				}
-			}
-		}
-		/
-		 */
-		//examples += "\n"+SYNTHESIZING_MESSAGE; //this will be ran out by the actual code
 		this.newSynthBlock();
-
-
 		this.logger.insertComments(synthModel.getLineno(), examples);
 		this.insertExamplesToEditor(examples, outVars, synthModel.getLineno());
 
@@ -291,7 +132,6 @@ export class CommentsManager{
 		let cursorPos = this.editor.getPosition();
 		let startCol: number ;
 		let endCol: number ;
-
 		if (
 			model.getLineContent(lineno).trim() === '' &&
 			cursorPos !== null &&
@@ -312,7 +152,6 @@ export class CommentsManager{
 		let indent = (model.getOptions()!.insertSpaces) ? ' ' : '\t';
 		newText = newText.split('\n').join('\n' + indent.repeat(startCol - 1));
 
-
 		this.editor.pushUndoStop();
 		let selection = new Selection(
 			lineno + newText.split('\n').length - 2,
@@ -327,6 +166,7 @@ export class CommentsManager{
 			[selection]
 		);
 	}
+
 	/**
 	 * This function will clean the comment starting from lineno.
 	 *
@@ -347,6 +187,7 @@ export class CommentsManager{
 		this.editor.executeEdits("", [{ range: range, text: null }]); //delete lines
 		return startCol;
 	}
+
 	/**
 	* This function parse the comments that the synthesizer left after synth.
 	* @param lineno - the line of the "Start synth" annotation
@@ -359,8 +200,8 @@ export class CommentsManager{
 		let parsed =new ParsedComment(parsedJson!["varnames"],parsedJson!["envs"], parsedJson!["envs_status"], parsedJson!["out"], parsedJson!["synthCount"], l["size"]);
 		return parsed;
 	}
-	private async runUnitests(parsedComment:ParsedComment, envIdxs:number[], program: string, baseLineno:number){
 
+	private async runUnitests(parsedComment:ParsedComment, envIdxs:number[], program: string, baseLineno:number){
 		for(const envIdx of envIdxs){
 			let error = await this.runUnitest(parsedComment, envIdx, program )
 			if(!error){
@@ -371,6 +212,7 @@ export class CommentsManager{
 			}
 		}
 	}
+
 	/**
 	 *
 	 * @param parsedComment - the comment that we are tring to test its envs
@@ -454,6 +296,7 @@ export class CommentsManager{
 			}
 		}
 	}
+
 	/**
 	 * this function
 	 */
@@ -481,6 +324,7 @@ export class CommentsManager{
 		}
 
 	}
+
 	/**
 	 * This funcion finds contridictions in the current program.
 	 * @param startLineno - line number to start looking contridictions
@@ -556,6 +400,7 @@ export class CommentsManager{
 			}
 		}
 	}
+
 	/**
 	 * This function finds out all the envs that was changed in the old env compare to the new envs.
 	 * @param oldEnvs - list of envs you want to check.
@@ -677,6 +522,7 @@ export class CommentsManager{
 
 		return runresults;
 	}
+
 	/**
 	 * This function tries to find the target env in the given list.
 	 *
@@ -750,6 +596,7 @@ export class CommentsManager{
 		});
 
 	}
+
 	/**
 	 * will loop over all the comments that surround this line and will return all the commented envs that are not part of the real program run
 	 * @param lineno will start to look from this line up

@@ -47,6 +47,7 @@ import { Button } from 'vs/base/browser/ui/button/button';
 import { attachButtonStyler } from 'vs/platform/theme/common/styler';
 // import { RTVSynth } from './RTVSynth';
 import { RTVSynthController } from 'vs/editor/contrib/rtv/RTVSynthController';
+import {CommentsManager} from 'vs/editor/contrib/rtv/RTVComments';
 import { Emitter, Event } from 'vs/base/common/event';
 import * as path from 'path';
 
@@ -1711,6 +1712,8 @@ export class RTVController implements IRTVController {
 	private _synthesis: RTVSynthController;
 	private enabled: boolean = true;
 
+	private _commentsManager: CommentsManager;
+
 	get onUpdateEvent(): Event<BoxUpdateEvent> {
 		return this._eventEmitter.event;
 	}
@@ -1739,7 +1742,8 @@ export class RTVController implements IRTVController {
 		this._editor.onKeyUp((e) => { this.onKeyUp(e); });
 		this._editor.onKeyDown((e) => { this.onKeyDown(e); });
 		//this._modelService.onModelModeChanged((e) => { console.log('BBBB');  })
-		this._synthesis = new RTVSynthController(_editor, this, this._themeService);
+		this._commentsManager = new CommentsManager(this, this._editor);
+		this._synthesis = new RTVSynthController(_editor, this, this._themeService, this._commentsManager);
 		this.logger = this.utils.logger(this._editor);
 
 		this.updateMaxPixelCol();
