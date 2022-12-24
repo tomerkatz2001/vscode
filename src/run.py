@@ -7,6 +7,7 @@ import sys
 import types
 
 from core import *
+from parse import *
 
 
 # from PIL import Image
@@ -416,9 +417,80 @@ def remove_frame_data(data):
 			if "frame" in env:
 				del env["frame"]
 
+def findBlocEnd(block_id, lines):
+	for lineno, line in enumerate(lines):
+		if line.strip().startswith("#! End of synth number:"):
+			if int(blockEnd.parse(line)) == block_id:
+				return lineno
+
+
+	return len(lines)
+
+def computeSynthBlocks(lines):
+	'''
+		compute the synthesized blocks the user has created.
+		It return both the examples of each block and the code lines of each block
+	'''
+	comments={}
+	code_blocks ={}
+	prev_line=""
+	for lineno, line in enumerate(lines):
+		if line.strip().startswith("#! Start"):
+			block_id = int(blockStart.parse(line.strip()))
+			end_lineno = findBlocEnd(block_id, lines)
+			comments[block_id]=([line.strip()])
+			code_blocks[block_id]=lines[lineno:end_lineno]
+		elif line.strip().startswith("#!") and prev_line.strip().startswith("#!"):
+			comments[block_id].append(line.strip())
+		prev_line=line
+	parsed_comments = {}
+	for block_id in code_blocks:
+		parsed_comments[block_id] = parseComment("".join(code_blocks[block_id]))
+	return comments , parsed_comments, code_blocks
+
+class UnitTest:
+	def __init__(self, lines, inputs, expected):
+		self.lines = lines
+		self.inputs = {name.replace("_in",""): val for name, val in inputs.items()}
+		self.expected = expected
+
+	def run(self):
+		'''
+			runs the unit test and returns the result of the test and the exception if any as a tuple
+		'''
+		debugger = bdb.Bdb()
+		try:
+			debugger.run("".join(self.lines), locals=self.inputs)
+		except Exception as e:
+			return False ,"Exception Thrown" + str(e)
+		for var in self.expected:
+			if self.expected[var] != debugger.botframe.f_locals['locals'][var]:
+				return False, "Expected " + str(self.expected[var]) + " but got " + str(debugger.botframe.f_locals['locals'][var])
+		return True, "Passed"
+
+
+
+
+def runTests(code_blocks, parsed_comments):
+	'''
+		runs the unit tests and returns the results of the tests
+	'''
+	tests = {}
+	for block_id in parsed_comments:
+		for comment_idx in range(len(parsed_comments[block_id]["envs"])):
+			inputs = parsed_comments[block_id]["envs"][comment_idx]
+			expected = parsed_comments[block_id]["out"][comment_idx]
+			tests[(block_id, comment_idx)] = UnitTest(code_blocks[block_id], inputs, expected)
+	results = {}
+	for test in tests:
+		results[test] = tests[test].run()
+	print(results)
+	return results
+
+
+
 def main(file, values_file = None):
 	lines = load_code_lines(file)
-	print(lines)
 	values = []
 
 	if values_file:
@@ -435,6 +507,12 @@ def main(file, values_file = None):
 		(run_time_data, exception) = compute_runtime_data(lines, writes, values)
 		if (exception != None):
 			return_code = 2
+
+
+	comments, parsed_comments, code_blocks = computeSynthBlocks(lines)
+	print(parsed_comments)
+	runTests(code_blocks, parsed_comments)
+
 
 	with open(file + ".out", "w") as out:
 		out.write(json.dumps((return_code, writes, run_time_data)))
