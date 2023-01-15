@@ -2010,7 +2010,7 @@ export class RTVController implements IRTVController {
 		let lineCount = model.getLineCount();
 		for (let line = 1; line <= lineCount; line++) {
 			let s = model.getLineContent(line);
-			if (s.length > 0 && s[0] === '#') {
+			if (s.length > 0 && s[0] === '#' && !s.includes("#!")) {
 				continue;
 			}
 			let col = model.getLineMaxColumn(line);
