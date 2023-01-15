@@ -19,12 +19,12 @@ def varNames():
 	return vars
 @generate
 def blockStart():
-	yield string("#! Start of synth number: ")
+	yield regex(r" *#! Start of synth number: ")
 	id = yield numberParser
 	return id
 @generate
 def envs():
-	x = yield sepBy( regex("#! *") >>((numberParser << regex(r' *\) *')) + (valuesParser + (regex(r' *=> *') >> valuesParser))) ,  string("\n"))
+	x = yield sepBy( regex(" *#! *") >>((numberParser << regex(r' *\) *')) + (valuesParser + (regex(r' *=> *') >> valuesParser))) ,  string("\n"))
 	return x
 
 @generate

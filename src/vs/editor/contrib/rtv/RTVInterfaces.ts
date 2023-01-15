@@ -4,6 +4,7 @@ import { Event } from 'vs/base/common/event';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
 import {IRange} from "vs/editor/common/core/range";
+import {ParsedComment} from "vs/editor/contrib/rtv/RTVComments";
 
 export interface IRTVDisplayBox {
 	/**
@@ -128,6 +129,7 @@ export interface IRTVLogger {
 
 	// Comments
 	insertComments(lineno: number, comments: string): void;
+	newTestResults(testResults: string): void;
 }
 
 export abstract class ARTVLogger implements IRTVLogger {
@@ -229,6 +231,10 @@ export abstract class ARTVLogger implements IRTVLogger {
 	insertComments(lineno: number, comments: string) {
 		this.log('comments.insert', `${lineno},${comments}`);
 	}
+
+	newTestResults(testResults: string) {
+		this.log('comments.testResults', testResults);
+	}
 }
 
 export interface Utils {
@@ -236,6 +242,7 @@ export interface Utils {
 	logger(editor: ICodeEditor): IRTVLogger;
 	runProgram(program: string, cwd?: string, values?: any): RunProcess;
 	runImgSummary(program: string, line: number, varname: string): RunProcess;
+	runCommentsParser(program: string): ParseProcess;
 	validate(input: string): Promise<string | undefined>;
 	synthesizer(): SynthProcess;
 }
@@ -250,6 +257,7 @@ export class RunResult {
 		public readonly stderr: string,
 		public readonly exitCode: number | null,
 		public readonly result: string | undefined,
+		public readonly testResults : string | undefined,
 	) {}
 }
 
@@ -279,6 +287,9 @@ export interface RunProcess extends PromiseLike<RunResult> {
 	kill(): boolean;
 }
 
+export interface ParseProcess extends PromiseLike<ParsedComment> {
+	kill(): boolean;
+}
 export interface SynthProcess {
 	synthesize(problem: SynthProblem): Promise<SynthResult | undefined>;
 	stop(): boolean;

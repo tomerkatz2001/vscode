@@ -420,7 +420,7 @@ def remove_frame_data(data):
 def findBlocEnd(block_id, lines):
 	for lineno, line in enumerate(lines):
 		if line.strip().startswith("#! End of synth number:"):
-			if int(blockEnd.parse(line)) == block_id:
+			if int(blockEnd.parse(line.strip())) == block_id:
 				return lineno
 
 
@@ -429,9 +429,15 @@ def findBlocEnd(block_id, lines):
 def computeSynthBlocks(lines):
 	'''
 		compute the synthesized blocks the user has created.
-		It return both the examples of each block and the code lines of each block
+		It returns both the examples of each block and the code lines of each block
+		@param lines: the code lines of the user's program
+		@return: parsed_comments : map from block_id to parsed_comments
+		comments_line : the lineno each block_id starts from
+		code_blocks : the code that was generated in block_id
+
 	'''
 	comments={}
+	comments_line={}
 	code_blocks ={}
 	prev_line=""
 	for lineno, line in enumerate(lines):
@@ -439,14 +445,18 @@ def computeSynthBlocks(lines):
 			block_id = int(blockStart.parse(line.strip()))
 			end_lineno = findBlocEnd(block_id, lines)
 			comments[block_id]=([line.strip()])
+			comments_line[block_id]=(lineno)
 			code_blocks[block_id]=lines[lineno:end_lineno]
 		elif line.strip().startswith("#!") and prev_line.strip().startswith("#!"):
 			comments[block_id].append(line.strip())
 		prev_line=line
 	parsed_comments = {}
 	for block_id in code_blocks:
+		min_indent = min([len(line) - len(line.lstrip()) if line.strip() != "" else 1000000 for line in code_blocks[block_id]])
+		code_blocks[block_id] = [line[min_indent:] for line in code_blocks[block_id]]
 		parsed_comments[block_id] = parseComment("".join(code_blocks[block_id]))
-	return comments , parsed_comments, code_blocks
+
+	return  parsed_comments, code_blocks, comments_line
 
 class UnitTest:
 	def __init__(self, lines, inputs, expected):
@@ -464,28 +474,60 @@ class UnitTest:
 		except Exception as e:
 			return False ,"Exception Thrown" + str(e)
 		for var in self.expected:
+
 			if self.expected[var] != debugger.botframe.f_locals['locals'][var]:
 				return False, "Expected " + str(self.expected[var]) + " but got " + str(debugger.botframe.f_locals['locals'][var])
+
 		return True, "Passed"
 
 
-
-
-def runTests(code_blocks, parsed_comments):
+def compute_tests_results(code_blocks, parsed_comments, comments_line, run_time_data):
 	'''
-		runs the unit tests and returns the results of the tests
+		compute the unit tests results
 	'''
+	tests = build_tests(code_blocks, parsed_comments, comments_line, run_time_data)
+	return runTests(tests)
+
+def build_tests(code_blocks, parsed_comments, comments_line, run_time_data):
 	tests = {}
 	for block_id in parsed_comments:
+		comments_size = len(parsed_comments[block_id]["envs"])+1
+		liveEnvs = run_time_data[comments_line[block_id]+comments_size]
 		for comment_idx in range(len(parsed_comments[block_id]["envs"])):
 			inputs = parsed_comments[block_id]["envs"][comment_idx]
 			expected = parsed_comments[block_id]["out"][comment_idx]
-			tests[(block_id, comment_idx)] = UnitTest(code_blocks[block_id], inputs, expected)
+			targetEnv = {key.replace("_in", ""):value for (key,value) in inputs.items()}
+			if not isLiveEnv(targetEnv, liveEnvs, list(expected.keys())):
+				tests[(block_id, comment_idx)] = UnitTest(code_blocks[block_id], inputs, expected)
+
+	return tests
+
+def runTests(tests):
+	'''
+		runs the unit tests and returns the results of the tests
+	'''
+
 	results = {}
 	for test in tests:
 		results[test] = tests[test].run()
-	print(results)
 	return results
+
+def isLiveEnv(targetEnv, LiveEnvsList, ignoredVars=[]):
+		ignoredVars+=['time', "lineno", "#", "$", "prev_lineno", "next_lineno"]
+		for liveEnv in LiveEnvsList:
+			isSame = True
+			for varName in targetEnv.keys():
+				if varName not in ignoredVars:
+					if varName not in liveEnv.keys():
+						isSame = False
+						break
+					if targetEnv[varName] != tryEval(liveEnv[varName]):
+						isSame = False
+						break
+			if isSame:
+				return True
+		return False
+
 
 
 
@@ -509,13 +551,13 @@ def main(file, values_file = None):
 			return_code = 2
 
 
-	comments, parsed_comments, code_blocks = computeSynthBlocks(lines)
-	print(parsed_comments)
-	runTests(code_blocks, parsed_comments)
-
-
 	with open(file + ".out", "w") as out:
 		out.write(json.dumps((return_code, writes, run_time_data)))
+
+	parsed_comments, code_blocks, comments_line = computeSynthBlocks(lines)
+	results = compute_tests_results(code_blocks, parsed_comments, comments_line, run_time_data)
+	with open(file + ".test", "w") as out:
+		out.write(json.dumps(({str(k): v for k, v in results.items()}, comments_line)))
 
 	if exception != None:
 		raise exception

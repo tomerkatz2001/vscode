@@ -324,7 +324,7 @@ export class RTVSynthModel {
 	/** return the list of examples that are currently displayed. each example is formatted like this:
 	//{input: {var1: val1, var2: val2}, output: {var3: val3, var4: val4}}
 	 */
-	public getExample() : [{inputs: {[k: string] : string}, outputs: {[k: string] : string}}] {
+	public getExamples() : [{inputs: {[k: string] : string}, outputs: {[k: string] : string}}] {
 		// @ts-ignore
 		let examples: [{inputs: {[k: string] : string}, outputs: {[k: string] : string}}] = [];
 		for (let env of this._boxEnvs!) {

@@ -1,6 +1,19 @@
-import { IRTVLogger, Utils, RunProcess, RunResult, SynthProcess, SynthResult, SynthProblem, IRTVController } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import {
+	IRTVLogger,
+	Utils,
+	RunProcess,
+	RunResult,
+	SynthProcess,
+	SynthResult,
+	SynthProblem,
+	IRTVController,
+	ParseProcess
+} from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
+
+import {spawn} from "child_process";
+import {LocalParseProcess} from "vs/editor/contrib/rtv/RTVUtils";
 
 declare const window: {
 	editor: ICodeEditor
@@ -45,7 +58,8 @@ class PyodideWorkerResponse {
 		public readonly stdout: string,
 		public readonly stderr: string,
 		public readonly exitCode: number | null,
-		public readonly result: string | undefined) {}
+		public readonly result: string | undefined,
+		public readonly testResults: string|undefined) {}
 }
 
 abstract class PyodideRequest {
@@ -243,6 +257,13 @@ class RemoteUtils implements Utils {
 	runImgSummary(program: string, line: number, varname: string): RunProcess {
 		// TODO Make this feature optional in the web version.
 		return new RemoteRunProcess(new ImgSumRequest(program, line, varname));
+	}
+
+	runCommentsParser(program: string): ParseProcess {
+		// NOT Supported!!!!!!
+		const file = "";
+		const local_process = spawn("", ["", program]);
+		return new LocalParseProcess(file, local_process);
 	}
 
 	async saveProgram(program: string): Promise<void> {

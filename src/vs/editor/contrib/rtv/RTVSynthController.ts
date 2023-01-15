@@ -412,12 +412,12 @@ export class RTVSynthController {
 	// UI requests handlers
 	// -----------------------------------------------------------------------------------
 
-	public async synthesizeFragment(): Promise<boolean> {
+	public async synthesizeFragment(resynth:boolean=false): Promise<boolean> {
 		// Build and write the synth_example.json file content
 		let envs = [];
 		let optEnvs = [];
 
-		let boxEnvs = this._synthModel!.boxEnvs;
+		let boxEnvs = resynth? await this.commentsManager.getStaticEnvs(this.lineno!) :this._synthModel!.boxEnvs;
 		let includedTimes = this._synthModel!.includedTimes;
 		let prevEnvs = this._synthModel!.prevEnvs;
 		let varnames = this._synthModel!.varnames;
@@ -453,7 +453,7 @@ export class RTVSynthController {
 
 			if (rs.success) {
 				//let box : RTVDisplayBox = this.RTVController.getBox(this.lineno!) as RTVDisplayBox;
-				let linesDelta= this.commentsManager.insertExamples(this._synthModel!, varnames, prevEnvs);
+				let linesDelta= this.commentsManager.insertExamples(this._synthModel!, varnames,);
 				this.moveLinenoBy(linesDelta);
 				this.editorState!.program(rs.program!);
 				await this.updateBoxContent(true);

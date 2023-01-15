@@ -7,3 +7,15 @@
 	color: #505050;
 	/*color: #D0D0D0;*/
 }
+
+.monaco-editor .RTV-failed-class {
+	text-decoration: underline;
+	color: red;
+	text-decoration-style: wavy;
+}
+
+.monaco-editor .RTV-passed-class{
+	text-decoration: underline;
+	color: green;
+	text-decoration-style: wavy;
+}

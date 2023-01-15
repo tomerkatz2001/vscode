@@ -4,9 +4,19 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
 // import { kill } from 'process';
-import { Utils, RunResult, IRTVLogger, SynthProblem, SynthResult, SynthProcess, RunProcess } from 'vs/editor/contrib/rtv/RTVInterfaces';
+import {
+	Utils,
+	RunResult,
+	IRTVLogger,
+	SynthProblem,
+	SynthResult,
+	SynthProcess,
+	RunProcess,
+	ParseProcess
+} from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
+import {ParsedComment} from "vs/editor/contrib/rtv/RTVComments";
 // import { runAtThisOrScheduleAtNextAnimationFrame } from 'vs/base/browser/dom';
 // import { MainThreadFileSystem } from 'vs/workbench/api/browser/mainThreadFileSystem';
 
@@ -57,6 +67,7 @@ const SYNTH: string = getOSEnvVariable('SYNTH');
 const JAVA = getOSEnvVariable('JAVA');
 const HEAP = process.env['HEAP'];
 const SNIPPY_UTILS = getOSEnvVariable('SNIPPY_UTILS');
+const COMMENTS_PARSER = "C:\\Users\\tomerkatz\\Desktop\\LooPy\\vscode\\src\\parse.py";
 
 class LocalRunProcess implements RunProcess {
 	protected _reject?: () => void;
@@ -79,10 +90,13 @@ class LocalRunProcess implements RunProcess {
 			});
 			this._process.on('exit', (exitCode) => {
 				let result = undefined;
+				let testResults = undefined;
 				if (exitCode !== null) {
 					result = fs.readFileSync(this._file + '.out').toString();
 				}
-				resolve(new RunResult(this.stdout, this.stderr, exitCode, result));
+				testResults = fs.readFileSync(this._file + '.test').toString();
+
+				resolve(new RunResult(this.stdout, this.stderr, exitCode, result, testResults));
 			});
 		});
 	}
@@ -226,6 +240,52 @@ class LocalSynthProcess implements SynthProcess {
 	}
 }
 
+export class LocalParseProcess implements ParseProcess {
+	protected _reject?: () => void;
+	protected _promise: Promise<ParsedComment> = new Promise(() => {});
+
+	public stdout: string = '';
+	public stderr: string = '';
+
+	constructor(
+		protected _file: string,
+		protected _process: ChildProcessWithoutNullStreams) {
+		this._promise = new Promise((resolve, reject) => {
+			this._reject = reject;
+
+			this._process.stdout.on('data', (data) => this.stdout += data);
+			this._process.stderr.on('data', (data) =>
+			{
+				console.log(data.toString());
+				this.stderr += data;
+			});
+			this._process.on('exit', (exitCode) => {
+				let parsed = JSON.parse(this.stdout);
+
+				resolve(new ParsedComment(parsed["varnames"], parsed["envs"],[], parsed["out"], parsed["synthCount"]));
+			});
+		});
+	}
+	async then<TResult1 = ParsedComment, TResult2 = never>(
+		onfulfilled?: ((value: ParsedComment) => TResult1 | PromiseLike<TResult1>) | undefined | null,
+		onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): Promise<TResult1 | TResult2> {
+		return this._promise.then(onfulfilled, onrejected);
+	}
+
+	async catch<TResult = never>(
+		onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): Promise<any | TResult> {
+		return this._promise.catch(onrejected);
+	}
+
+	kill(): boolean {
+		this._process.kill();
+		if (this._reject) {
+			this._reject();
+			this._reject = undefined;
+		}
+		return true;
+	}
+}
 
 class LocalUtils implements Utils {
 	readonly EOL: string = os.EOL;
@@ -265,6 +325,13 @@ class LocalUtils implements Utils {
 		fs.writeFileSync(file, program);
 		const local_process = spawn(PY3, [IMGSUM, file, line.toString(), varname]);
 		return new LocalRunProcess(file, local_process);
+	}
+
+	runCommentsParser(program: string): ParseProcess {
+		const file: string = os.tmpdir() + path.sep + 'tmp.py';
+		const local_process = spawn(PY3, [COMMENTS_PARSER, program]);
+		return new LocalParseProcess(file, local_process);
+
 	}
 
 	async validate(input: string): Promise<string | undefined> {

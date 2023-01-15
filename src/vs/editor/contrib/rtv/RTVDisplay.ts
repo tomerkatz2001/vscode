@@ -1,8 +1,3 @@
-/* import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
- */
-
 import 'vs/css!./rtv';
 import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
@@ -47,7 +42,7 @@ import { Button } from 'vs/base/browser/ui/button/button';
 import { attachButtonStyler } from 'vs/platform/theme/common/styler';
 // import { RTVSynth } from './RTVSynth';
 import { RTVSynthController } from 'vs/editor/contrib/rtv/RTVSynthController';
-import {CommentsManager} from 'vs/editor/contrib/rtv/RTVComments';
+import {CommentsManager, RTVTestResults, SYNTHESIZED_COMMENT_START} from 'vs/editor/contrib/rtv/RTVComments';
 import { Emitter, Event } from 'vs/base/common/event';
 import * as path from 'path';
 
@@ -2282,6 +2277,16 @@ export class RTVController implements IRTVController {
 									});
 								return;
 						}
+						else if(lineContent.endsWith('!!')
+							&& (lineContent.includes(SYNTHESIZED_COMMENT_START))) {
+							this._synthesis.startSynthesis(i)
+								.catch((e) => {
+									console.error('Synthesis failed with exception:');
+									console.error(e);
+									this._synthesis.stopSynthesis();
+								});
+							return;
+						}
 					}
 				}
 			}
@@ -2735,6 +2740,14 @@ export class RTVController implements IRTVController {
 		}
 
 		this.pythonProcess = undefined;
+
+		if (runResults.testResults) {
+			this.logger.newTestResults(runResults.testResults);
+			this._commentsManager.updateComments(new RTVTestResults(runResults.testResults));
+		}
+		else {
+			this.logger.newTestResults("No tests found");
+		}
 
 		return [outputMsg, errorMsg, JSON.parse(result!)];
 	}
