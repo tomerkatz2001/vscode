@@ -10,9 +10,10 @@ import {DecorationManager, DecorationType} from "vs/editor/contrib/rtv/RTVDecora
 import {FoldingController} from "vs/editor/contrib/folding/folding";
 import {FoldingRegions} from "vs/editor/contrib/folding/foldingRanges";
 import {FoldingModel, CollapseMemento} from "vs/editor/contrib/folding/foldingModel";
+import {RTVSpecification} from "vs/editor/contrib/rtv/RTVSpecification";
 
 export  const  SYNTHESIZED_COMMENT_START = `#! Start of synth number: `;
-const SYNTHESIZED_COMMENT_END = `#! End of synth number: `;
+export  const SYNTHESIZED_COMMENT_END = `#! End of synth number: `;
 //const FAKE_TIME = 100;
 
 
@@ -108,9 +109,10 @@ export class CommentsManager {
 	private logger: IRTVLogger;
 	private comments: { [index: number]: DecorationManager } = {}; // map from synthID and comment idx to the decorations ids
 	private synthCounter: number = 0; // the largest comment id there is in the file
-
+	private specifications: RTVSpecification;
 	constructor(private readonly controller: IRTVController, private readonly editor: ICodeEditor) {
 		this.logger = getUtils().logger(editor);
+		this.specifications = new RTVSpecification();
 	}
 
 	/**
@@ -119,6 +121,8 @@ export class CommentsManager {
 	private newSynthBlock() {
 		//this.comments[this.synthCounter] = new DecorationManager(this.controller, this.synthCounter);
 		this.synthCounter++;
+		let model =  this.controller.getModelForce();
+		this.specifications.gatherComments(model.getLinesContent().join("\n"));
 	}
 
 	/**
@@ -147,10 +151,10 @@ export class CommentsManager {
 			examples += `${leftSide} => ${rightSide} \n`
 
 		}
-		this.newSynthBlock();
+
 		this.logger.insertComments(synthModel.getLineno(), examples);
 		this.insertExamplesToEditor(examples, outVars, synthModel.getLineno());
-
+		this.newSynthBlock();
 		// increasing lineno so the synth won't override these comments
 		return (examples.split("\n")).length;
 	}
@@ -159,6 +163,7 @@ export class CommentsManager {
 		let examples:string = parsedComment.asString();
 		this.logger.insertComments(lineno, examples);
 		this.insertExamplesToEditor(examples, parsedComment.synthesizedVarNames, lineno);
+		this.newSynthBlock();
 	}
 
 	/**
