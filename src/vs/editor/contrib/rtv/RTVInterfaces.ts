@@ -96,6 +96,7 @@ export interface IRTVController extends IEditorContribution {
 	changeViewMode(m: ViewMode): void;
 	resetChangedLinesWhenOutOfDate(): void;
 
+
 }
 
 /**
@@ -130,6 +131,9 @@ export interface IRTVLogger {
 	// Comments
 	insertComments(lineno: number, comments: string): void;
 	newTestResults(testResults: string): void;
+
+	//resynthesis
+	resynthesisAsked(lineno: number): void;
 }
 
 export abstract class ARTVLogger implements IRTVLogger {
@@ -234,6 +238,13 @@ export abstract class ARTVLogger implements IRTVLogger {
 
 	newTestResults(testResults: string) {
 		this.log('comments.testResults', testResults);
+	}
+
+	//----------------------------------------------------------------------
+	// Resynthesis
+	//----------------------------------------------------------------------
+	resynthesisAsked(lineno: number) {
+		this.log('resynthesis.asked', lineno.toString());
 	}
 }
 

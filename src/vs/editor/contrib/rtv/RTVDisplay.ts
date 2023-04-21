@@ -696,9 +696,6 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 
 	private isEmptyLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
-		if (this.lineNumber > 28) {
-			console.log(lineContent);
-		}
 		return lineContent.trim().length === 0;
 	}
 
@@ -1707,7 +1704,7 @@ export class RTVController implements IRTVController {
 	private _synthesis: RTVSynthController;
 	private enabled: boolean = true;
 
-	private _commentsManager: CommentsManager;
+	public commentsManager: CommentsManager;
 
 	get onUpdateEvent(): Event<BoxUpdateEvent> {
 		return this._eventEmitter.event;
@@ -1737,8 +1734,8 @@ export class RTVController implements IRTVController {
 		this._editor.onKeyUp((e) => { this.onKeyUp(e); });
 		this._editor.onKeyDown((e) => { this.onKeyDown(e); });
 		//this._modelService.onModelModeChanged((e) => { console.log('BBBB');  })
-		this._commentsManager = new CommentsManager(this, this._editor);
-		this._synthesis = new RTVSynthController(_editor, this, this._themeService, this._commentsManager);
+		this.commentsManager = new CommentsManager(this, this._editor);
+		this._synthesis = new RTVSynthController(_editor, this, this._themeService, this.commentsManager);
 		this.logger = this.utils.logger(this._editor);
 
 		this.updateMaxPixelCol();
@@ -2279,9 +2276,10 @@ export class RTVController implements IRTVController {
 						}
 						else if(lineContent.endsWith('!!')
 							&& (lineContent.includes(SYNTHESIZED_COMMENT_START))) {
-							this._synthesis.startSynthesis(i)
+							this.logger.resynthesisAsked(i);
+							this._synthesis.startResynthesis(i)
 								.catch((e) => {
-									console.error('Synthesis failed with exception:');
+									console.error('ReSynthesis failed with exception:');
 									console.error(e);
 									this._synthesis.stopSynthesis();
 								});
@@ -2743,7 +2741,7 @@ export class RTVController implements IRTVController {
 
 		if (runResults.testResults) {
 			this.logger.newTestResults(runResults.testResults);
-			this._commentsManager.updateComments(new RTVTestResults(runResults.testResults));
+			this.commentsManager.updateComments(new RTVTestResults(runResults.testResults));
 		}
 		else {
 			this.logger.newTestResults("No tests found");

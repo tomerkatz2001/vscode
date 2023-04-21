@@ -21,17 +21,22 @@ enum env_status{pass, fail, live}
  * class that represents a block of examples, aka a comment, inserted automatically by the synth or manually by the user
  */
 export class ParsedComment{
-	synthesizedVarNames: string[] = [];
+	synthesizedVarNames: string[] = []; //
 	private readonly envs : any[] =[];
 	private readonly envs_status :env_status[] =[]; //
-	out : any[] = []; //right of the "=>"
+	out : {[varName: string]: string}[] = []; //right of the "=>"
 	commentID:number = 0;
-	size: number; // number of line from start_synth to end_synth
+	size: number; // number of line envs
 	constructor(synthesizedVarNames: string[], envs: any[], envs_status: env_status[], out: any[], commentID:number,){
 		this.synthesizedVarNames = synthesizedVarNames;
 		this.envs = envs;
 		this.envs_status = envs_status;
 		this.out = out;
+		for (let o of out) {
+			for (let [key, value] of Object.entries(o)) {
+				o[key] = String(value);
+			}
+		}
 		this.commentID = commentID;
 		this.size = envs.length;
 	}
@@ -44,6 +49,10 @@ export class ParsedComment{
 				if(varName.endsWith("_in")){
 					delete env[varName];
 				}
+				//if the var is not string, make it a string
+				else if(typeof tmp[varName] !== "string"){
+					tmp[varName] = tmp[varName].toString();
+				}
 			}
 			if(!tmp["#"]){
 				tmp["#"] = "";
@@ -51,6 +60,8 @@ export class ParsedComment{
 			if(!tmp["$"]){
 				tmp["$"] = "";
 			}
+			tmp['time'] = -1;
+			// make each elemnt in the list a string
 			envs.push({...tmp, ... this.out[i]});
 		}
 		return envs;
@@ -64,6 +75,29 @@ export class ParsedComment{
 	public getEnvStatus(envIdx:number){
 		assert(this.envs_status.length > envIdx,);
 		return this.envs_status[envIdx];
+	}
+
+	public asString():string{
+		let s:string = "";
+		let examplesCounter:number = 0;
+		for (let [index,example] of this.envs.entries()) {
+			let leftSide = `#! ${++examplesCounter}) `;
+			Object.keys(example).forEach((inputVar) => {
+				if(! ["#", "$", "time"].includes(inputVar)) {
+					leftSide += `${inputVar} = ${example[inputVar]}, `;
+				}
+			});
+			leftSide = leftSide.substring(0, leftSide.length - 2); //remove the last ', '
+
+			let rightSide = ``;
+			Object.keys(this.out[index]).forEach((outputVar) => {
+				rightSide += `${outputVar} = ${this.out[index][outputVar]}, `; // add the output vars
+			});
+			rightSide = rightSide.substring(0, rightSide.length - 2); //remove the last ', '
+
+			s += `${leftSide} => ${rightSide} \n`
+		}
+		return s;
 	}
 }
 
@@ -119,6 +153,12 @@ export class CommentsManager {
 
 		// increasing lineno so the synth won't override these comments
 		return (examples.split("\n")).length;
+	}
+
+	public insertStaticExamples(parsedComment:ParsedComment, lineno:number): void {
+		let examples:string = parsedComment.asString();
+		this.logger.insertComments(lineno, examples);
+		this.insertExamplesToEditor(examples, parsedComment.synthesizedVarNames, lineno);
 	}
 
 	/**
@@ -186,20 +226,57 @@ export class CommentsManager {
 	 *
 	 * @returns the indent of the code that was deleted .
 	 */
-	public removeCommentsAndCode(lineno: number, lines: number) {
-		let model = this.controller.getModelForce();
-		this.editor.pushUndoStop(); //TODO: fix the bug of ctrl+z
+	static removeCommentsAndCode(controller: IRTVController, editor: ICodeEditor, lineno: number, endLineno: number, replacedText: string=""){
+		let model = controller.getModelForce();
+		editor.pushUndoStop(); //TODO: fix the bug of ctrl+z
 		let startCol = model.getLineFirstNonWhitespaceColumn(lineno);
 		let endCol = startCol;
-		for (let i = lineno; i < lineno + lines; i++) {
+		for (let i = lineno; i < endLineno; i++) {
 			let curr_end_col = model.getLineMaxColumn(i);
 			if (curr_end_col > endCol) {
 				endCol = curr_end_col;
 			}
 		}
-		let range = new Range(lineno, startCol, lineno + lines, endCol);
-		this.editor.executeEdits("", [{range: range, text: null}]); //delete lines
+		let range = new Range(lineno, startCol, endLineno, endCol);
+		let selection = new Selection(
+			lineno,
+			startCol,
+			lineno,
+			startCol //+ replacedText.length
+		);
+		editor.executeEdits(
+			controller.getId(),
+			[{ range: range, text: replacedText }],
+			[selection]
+		);
 		return startCol;
+	}
+
+	/**
+	 * This function will search the end of the block that starts at lineno.
+	 * @param lineno
+	 * @param controller
+	 */
+	public getBlockSize(lineno:number):number{
+		let model = this.controller.getModelForce();
+		//scan all lines until we find equal number of #start and #end
+		let startCount = 0;
+		let endCount = 0;
+		let i = lineno;
+		while (i < model.getLineCount()){
+			let line = model.getLineContent(i);
+			if (line.includes(SYNTHESIZED_COMMENT_START)){
+				startCount++;
+			}
+			if (line.includes(SYNTHESIZED_COMMENT_END)){
+				endCount++;
+			}
+			if (startCount === endCount){
+				return i - lineno;
+			}
+			i++;
+		}
+		return -1;// error - no end found
 	}
 
 	public updateComments(testResults:RTVTestResults,) {
@@ -225,16 +302,13 @@ export class CommentsManager {
 
 	}
 
-	public async getStaticEnvs(lineno: number) {
+	public async getParsedComment(lineno: number): Promise<ParsedComment> {
 		let model = this.controller.getModelForce();
 		let program = model.getLinesContent().slice(lineno);
 		let utils = getUtils();
 		let pythonProcess = utils.runCommentsParser(program.join(""));
 		let parsedComment = await pythonProcess;
-		console.log(parsedComment.getEnvsToResynth());
-		return parsedComment.getEnvsToResynth();
-
-
+		return parsedComment;
 	}
 }
 

@@ -7,12 +7,13 @@ import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { RTVDisplayBox } from 'vs/editor/contrib/rtv/RTVDisplay';
 import { RTVSynthView } from 'vs/editor/contrib/rtv/RTVSynthView';
 import { RTVSynthModel } from 'vs/editor/contrib/rtv/RTVSynthModel';
-import {CommentsManager} from "vs/editor/contrib/rtv/RTVComments";
+import {CommentsManager, ParsedComment} from "vs/editor/contrib/rtv/RTVComments";
 
 enum EditorState {
 	Synthesizing,
 	Failed,
 	HasProgram,
+	resynthesizing,
 }
 
 class EditorStateManager {
@@ -45,6 +46,12 @@ class EditorStateManager {
 		if (this._state === EditorState.Synthesizing) {return;}
 		this._state = EditorState.Synthesizing;
 		this.insertFragment(this.SYNTHESIZING_INDICATOR);
+	}
+
+	resynthesizing(strartLine: number, endLine: number) {
+		if(this._state === EditorState.resynthesizing) {return;}
+		this._state = EditorState.resynthesizing;
+		CommentsManager.removeCommentsAndCode(this.controller, this.editor, strartLine, endLine,"resynthesizing...");
 	}
 
 	failed() {
@@ -408,16 +415,69 @@ export class RTVSynthController {
 		}
 	}
 
+	public async startResynthesis(lineno: number) {
+		this.enabled = true;
+		//get the values from the comment
+		var parsedComment:ParsedComment = await this.commentsManager.getParsedComment(lineno - 1);
+
+		this.editorState = new EditorStateManager("", lineno, this.editor, this.RTVController);
+		this._synthModel = new RTVSynthModel(Object.keys(parsedComment.out), lineno, new Set(parsedComment.synthesizedVarNames) );
+		this._synthModel.bindBoxContentChanged(()=>{});
+
+
+		var problem:SynthProblem = new SynthProblem(parsedComment.synthesizedVarNames,{},parsedComment.getEnvsToResynth());
+
+		this.logger.synthSubmit(problem);
+		let blockSize = this.commentsManager.getBlockSize(lineno);
+		this.editorState!.resynthesizing(lineno,lineno+blockSize);
+
+		try {
+			const rs: SynthResult | undefined = await this.process.synthesize(problem);
+
+			if (!rs) {
+				// The request was cancelled!
+				return false;
+			}
+
+			this.logger.synthResult(rs);
+
+			if (rs.success) {
+				//let box : RTVDisplayBox = this.RTVController.getBox(this.lineno!) as RTVDisplayBox;
+				this.commentsManager.insertStaticExamples(parsedComment,lineno);
+				this.moveLinenoBy(parsedComment.size + 1); // plus one for the 'start synth' line
+				this.editorState!.program(rs.program!);
+				await this.updateBoxContent(true);
+
+				return true;
+			} else {
+				this.editorState!.failed();
+				if (rs.program) {
+					this._synthView!.addError(rs.program, undefined, 500);
+				}
+			}
+		} catch (err) {
+			// If the synth promise is rejected
+			console.error('Synth problem rejected.');
+			if (err) {
+				console.error(err);
+				this.editorState!.failed();
+			}
+		}
+
+		return false;
+
+
+	}
 	// -----------------------------------------------------------------------------------
 	// UI requests handlers
 	// -----------------------------------------------------------------------------------
 
-	public async synthesizeFragment(resynth:boolean=false): Promise<boolean> {
+	public async synthesizeFragment(staticEnvs?: any[]): Promise<boolean> {
 		// Build and write the synth_example.json file content
 		let envs = [];
 		let optEnvs = [];
 
-		let boxEnvs = resynth? await this.commentsManager.getStaticEnvs(this.lineno!) :this._synthModel!.boxEnvs;
+		let boxEnvs = staticEnvs ?? this._synthModel!.boxEnvs;
 		let includedTimes = this._synthModel!.includedTimes;
 		let prevEnvs = this._synthModel!.prevEnvs;
 		let varnames = this._synthModel!.varnames;

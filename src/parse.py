@@ -7,7 +7,7 @@ import json
 
 nameParser = regex(r'[_a-zA-Z][_a-zA-Z0-9]*')
 amountParser = regex(r' *')#string("(")>> regex(r'[0-9]*') << string("), ")
-numberParser = regex(r' *\d+ *')
+numberParser = regex(r' *-?\d+ *')
 stringParser = regex(r'\".*?\"|\'.*?\'')
 listParser = regex(r'\[[^=]*\]')
 valuesParser = sepEndBy1((nameParser << regex(r' *= *')) + (numberParser ^ stringParser ^ listParser), regex(r' *, *')^regex(r' *'))
@@ -19,12 +19,12 @@ def varNames():
 	return vars
 @generate
 def blockStart():
-	yield regex(r" *#! Start of synth number: ")
+	yield regex(r" *#! *Start of synth number: *")
 	id = yield numberParser
 	return id
 @generate
 def envs():
-	x = yield sepBy( regex(" *#! *") >>((numberParser << regex(r' *\) *')) + (valuesParser + (regex(r' *=> *') >> valuesParser))) ,  string("\n"))
+	x = yield sepBy(regex(r"\s*#!\s*") >> ((numberParser << regex(r' *\) *')) + (valuesParser + (regex(r' *=> *') >> valuesParser))) , regex('\s*'))
 	return x
 
 @generate
@@ -41,7 +41,7 @@ def tryEval(val):
 	return val
 
 def parseComment(comment):
-	parser = (blockStart+varNames<<string("\n")) + envs
+	parser = (blockStart+varNames<<(regex(r' *')+regex(r'(\!\!)* *'))) + envs
 	parser_result = parser.parse(comment)
 	inputs = [{t[0]: tryEval(t[1]) for t in line[1][0]} for line in parser_result[1]] #left of the ""=>"
 	outputs = [{t[0]: tryEval(t[1]) for t in line[1][1]} for line in parser_result[1]] #right of the ""=>""
@@ -52,6 +52,7 @@ def parseComment(comment):
 		"synthCount" : int(parser_result[0][0].strip()),
 		}
 	return parsed_comment
+
 
 def main(input):
 	parsed_comment = parseComment(input)

@@ -149,6 +149,7 @@ class LocalSynthProcess implements SynthProcess {
 
 		if (HEAP) {
 			this._synthProcess = spawn(JAVA, [`-Xmx${HEAP}`, '-jar', SYNTH]);
+
 		} else {
 			this._synthProcess = spawn(JAVA, ['-jar', SYNTH]);
 		}
@@ -219,6 +220,28 @@ class LocalSynthProcess implements SynthProcess {
 		return rs;
 	}
 
+	public resynthesize(problem: SynthProblem): Promise<SynthResult | undefined> {
+		if (this._reject) {
+			this._reject();
+			this._resolve = undefined;
+			this._reject = undefined;
+		}
+
+		// First, create the promise we're returning.
+		const rs: Promise<SynthResult> = new Promise((resolve, reject) => {
+			this._resolve = resolve;
+			this._reject = reject;
+		});
+
+		// Then send the problem to the synth
+		problem.id = ++this._problemIdx;
+		this._synthProcess.stdin.write(JSON.stringify(problem) + '\n');
+		console.log(`Started synth process: ${this._problemIdx}`);
+
+		// And we can return!
+		return rs;
+	}
+
 	public stop(): boolean {
 		if (this._reject) {
 			this._reject();
@@ -256,7 +279,7 @@ export class LocalParseProcess implements ParseProcess {
 			this._process.stdout.on('data', (data) => this.stdout += data);
 			this._process.stderr.on('data', (data) =>
 			{
-				console.log(data.toString());
+				console.log("Parsing Comment got error:\n" + data.toString());
 				this.stderr += data;
 			});
 			this._process.on('exit', (exitCode) => {

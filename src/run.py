@@ -443,6 +443,7 @@ def computeSynthBlocks(lines):
 	for lineno, line in enumerate(lines):
 		if line.strip().startswith("#! Start"):
 			block_id = int(blockStart.parse(line.strip()))
+			print(f'{block_id=}')
 			end_lineno = findBlocEnd(block_id, lines)
 			comments[block_id]=([line.strip()])
 			comments_line[block_id]=(lineno)
@@ -451,7 +452,9 @@ def computeSynthBlocks(lines):
 			comments[block_id].append(line.strip())
 		prev_line=line
 	parsed_comments = {}
+	print(f'{comments_line=}')
 	for block_id in code_blocks:
+		print(block_id)
 		min_indent = min([len(line) - len(line.lstrip()) if line.strip() != "" else 1000000 for line in code_blocks[block_id]])
 		code_blocks[block_id] = [line[min_indent:] for line in code_blocks[block_id]]
 		parsed_comments[block_id] = parseComment("".join(code_blocks[block_id]))
@@ -553,9 +556,13 @@ def main(file, values_file = None):
 
 	with open(file + ".out", "w") as out:
 		out.write(json.dumps((return_code, writes, run_time_data)))
-
-	parsed_comments, code_blocks, comments_line = computeSynthBlocks(lines)
-	results = compute_tests_results(code_blocks, parsed_comments, comments_line, run_time_data)
+	comments_line= {}
+	try:
+		parsed_comments, code_blocks, comments_line = computeSynthBlocks(lines)
+		results = compute_tests_results(code_blocks, parsed_comments, comments_line, run_time_data)
+	except Exception as e:
+		print(e)
+		results = {}
 	with open(file + ".test", "w") as out:
 		out.write(json.dumps(({str(k): v for k, v in results.items()}, comments_line)))
 
