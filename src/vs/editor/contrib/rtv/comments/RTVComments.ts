@@ -1,4 +1,5 @@
-import {IRTVController, IRTVLogger,} from "./RTVInterfaces";
+// eslint-disable-next-line code-import-patterns
+import {IRTVController, IRTVLogger,} from "../RTVInterfaces";
 import {Range as RangeClass, Range} from 'vs/editor/common/core/range';
 import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
 import {getUtils} from 'vs/editor/contrib/rtv/RTVUtils';
@@ -7,10 +8,10 @@ import * as assert from "assert";
 import {Selection} from "vs/editor/common/core/selection";
 import {RTVSynthModel} from "vs/editor/contrib/rtv/RTVSynthModel";
 import {DecorationManager, DecorationType} from "vs/editor/contrib/rtv/RTVDecorations";
-import {FoldingController} from "vs/editor/contrib/folding/folding";
-import {FoldingRegions} from "vs/editor/contrib/folding/foldingRanges";
-import {FoldingModel, CollapseMemento} from "vs/editor/contrib/folding/foldingModel";
 import {RTVSpecification} from "vs/editor/contrib/rtv/RTVSpecification";
+import {FoldingRangeProviderRegistry} from "vs/editor/common/modes";
+import {SpecificationsRangeProvider} from "vs/editor/contrib/rtv/comments/SpecificationsRangeProvider";
+
 
 export  const  SYNTHESIZED_COMMENT_START = `#! Start of synth number: `;
 export  const SYNTHESIZED_COMMENT_END = `#! End of synth number: `;
@@ -35,7 +36,12 @@ export class ParsedComment{
 		this.out = out;
 		for (let o of out) {
 			for (let [key, value] of Object.entries(o)) {
-				o[key] = String(value);
+				if (typeof value === "string") {
+					o[key] = `'${value}'`;
+				}
+				else {
+					o[key] = String(value);
+				}
 			}
 		}
 		this.commentID = commentID;
@@ -54,6 +60,9 @@ export class ParsedComment{
 				else if(typeof tmp[varName] !== "string"){
 					tmp[varName] = tmp[varName].toString();
 				}
+				else if(!tmp[varName].startsWith("[")){// if the var is string and not arr add another quote
+					tmp[varName] = `'${tmp[varName]}'`;
+				}
 			}
 			if(!tmp["#"]){
 				tmp["#"] = "";
@@ -68,6 +77,14 @@ export class ParsedComment{
 		return envs;
 	}
 
+	public toJson(){
+		return {
+			"outputVarNames": this.synthesizedVarNames,
+			"commentExamples": this.getEnvsToResynth(),
+			"assignments": {},
+			"commentId": this.commentID
+		};
+	}
 	public removeEnv(envIdx:number){
 		this.envs.splice(envIdx,1);
 		this.out.splice(envIdx,1);
@@ -103,7 +120,6 @@ export class ParsedComment{
 }
 
 
-
 // this class is in charge of all the comments in the file.
 export class CommentsManager {
 	private logger: IRTVLogger;
@@ -113,6 +129,7 @@ export class CommentsManager {
 	constructor(private readonly controller: IRTVController, private readonly editor: ICodeEditor) {
 		this.logger = getUtils().logger(editor);
 		this.specifications = new RTVSpecification();
+		FoldingRangeProviderRegistry.register("*", new SpecificationsRangeProvider());
 	}
 
 	/**
@@ -121,8 +138,16 @@ export class CommentsManager {
 	private newSynthBlock() {
 		//this.comments[this.synthCounter] = new DecorationManager(this.controller, this.synthCounter);
 		this.synthCounter++;
+	}
+	public async getScopeSpecification()  {
 		let model =  this.controller.getModelForce();
-		this.specifications.gatherComments(model.getLinesContent().join("\n"));
+		await this.specifications.gatherComments(model.getLinesContent().join("\n"));
+		return this.specifications.ToJSON();
+	}
+
+	public   getExamples()  {
+		let model =  this.controller.getModelForce();
+		return  this.specifications.getExamples(model.getLinesContent().join("\n"));
 	}
 
 	/**
@@ -211,19 +236,6 @@ export class CommentsManager {
 			[{range: range, text: newText}],
 			[selection]
 		);
-
-		// TODO: make this actually work
-		const foldingController = FoldingController.get(this.editor);
-		const commentsEndLineno = lineno + examples.split("\n").length -1;
-		const foldingRange = new FoldingRegions(new Uint32Array([range.startLineNumber]), new Uint32Array([commentsEndLineno]), []);
-		const memento: CollapseMemento = [{startLineNumber: range.startLineNumber, endLineNumber:commentsEndLineno}];
-		foldingRange.setCollapsed(0, true);
-		foldingController.getFoldingModel()?.then((foldingModel:FoldingModel|null) => {
-			foldingModel?.update(foldingRange);
-			foldingModel?.applyMemento(memento);
-		});
-
-
 	}
 
 	/**
