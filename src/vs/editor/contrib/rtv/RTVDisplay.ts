@@ -42,7 +42,7 @@ import { Button } from 'vs/base/browser/ui/button/button';
 import { attachButtonStyler } from 'vs/platform/theme/common/styler';
 // import { RTVSynth } from './RTVSynth';
 import { RTVSynthController } from 'vs/editor/contrib/rtv/RTVSynthController';
-import {CommentsManager, RTVTestResults, SYNTHESIZED_COMMENT_START} from 'vs/editor/contrib/rtv/RTVComments';
+import {CommentsManager, RTVTestResults, SYNTHESIZED_COMMENT_START} from 'vs/editor/contrib/rtv/comments/RTVComments';
 import { Emitter, Event } from 'vs/base/common/event';
 import * as path from 'path';
 
@@ -96,7 +96,7 @@ function regExpMatchEntireString(s: string, regExp: string) {
 	return res !== null && res.index === 0 && res[0] === s;
 }
 
-class DeltaVarSet {
+export class DeltaVarSet {
 	private _plus: Set<string>;
 	private _minus: Set<string>;
 	constructor(other?: DeltaVarSet) {
@@ -705,6 +705,11 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 		return lineContent.trim().startsWith('#');
 	}
 
+	private isSpecificationLine(): boolean {
+		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
+		return (lineContent.trim() === '#!');
+	}
+
 	private isConditionalLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
 		return lineContent.endsWith(':') &&
@@ -934,7 +939,6 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 	}
 
 
-
 	public indentAtLine(lineno: number): number {
 		return indent(this._controller.getLineContent(lineno));
 	}
@@ -953,6 +957,16 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 		}
 	}
 
+	public setTextInBox(s:string){
+		this._allEnvs = [];
+		this._hasContent = true;
+		this._box.textContent = s;
+		this._box.style.paddingLeft = '8px';
+		this._box.style.paddingRight = '8px';
+		this._box.style.paddingBottom = '0px';
+		this._box.style.paddingTop = '0px';
+	}
+
 	public computeEnvs(allEnvs?: any[]) {
 
 		let count = 0;
@@ -964,7 +978,9 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 			this.setContentFalse();
 			return true;
 		}
-
+		if (this.isSpecificationLine()){
+			return true;
+		}
 		if (!this._controller.showBoxAtEmptyLine && (this.isEmptyLine() || this.isCommentLine())) {
 			this.setContentFalse();
 			return true;
@@ -1757,6 +1773,15 @@ export class RTVController implements IRTVController {
 	public getId(): string {
 		return RTVController.ID;
 	}
+
+	public getModeService(): IModeService{
+		return this._modeService;
+	}
+
+	public getOpenerService(): IOpenerService{
+		return this._openerService;
+	}
+
 
 	public enable() {
 		this.enabled = true;

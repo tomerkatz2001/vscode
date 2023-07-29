@@ -11,6 +11,8 @@ import {DecorationManager, DecorationType} from "vs/editor/contrib/rtv/RTVDecora
 import {RTVSpecification} from "vs/editor/contrib/rtv/RTVSpecification";
 import {FoldingRangeProviderRegistry} from "vs/editor/common/modes";
 import {SpecificationsRangeProvider} from "vs/editor/contrib/rtv/comments/SpecificationsRangeProvider";
+import {IModelContentChangedEvent} from "vs/editor/common/model/textModelEvents";
+import {RTVController} from "vs/editor/contrib/rtv/RTVDisplay";
 
 
 export  const  SYNTHESIZED_COMMENT_START = `#! Start of synth number: `;
@@ -120,17 +122,17 @@ export class ParsedComment{
 }
 
 
-// this class is in charge of all the comments in the file.
+// this class is in charge of all the comments in the editor.
 export class CommentsManager {
 	private logger: IRTVLogger;
 	private comments: { [index: number]: DecorationManager } = {}; // map from synthID and comment idx to the decorations ids
 	private synthCounter: number = 0; // the largest comment id there is in the file
 	private specifications: RTVSpecification;
-	constructor(private readonly controller: IRTVController, private readonly editor: ICodeEditor) {
+	constructor(private readonly controller: RTVController, private readonly editor: ICodeEditor) {
 		this.logger = getUtils().logger(editor);
 		this.specifications = new RTVSpecification();
 		FoldingRangeProviderRegistry.register("*", new SpecificationsRangeProvider());
-	}
+		this.editor.onDidChangeModelContent((e) => { this.onDidChangeModelContent(e); });	}
 
 	/**
 	 * needs to be called after every synth.
@@ -314,9 +316,6 @@ export class CommentsManager {
 				this.comments[blockId].addDecoration(index, type, result[1]);
 			});
 		}
-
-
-
 	}
 
 	public async getParsedComment(lineno: number): Promise<ParsedComment> {
@@ -326,6 +325,22 @@ export class CommentsManager {
 		let pythonProcess = utils.runCommentsParser(program.join(""));
 		let parsedComment = await pythonProcess;
 		return parsedComment;
+	}
+
+	private async onDidChangeModelContent(e: IModelContentChangedEvent){
+		let cursorPos = this.editor.getPosition();
+		if (cursorPos === null) {
+			return;
+		}
+		let lineno = cursorPos.lineNumber;
+		const lineContent = this.controller.getLineContent(lineno).trim();
+		if(lineContent.startsWith("#!")){
+			this.logger.projectionBoxCreated();
+			// TODO: split to cases, above a function def, additional example to synth or range?
+			let box = this.controller.getBox(lineno);
+			box.setTextInBox("this is a test");
+			this.controller.hideAllOtherBoxes(box);
+		}
 	}
 }
 
@@ -363,6 +378,4 @@ export class RTVTestResults{
 		}
 		return results;
 	}
-
-
 }
