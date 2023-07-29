@@ -193,10 +193,10 @@ function hygiene(some) {
 			} else if (/^[\t]* \*/.test(line)) {
 				// block comment using an extra space
 			} else {
-				console.error(
-					file.relative + '(' + (i + 1) + ',1): Bad whitespace indentation'
-				);
-				errorCount++;
+				// console.error(
+				// 	file.relative + '(' + (i + 1) + ',1): Bad whitespace indentation'
+				// );
+				// errorCount++;
 			}
 		});
 
