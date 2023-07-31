@@ -1,7 +1,7 @@
 // eslint-disable-next-line code-import-patterns
 import {ITextModel} from "vs/editor/common/model";
 import {CancellationToken} from "vs/base/common/cancellation";
-import {SYNTHESIZED_COMMENT_START} from "vs/editor/contrib/rtv/comments/RTVComments";
+import {SYNTHESIZED_COMMENT_START} from "./RTVCommentsManager";
 import {
 	FoldingContext,
 	FoldingRange,

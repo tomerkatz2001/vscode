@@ -12,13 +12,13 @@ import {
 	SynthResult,
 	SynthProcess,
 	RunProcess,
-	ParseProcess
+	ParseProcess,
 } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
-import {ParsedComment} from "vs/editor/contrib/rtv/RTVComments";
 // import { runAtThisOrScheduleAtNextAnimationFrame } from 'vs/base/browser/dom';
 // import { MainThreadFileSystem } from 'vs/workbench/api/browser/mainThreadFileSystem';
+import {ParsedComment} from "vs/editor/contrib/rtv/comments/RTVComment";
 
 // Helper functions / class
 export function getOSEnvVariable(v: string): string {
@@ -29,9 +29,7 @@ export function getOSEnvVariable(v: string): string {
 	return result;
 }
 
-export function enumerate<T>(a:T[]){
-	return a.map((value, index)=> [index, value] as const);
-}
+
 
 // temporarily move the following three functions/class from RTVDisplay
 // to resolve a dependency cycle between RTVDisplay and RTVSynthDisplay: RTVDisplay (-> RTVSynth -> RTVSynthDisplay) -> RTVDisplay
@@ -396,3 +394,81 @@ export function getUtils(): Utils {
 	}
 	return utils;
 }
+
+// export function extractVariableNames(node: any): string[] {
+// 	const varNames: string[] = [];
+//
+// 	switch (node?.type) {
+// 		case 'arguments':
+// 			for (const arg of node.args) {
+// 				if (arg.type === 'arg') {
+// 					varNames.push(arg.arg);
+// 				}
+// 			}
+// 			for (const arg of node.kwonlyargs) {
+// 				if (arg.type === 'arg') {
+// 					varNames.push(arg.arg);
+// 				}
+// 			}
+// 			if (node.vararg !== null && node.vararg.type === 'arg') {
+// 				varNames.push(node.vararg.arg);
+// 			}
+// 			if (node.kwarg !== null && node.kwarg.type === 'arg') {
+// 				varNames.push(node.kwarg.arg);
+// 			}
+// 			break;
+// 		default:
+// 			for (const key in node) {
+// 				const child = node[key];
+// 				if (typeof child === 'object' && child !== null) {
+// 					if (Array.isArray(child)) {
+// 						for (const c of child) {
+// 							varNames.push(...extractVariableNames(c));
+// 						}
+// 					} else {
+// 						varNames.push(...extractVariableNames(child));
+// 					}
+// 				}
+// 			}
+// 			break;
+// 	}
+//
+// 	return varNames;
+// }
+//
+// export function getFunctionCode(lines: string[], functionLine: number): string {
+// 	const functionIndent = lines[functionLine - 1].match(/^\s*/)?.[0] || '';
+// 	let functionCode = lines[functionLine - 1];
+//
+// 	// Find the end of the function by tracking indentation level
+// 	let indentationLevel = 0;
+// 	let i = functionLine;
+// 	while (i < lines.length) {
+// 		const line = lines[i];
+// 		const lineIndent = line.match(/^\s*/)?.[0] || '';
+//
+// 		if (lineIndent.length <= functionIndent.length) {
+// 			break;
+// 		}
+//
+// 		functionCode += '\n' + line;
+// 		indentationLevel = lineIndent.length;
+// 		i++;
+// 	}
+//
+// 	// Remove the last line if it's just a continuation of the function
+// 	if (i < lines.length && lines[i].trim() === '') {
+// 		functionCode = functionCode.slice(0, -1);
+// 	}
+//
+// 	// Dedent the function code
+// 	const dedentRegex = new RegExp(`^\\s{${indentationLevel}}`, 'gm');
+// 	functionCode = functionCode.replace(dedentRegex, '');
+//
+// 	return functionCode;
+// }
+
+
+
+
+

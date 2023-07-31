@@ -4,7 +4,9 @@ import { Event } from 'vs/base/common/event';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
 import {IRange} from "vs/editor/common/core/range";
-import {ParsedComment} from "vs/editor/contrib/rtv/RTVComments";
+import {ParsedComment} from "vs/editor/contrib/rtv/comments/index";
+import {IModeService} from "vs/editor/common/services/modeService";
+import {IOpenerService} from "vs/platform/opener/common/opener";
 
 export interface IRTVDisplayBox {
 	/**
@@ -84,6 +86,8 @@ export interface IRTVController extends IEditorContribution {
 		prevEnvs?: Map<number, any>): Promise<any>;
 	runProgram(): Promise<any>;
 	getId(): string;
+	getModeService(): IModeService;
+	getOpenerService(): IOpenerService;
 	byRowOrCol: RowColMode;
 
 	// Disabling the controller
@@ -131,6 +135,7 @@ export interface IRTVLogger {
 	// Comments
 	insertComments(lineno: number, comments: string): void;
 	newTestResults(testResults: string): void;
+
 
 	//resynthesis
 	resynthesisAsked(lineno: number): void;
@@ -289,6 +294,8 @@ export class SynthProblem {
 		public optEnvs: any[] = []
 	) {}
 }
+
+
 
 /**
  * A "Process" interface that lets us share the API

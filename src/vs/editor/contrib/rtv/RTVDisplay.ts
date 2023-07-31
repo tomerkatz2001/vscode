@@ -42,7 +42,7 @@ import { Button } from 'vs/base/browser/ui/button/button';
 import { attachButtonStyler } from 'vs/platform/theme/common/styler';
 // import { RTVSynth } from './RTVSynth';
 import { RTVSynthController } from 'vs/editor/contrib/rtv/RTVSynthController';
-import {CommentsManager, RTVTestResults, SYNTHESIZED_COMMENT_START} from 'vs/editor/contrib/rtv/comments/RTVComments';
+import {CommentsManager, RTVTestResults, SYNTHESIZED_COMMENT_START} from 'vs/editor/contrib/rtv/comments/index';
 import { Emitter, Event } from 'vs/base/common/event';
 import * as path from 'path';
 
@@ -967,6 +967,117 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 		this._box.style.paddingTop = '0px';
 	}
 
+	public setTableInBox(vars:Set<string>, outVarNames:string[], envs:any[], updateInPlace?:boolean, prevEnvs?: Map<number, any>) {
+
+		// Generate header
+		let rows: TableElement[][] = [];
+		let header: TableElement[] = [];
+		vars.forEach((v: string) => {
+			let name = '**' + v + '**';
+			if (outVarNames.includes(v)) {
+				name = '```html\n<strong>' + v + '</strong><sub>in</sub>```'
+			} else {
+				name = '**' + v + '**'
+			}
+			header.push(new TableElement(name, 'header', 'header', 0, ''));
+		});
+		outVarNames.forEach((ov: string, i: number) => {
+			header.push(new TableElement('```html\n<strong>' + ov + '</strong><sub>out</sub>```', 'header', 'header', 0, '', undefined, i === 0));
+		});
+
+		rows.push(header);
+
+		// Generate all rows
+		for (let i = 0; i < envs.length; i++) {
+			let env = envs[i];
+			let loopID = env['$'];
+			let iter = env['#'];
+			let row: TableElement[] = [];
+			vars.forEach((v: string) => {
+				let v_str: string;
+				let varName = v;
+				let varEnv = env;
+
+				if (outVarNames.includes(v)) {
+					varName += '_in';
+					if (prevEnvs && prevEnvs.has(env['time'])) {
+						varEnv = prevEnvs.get(env['time']);
+					}
+				}
+
+				if (varEnv[v] === undefined) {
+					v_str = '';
+				} else if (isHtmlEscape(varEnv[v])) {
+					v_str = varEnv[v];
+				} else {
+					v_str = '```python\n' + varEnv[v] + '\n```';
+				}
+
+				row.push(new TableElement(v_str, loopID, iter, this.lineNumber, varName, varEnv));
+			});
+			outVarNames.forEach((v: string, i: number) => {
+				let v_str: string;
+				if (env[v] === undefined) {
+					v_str = '';
+				} else if (isHtmlEscape(env[v])) {
+					v_str = env[v];
+				} else {
+					v_str = '```python\n' + env[v] + '\n```';
+				}
+				row.push(new TableElement(v_str, loopID, iter, this.lineNumber, v, env, i === 0));
+			});
+			rows.push(row);
+		}
+
+		// Set border
+		if (this._controller.boxBorder) {
+			this._box.style.border = '';
+		} else {
+			this._box.style.border = '0';
+		}
+
+		const renderer = new MarkdownRenderer(
+			{'editor': this._editor},
+			this._modeService,
+			this._openerService);
+
+		if (updateInPlace && this.hasContent()) {
+			this._cellDictionary = {};
+			if (this._controller.byRowOrCol === RowColMode.ByRow) {
+				this.updateTableByRows(renderer, rows);
+			} else {
+				this.updateTableByCols(renderer, rows);
+			}
+		} else {
+			// Remove the contents
+			this._box.textContent = '';
+
+			// Create html table from rows
+			let table = document.createElement('table');
+			table.style.borderSpacing = '0px';
+
+			// TODO Delete me: We do this for the whole box now.
+			// table.style.paddingLeft = '13px';
+			// table.style.paddingRight = '13px';
+
+			this._cellDictionary = {};
+			if (this._controller.byRowOrCol === RowColMode.ByRow) {
+				this.populateTableByRows(table, renderer, rows);
+			} else {
+				this.populateTableByCols(table, renderer, rows);
+			}
+			this._box.appendChild(table);
+
+			this.addStalenessIndicator();
+
+			//this.addConfigButton();
+			if (this._controller.mouseShortcuts) {
+				this.addPlusButton();
+			}
+		}
+		this._hasContent = true;
+	}
+
 	public computeEnvs(allEnvs?: any[]) {
 
 		let count = 0;
@@ -1152,114 +1263,7 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 			this.setContentFalse();
 			return;
 		}
-
-		// Generate header
-		let rows: TableElement[][] = [];
-		let header: TableElement[] = [];
-		vars.forEach((v: string) => {
-			let name = '**' + v + '**';
-			if (outVarNames.includes(v)) {
-				name = '```html\n<strong>' + v + '</strong><sub>in</sub>```'
-			} else {
-				name = '**' + v + '**'
-			}
-			header.push(new TableElement(name, 'header', 'header', 0, ''));
-		});
-		outVarNames.forEach((ov: string, i: number) => {
-			header.push(new TableElement('```html\n<strong>' + ov + '</strong><sub>out</sub>```', 'header', 'header', 0, '', undefined, i === 0));
-		});
-
-		rows.push(header);
-
-		// Generate all rows
-		for (let i = 0; i < envs.length; i++) {
-			let env = envs[i];
-			let loopID = env['$'];
-			let iter = env['#'];
-			let row: TableElement[] = [];
-			vars.forEach((v: string) => {
-				let v_str: string;
-				let varName = v;
-				let varEnv = env;
-
-				if (outVarNames.includes(v)) {
-					varName += '_in';
-					if (prevEnvs && prevEnvs.has(env['time'])) {
-						varEnv = prevEnvs.get(env['time']);
-					}
-				}
-
-				if (varEnv[v] === undefined) {
-					v_str = '';
-				} else if (isHtmlEscape(varEnv[v])) {
-					v_str = varEnv[v];
-				} else {
-					v_str = '```python\n' + varEnv[v] + '\n```';
-				}
-
-				row.push(new TableElement(v_str, loopID, iter, this.lineNumber, varName, varEnv));
-			});
-			outVarNames.forEach((v: string, i: number) => {
-				let v_str: string;
-				if (env[v] === undefined) {
-					v_str = '';
-				} else if (isHtmlEscape(env[v])) {
-					v_str = env[v];
-				} else {
-					v_str = '```python\n' + env[v] + '\n```';
-				}
-				row.push(new TableElement(v_str, loopID, iter, this.lineNumber, v, env, i === 0));
-			});
-			rows.push(row);
-		}
-
-		// Set border
-		if (this._controller.boxBorder) {
-			this._box.style.border = '';
-		} else {
-			this._box.style.border = '0';
-		}
-
-		const renderer = new MarkdownRenderer(
-			{ 'editor': this._editor },
-			this._modeService,
-			this._openerService);
-
-		if (updateInPlace && this.hasContent()) {
-			this._cellDictionary = {};
-			if (this._controller.byRowOrCol === RowColMode.ByRow) {
-				this.updateTableByRows(renderer, rows);
-			} else {
-				this.updateTableByCols(renderer, rows);
-			}
-		} else {
-			// Remove the contents
-			this._box.textContent = '';
-
-			// Create html table from rows
-			let table = document.createElement('table');
-			table.style.borderSpacing = '0px';
-
-			// TODO Delete me: We do this for the whole box now.
-			// table.style.paddingLeft = '13px';
-			// table.style.paddingRight = '13px';
-
-			this._cellDictionary = {};
-			if (this._controller.byRowOrCol === RowColMode.ByRow) {
-				this.populateTableByRows(table, renderer, rows);
-			} else {
-				this.populateTableByCols(table, renderer, rows);
-			}
-			this._box.appendChild(table);
-
-			this.addStalenessIndicator();
-
-			//this.addConfigButton();
-			if (this._controller.mouseShortcuts) {
-				this.addPlusButton();
-			}
-		}
-
+		this.setTableInBox(vars, outVarNames, envs, updateInPlace, prevEnvs)
 	}
 
 	private addStalenessIndicator() {
@@ -1780,6 +1784,10 @@ export class RTVController implements IRTVController {
 
 	public getOpenerService(): IOpenerService{
 		return this._openerService;
+	}
+
+	public getThemeService(): IThemeService{
+		return this._themeService;
 	}
 
 

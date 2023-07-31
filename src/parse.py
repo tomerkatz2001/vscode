@@ -5,7 +5,7 @@ import json
 
 
 
-nameParser = regex(r'[_a-zA-Z][_a-zA-Z0-9]*')
+nameParser = regex(r'[_a-zA-Z][_a-zA-Z0-9]*|#')
 amountParser = regex(r' *')#string("(")>> regex(r'[0-9]*') << string("), ")
 numberParser = regex(r' *-?\d+ *')
 stringParser = regex(r'\".*?\"|\'.*?\'')

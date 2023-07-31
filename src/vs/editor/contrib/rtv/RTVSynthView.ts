@@ -91,19 +91,19 @@ export class ErrorHoverManager {
 
 export class RTVSynthView {
 
-	private _modeService: IModeService;
-	private _openerService: IOpenerService;
+	protected _modeService: IModeService;
+	protected _openerService: IOpenerService;
 
 	// core elements
-	private _box: HTMLDivElement;
-	private _line: HTMLDivElement;
-	private _errorBox: ErrorHoverManager;
+	protected _box: HTMLDivElement;
+	protected _line: HTMLDivElement;
+	protected _errorBox: ErrorHoverManager;
 
 	// helper data structures/info
-	private _synthTimer: DelayedRunAtMostOne = new DelayedRunAtMostOne();
-	private _firstEditableCellId?: string = undefined;
-	private _table?: HTMLTableElement;
-	private _cellStyle?: CSSStyleDeclaration;
+	protected _synthTimer: DelayedRunAtMostOne = new DelayedRunAtMostOne();
+	protected _firstEditableCellId?: string = undefined;
+	protected _table?: HTMLTableElement;
+	protected _cellStyle?: CSSStyleDeclaration;
 
 	exitSynthHandler?: (accept?: boolean) => void;
 	requestValidateInput?: (input: string) => Promise<string | undefined>;
@@ -119,14 +119,14 @@ export class RTVSynthView {
 
 
 	constructor(
-		private readonly _editor: ICodeEditor,
-		readonly originalLineNode: HTMLElement,
-		readonly originalBoxNode: HTMLElement,
-		readonly modeService: IModeService,
-		readonly openerService: IOpenerService,
-		readonly lineNumber: number,
-		readonly outputVars: string[],
-		@IThemeService readonly _themeService: IThemeService
+		protected readonly _editor: ICodeEditor,
+		protected readonly originalLineNode: HTMLElement,
+		protected readonly originalBoxNode: HTMLElement,
+		protected readonly modeService: IModeService,
+		protected readonly openerService: IOpenerService,
+		protected readonly lineNumber: number,
+		protected readonly outputVars: string[],
+		@IThemeService protected readonly _themeService: IThemeService,
 	) {
 		this._box = originalBoxNode.cloneNode(true) as HTMLDivElement;
 		this._line = originalLineNode.cloneNode(true) as HTMLDivElement;
@@ -315,7 +315,7 @@ export class RTVSynthView {
 						if (!init) {
 							cell = this.updateCell(cell!, elmt, renderer);
 						}
-						if (!this._firstEditableCellId && vname === this.outputVars[0] && elmt.editable && elmt.content.trim() !== '') {
+						if (!this._firstEditableCellId && (vname === this.outputVars[0])&& elmt.editable && elmt.content.trim() !== '') {
 							this._firstEditableCellId = this.getCellId(vname, rowIdx - 1);
 						}
 
@@ -327,7 +327,9 @@ export class RTVSynthView {
 						}
 
 						// finally, re-highlight rows and remove highlight of rows that are no longer valid
-						this.resetHighlight!(rowIdx - 1, elmt.editable);
+						if(this.resetHighlight) {
+							this.resetHighlight!(rowIdx - 1, elmt.editable);
+						}
 					}
 
 				}
@@ -338,7 +340,7 @@ export class RTVSynthView {
 		this.onCellElementsChanged!(cellElements);
 	}
 
-	private addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, header: boolean = false) {
+	public addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, header: boolean = false) {
 		cell.style.borderLeft = this._cellStyle!.borderLeft;
 		cell.style.paddingLeft = this._cellStyle!.paddingLeft;
 		cell.style.paddingRight = this._cellStyle!.paddingRight;
@@ -350,7 +352,7 @@ export class RTVSynthView {
 		this.updateCell(cell, elmt, r, header);
 	}
 
-	private updateCell(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, header: boolean = false): HTMLTableCellElement{
+	protected updateCell(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, header: boolean = false): HTMLTableCellElement{
 
 		let s = elmt.content;
 		let cellContent: HTMLElement;
@@ -394,7 +396,7 @@ export class RTVSynthView {
 	// utility functions
 	// ------------
 
-	private select(node: Node) {
+	protected select(node: Node) {
 		let selection = window.getSelection()!;
 		let range = selection.getRangeAt(0);
 		range.selectNodeContents(node);
@@ -415,7 +417,7 @@ export class RTVSynthView {
 		row.style.fontWeight = row.style.backgroundColor = '';
 	}
 
-	private addListeners(cell: HTMLElement) {
+	protected addListeners(cell: HTMLElement) {
 		if (cell.id) { // won't work for cells w/o id, i.e., the header cells
 			const [varname, idx] = cell.id.split('-').slice(1);
 
@@ -548,7 +550,7 @@ export class RTVSynthView {
 	 * @param skipLine
 	 * @param updateBoxContent
 	 */
-	private async focusNextRow(
+	protected async focusNextRow(
 		cell: HTMLElement,
 		backwards: boolean = false,
 		trackChanges: boolean = true,

@@ -7,7 +7,11 @@ import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { RTVDisplayBox } from 'vs/editor/contrib/rtv/RTVDisplay';
 import { RTVSynthView } from 'vs/editor/contrib/rtv/RTVSynthView';
 import { RTVSynthModel } from 'vs/editor/contrib/rtv/RTVSynthModel';
-import {CommentsManager, ParsedComment} from "vs/editor/contrib/rtv/RTVComments";
+import {CommentsManager, ParsedComment} from "vs/editor/contrib/rtv/comments/index";
+
+import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 
 enum EditorState {
 	Synthesizing,
@@ -258,7 +262,13 @@ export class RTVSynthController {
 	// -----------------------------------------------------------------------------------
 	// Interface
 	// -----------------------------------------------------------------------------------
+	public async getSpecificationAsJson(){
+		var s = await this.commentsManager.getScopeSpecification();
+		var s2 = await this.commentsManager.getExamples();
 
+		return `{"scopeTree": ${s}, "scopes": ${s2}}`;
+
+	}
 	public async startSynthesis(lineno: number) {
 		this.enabled = true;
 
@@ -283,7 +293,7 @@ export class RTVSynthController {
 
 		const varnames = this.extractVarnames(lineno);
 
-		if (l_operand === '' || r_operand === '' || !r_operand.endsWith('??') || !varnames || varnames.length !== 1) {
+		if (l_operand === '' || r_operand === '' || !r_operand.endsWith('??') || !varnames) {
 			this.stopSynthesis();
 			return;
 		}
@@ -418,7 +428,17 @@ export class RTVSynthController {
 	public async startResynthesis(lineno: number) {
 		this.enabled = true;
 		//get the values from the comment
+		let scopSpec = await this.commentsManager.getScopeSpecification();
+		console.log(scopSpec);
+		let sceps =  this.commentsManager.getExamples();
+		console.log(sceps);
+
 		var parsedComment:ParsedComment = await this.commentsManager.getParsedComment(lineno - 1);
+
+
+		let val = await  this.getSpecificationAsJson();
+		const values_file: string = os.tmpdir() + path.sep + 'example.json';
+		fs.writeFileSync(values_file, JSON.stringify(val));
 
 		this.editorState = new EditorStateManager("", lineno, this.editor, this.RTVController);
 		this._synthModel = new RTVSynthModel(Object.keys(parsedComment.out), lineno, new Set(parsedComment.synthesizedVarNames) );

@@ -1,18 +1,19 @@
 // eslint-disable-next-line code-import-patterns
-import {IRTVController, IRTVLogger,} from "../RTVInterfaces";
+import {IRTVController, IRTVLogger, ViewMode,} from "../RTVInterfaces";
 import {Range as RangeClass, Range} from 'vs/editor/common/core/range';
-import * as utils from 'vs/editor/contrib/rtv/RTVUtils';
-import {getUtils} from 'vs/editor/contrib/rtv/RTVUtils';
+import { getUtils, TableElement} from 'vs/editor/contrib/rtv/RTVUtils';
 import {ICodeEditor} from "vs/editor/browser/editorBrowser";
-import * as assert from "assert";
 import {Selection} from "vs/editor/common/core/selection";
 import {RTVSynthModel} from "vs/editor/contrib/rtv/RTVSynthModel";
 import {DecorationManager, DecorationType} from "vs/editor/contrib/rtv/RTVDecorations";
-import {RTVSpecification} from "vs/editor/contrib/rtv/RTVSpecification";
 import {FoldingRangeProviderRegistry} from "vs/editor/common/modes";
 import {SpecificationsRangeProvider} from "vs/editor/contrib/rtv/comments/SpecificationsRangeProvider";
 import {IModelContentChangedEvent} from "vs/editor/common/model/textModelEvents";
 import {RTVController} from "vs/editor/contrib/rtv/RTVDisplay";
+import {MarkdownRenderer} from "vs/editor/browser/core/markdownRenderer";
+import {RTVInputBox, RTVSpecification} from "vs/editor/contrib/rtv/index";
+import {ParsedComment} from "./RTVComment";
+// import {parse} from 'python-ast';
 
 
 export  const  SYNTHESIZED_COMMENT_START = `#! Start of synth number: `;
@@ -20,106 +21,7 @@ export  const SYNTHESIZED_COMMENT_END = `#! End of synth number: `;
 //const FAKE_TIME = 100;
 
 
-enum env_status{pass, fail, live}
-/**
- * class that represents a block of examples, aka a comment, inserted automatically by the synth or manually by the user
- */
-export class ParsedComment{
-	synthesizedVarNames: string[] = []; //
-	private readonly envs : any[] =[];
-	private readonly envs_status :env_status[] =[]; //
-	out : {[varName: string]: string}[] = []; //right of the "=>"
-	commentID:number = 0;
-	size: number; // number of line envs
-	constructor(synthesizedVarNames: string[], envs: any[], envs_status: env_status[], out: any[], commentID:number,){
-		this.synthesizedVarNames = synthesizedVarNames;
-		this.envs = envs;
-		this.envs_status = envs_status;
-		this.out = out;
-		for (let o of out) {
-			for (let [key, value] of Object.entries(o)) {
-				if (typeof value === "string") {
-					o[key] = `'${value}'`;
-				}
-				else {
-					o[key] = String(value);
-				}
-			}
-		}
-		this.commentID = commentID;
-		this.size = envs.length;
-	}
 
-	public getEnvsToResynth(){
-		let envs = [];
-		for(let [i, env] of utils.enumerate(this.envs)){
-			let tmp = env;
-			for(let varName in tmp){
-				if(varName.endsWith("_in")){
-					delete env[varName];
-				}
-				//if the var is not string, make it a string
-				else if(typeof tmp[varName] !== "string"){
-					tmp[varName] = tmp[varName].toString();
-				}
-				else if(!tmp[varName].startsWith("[")){// if the var is string and not arr add another quote
-					tmp[varName] = `'${tmp[varName]}'`;
-				}
-			}
-			if(!tmp["#"]){
-				tmp["#"] = "";
-			}
-			if(!tmp["$"]){
-				tmp["$"] = "";
-			}
-			tmp['time'] = -1;
-			// make each elemnt in the list a string
-			envs.push({...tmp, ... this.out[i]});
-		}
-		return envs;
-	}
-
-	public toJson(){
-		return {
-			"outputVarNames": this.synthesizedVarNames,
-			"commentExamples": this.getEnvsToResynth(),
-			"assignments": {},
-			"commentId": this.commentID
-		};
-	}
-	public removeEnv(envIdx:number){
-		this.envs.splice(envIdx,1);
-		this.out.splice(envIdx,1);
-	}
-
-	public getEnvStatus(envIdx:number){
-		assert(this.envs_status.length > envIdx,);
-		return this.envs_status[envIdx];
-	}
-
-	public asString():string{
-		let s:string = "";
-		let examplesCounter:number = 0;
-		for (let [index,example] of this.envs.entries()) {
-			let leftSide = `#! ${++examplesCounter}) `;
-			Object.keys(example).forEach((inputVar) => {
-				if(! ["#", "$", "time"].includes(inputVar)) {
-					leftSide += `${inputVar} = ${example[inputVar]}, `;
-				}
-			});
-			leftSide = leftSide.substring(0, leftSide.length - 2); //remove the last ', '
-
-			let rightSide = ``;
-			Object.keys(this.out[index]).forEach((outputVar) => {
-				rightSide += `${outputVar} = ${this.out[index][outputVar]}, `; // add the output vars
-			});
-			rightSide = rightSide.substring(0, rightSide.length - 2); //remove the last ', '
-
-			s += `${leftSide} => ${rightSide} \n`
-		}
-		return s;
-	}
-}
 
 
 // this class is in charge of all the comments in the editor.
@@ -128,6 +30,7 @@ export class CommentsManager {
 	private comments: { [index: number]: DecorationManager } = {}; // map from synthID and comment idx to the decorations ids
 	private synthCounter: number = 0; // the largest comment id there is in the file
 	private specifications: RTVSpecification;
+	private inputBox: RTVInputBox|undefined = undefined; // used to get user's input for more examples.
 	constructor(private readonly controller: RTVController, private readonly editor: ICodeEditor) {
 		this.logger = getUtils().logger(editor);
 		this.specifications = new RTVSpecification();
@@ -334,14 +237,134 @@ export class CommentsManager {
 		}
 		let lineno = cursorPos.lineNumber;
 		const lineContent = this.controller.getLineContent(lineno).trim();
-		if(lineContent.startsWith("#!")){
+		if(lineContent === "#!" && !this.inputBox){
 			this.logger.projectionBoxCreated();
+
+			this.controller.changeViewMode(ViewMode.Stealth);
+			this.controller.disable();
+
+
 			// TODO: split to cases, above a function def, additional example to synth or range?
 			let box = this.controller.getBox(lineno);
-			box.setTextInBox("this is a test");
-			this.controller.hideAllOtherBoxes(box);
+			//enter a dummy box
+			box.setTableInBox(new Set(["x", "y", "z"]), ["y"], [], false);
+			this.inputBox = new RTVInputBox(
+				this.editor,
+				box.getLine().getElement(),
+				box.getElement(),
+				box.getModeService(),
+				box.getOpenerService(),
+				lineno,
+				this.controller.getThemeService());
+
+
+			this.inputBox.bindExitSynth(()=>this.onExit(lineno));
+			this.inputBox.bindOnEnterPresses(()=>{console.log(box.getCellContent())});
+			this.inputBox.bindUpdateCursorPos(this.updateCursorPos)
+
+			let inputVarNames = this.getInputVars(lineno);
+			let outVarNames = this.getOutputVars(lineno);
+			let rows = this.makeEmptyTable(inputVarNames, outVarNames, lineno);
+			this.inputBox.updateBoxContent(rows, true);
+			this.makeTableEditable(rows);
+
+			this.inputBox.selectFirstEditableCell();
+
+
 		}
 	}
+
+	//------------------------------------------------ helping functions-------------------------------------
+	private makeEmptyTable(vars: string[], outVarNames:string[], lineno:number){
+		let rows: TableElement[][] = [];
+		let header: TableElement[] = [];
+		vars.forEach((v: string) => {
+			let name = '**' + v + '**';
+			if (outVarNames.includes(v)) {
+				name = '```html\n<strong>' + v + '</strong><sub>in</sub>```'
+			} else {
+				name = '**' + v + '**'
+			}
+			header.push(new TableElement(name, 'header', 'header', 0, ''));
+		});
+		outVarNames.forEach((ov: string, i: number) => {
+			header.push(new TableElement('```html\n<strong>' + ov + '</strong><sub>out</sub>```', 'header', 'header', 0, '', undefined, i === 0));
+		});
+
+		rows.push(header);
+
+		// Generate one row
+		let row: TableElement[] = [];
+		vars.forEach((v: string) => {
+			let varName = v;
+
+			if (outVarNames.includes(v)) {
+				varName += '_in';
+			}
+
+			row.push(new TableElement("", "", "", lineno, varName, {}));
+		});
+		outVarNames.forEach((v: string, i: number) => {
+			row.push(new TableElement("", "", "", lineno, v, {}, i === 0));
+		});
+		for (let _colIdx = 0; _colIdx < row.length; _colIdx++){
+			row[_colIdx].editable = true;
+		}
+		rows.push(row);
+
+		return rows
+	}
+
+
+	private makeTableEditable(rows: TableElement[][]){
+		const renderer = new MarkdownRenderer(
+			{ 'editor': this.editor },
+			this.controller.getModeService(),
+			this.controller.getOpenerService());
+		for(let rowIdx = 1; rowIdx < rows.length; rowIdx++){
+			const row = rows[rowIdx];
+			for (let _colIdx = 0; _colIdx < row.length; _colIdx++){
+				const elmt = row[_colIdx];
+				const vname = elmt.vname!;
+				let cell = this.inputBox!.getCell(vname, rowIdx - 1)!;
+				this.inputBox!.addCellContentAndStyle(cell, elmt, renderer, rowIdx == 0);
+
+			}
+		}
+	}
+	private onExit(lineno:number){
+		this.inputBox!.destroy();
+		this.inputBox = undefined;
+		this.controller.getBox(lineno).destroy();
+		this.controller.enable();
+		this.controller.resetChangedLinesWhenOutOfDate();
+		this.controller.updateBoxes();
+		this.controller.changeViewMode(ViewMode.Full);
+		this.editor.focus();
+	}
+
+	private updateCursorPos(range:any, node: HTMLElement) {}
+
+	private getInputVars(lineno:number){
+		let lineContent = this.editor.getModel()?.getLineContent(lineno+1);
+		if(lineContent?.trim().startsWith("def")){
+			// let functionStr = getFunctionCode(this.editor.getModel()?.getLinesContent()!, lineno+1);
+			// const tree = parse(functionStr);
+			// return extractVariableNames(tree)
+			return ["in"];
+		}
+		return ["tmp_in"];
+	}
+
+	private getOutputVars(lineno:number){
+		let lineContent = this.editor.getModel()?.getLineContent(lineno+1);
+		if(lineContent?.trim().startsWith("def")){
+			return ["rv"];
+		}
+		return ["tmp_out"];
+
+	}
+
 }
 
 
