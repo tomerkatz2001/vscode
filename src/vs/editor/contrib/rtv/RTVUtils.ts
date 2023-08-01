@@ -57,6 +57,17 @@ export class TableElement {
 	) {}
 }
 
+export class CursorPos {
+	constructor (
+		public node?: HTMLElement,
+		public startPos?: number,
+		public endPos?: number,
+		public collapsed?: boolean,
+		public row: number = 0
+	) {}
+}
+
+export type example = {inputs: {[k: string] : string}, outputs: {[k: string] : string}};
 
 const PY3 = getOSEnvVariable('PYTHON3');
 const RUNPY = getOSEnvVariable('RUNPY');
@@ -395,78 +406,76 @@ export function getUtils(): Utils {
 	return utils;
 }
 
-// export function extractVariableNames(node: any): string[] {
-// 	const varNames: string[] = [];
-//
-// 	switch (node?.type) {
-// 		case 'arguments':
-// 			for (const arg of node.args) {
-// 				if (arg.type === 'arg') {
-// 					varNames.push(arg.arg);
-// 				}
-// 			}
-// 			for (const arg of node.kwonlyargs) {
-// 				if (arg.type === 'arg') {
-// 					varNames.push(arg.arg);
-// 				}
-// 			}
-// 			if (node.vararg !== null && node.vararg.type === 'arg') {
-// 				varNames.push(node.vararg.arg);
-// 			}
-// 			if (node.kwarg !== null && node.kwarg.type === 'arg') {
-// 				varNames.push(node.kwarg.arg);
-// 			}
-// 			break;
-// 		default:
-// 			for (const key in node) {
-// 				const child = node[key];
-// 				if (typeof child === 'object' && child !== null) {
-// 					if (Array.isArray(child)) {
-// 						for (const c of child) {
-// 							varNames.push(...extractVariableNames(c));
-// 						}
-// 					} else {
-// 						varNames.push(...extractVariableNames(child));
-// 					}
-// 				}
-// 			}
-// 			break;
-// 	}
-//
-// 	return varNames;
-// }
-//
-// export function getFunctionCode(lines: string[], functionLine: number): string {
-// 	const functionIndent = lines[functionLine - 1].match(/^\s*/)?.[0] || '';
-// 	let functionCode = lines[functionLine - 1];
-//
-// 	// Find the end of the function by tracking indentation level
-// 	let indentationLevel = 0;
-// 	let i = functionLine;
-// 	while (i < lines.length) {
-// 		const line = lines[i];
-// 		const lineIndent = line.match(/^\s*/)?.[0] || '';
-//
-// 		if (lineIndent.length <= functionIndent.length) {
-// 			break;
-// 		}
-//
-// 		functionCode += '\n' + line;
-// 		indentationLevel = lineIndent.length;
-// 		i++;
-// 	}
-//
-// 	// Remove the last line if it's just a continuation of the function
-// 	if (i < lines.length && lines[i].trim() === '') {
-// 		functionCode = functionCode.slice(0, -1);
-// 	}
-//
-// 	// Dedent the function code
-// 	const dedentRegex = new RegExp(`^\\s{${indentationLevel}}`, 'gm');
-// 	functionCode = functionCode.replace(dedentRegex, '');
-//
-// 	return functionCode;
-// }
+export function makeEmptyTable(vars: string[], outVarNames:string[], lineno:number): TableElement[][]{
+	let rows: TableElement[][] = [];
+	let header: TableElement[] = [];
+	vars.forEach((v: string) => {
+		let name = '**' + v + '**';
+		if (outVarNames.includes(v)) {
+			name = '```html\n<strong>' + v + '</strong><sub>in</sub>```'
+		} else {
+			name = '**' + v + '**'
+		}
+		header.push(new TableElement(name, 'header', 'header', 0, ''));
+	});
+	outVarNames.forEach((ov: string, i: number) => {
+		header.push(new TableElement('```html\n<strong>' + ov + '</strong><sub>out</sub>```', 'header', 'header', 0, '', undefined, i === 0));
+	});
+
+	rows.push(header);
+
+	// Generate one row
+	let row: TableElement[] = [];
+	vars.forEach((v: string) => {
+		let varName = v;
+
+		if (outVarNames.includes(v)) {
+			varName += '_in';
+		}
+
+		row.push(new TableElement("", "", "", lineno, varName, {}));
+	});
+	outVarNames.forEach((v: string, i: number) => {
+		row.push(new TableElement("", "", "", lineno, v, {}, i === 0));
+	});
+	for (let _colIdx = 0; _colIdx < row.length; _colIdx++){
+		row[_colIdx].editable = true;
+	}
+	rows.push(row);
+
+	return rows
+}
+export function getFunctionCode(lines: string[], functionLine: number): string {
+	const functionIndent = lines[functionLine - 1].match(/^\s*/)?.[0] || '';
+	let functionCode = lines[functionLine - 1];
+
+	// Find the end of the function by tracking indentation level
+	let indentationLevel = 0;
+	let i = functionLine;
+	while (i < lines.length) {
+		const line = lines[i];
+		const lineIndent = line.match(/^\s*/)?.[0] || '';
+
+		if (lineIndent.length <= functionIndent.length) {
+			break;
+		}
+
+		functionCode += '\n' + line;
+		indentationLevel = lineIndent.length;
+		i++;
+	}
+
+	// Remove the last line if it's just a continuation of the function
+	if (i < lines.length && lines[i].trim() === '') {
+		functionCode = functionCode.slice(0, -1);
+	}
+
+	// Dedent the function code
+	const dedentRegex = new RegExp(`^\\s{${indentationLevel}}`, 'gm');
+	functionCode = functionCode.replace(dedentRegex, '');
+
+	return functionCode;
+}
 
 
 

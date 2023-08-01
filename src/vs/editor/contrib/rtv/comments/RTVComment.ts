@@ -78,6 +78,7 @@ export class ParsedComment{
 	}
 
 	public asString():string{
+		//todo: replace to somthing that calls convert to string
 		let s:string = "";
 		let examplesCounter:number = 0;
 		for (let [index,example] of this.envs.entries()) {

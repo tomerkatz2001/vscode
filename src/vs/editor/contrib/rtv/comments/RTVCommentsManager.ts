@@ -1,7 +1,7 @@
 // eslint-disable-next-line code-import-patterns
 import {IRTVController, IRTVLogger, ViewMode,} from "../RTVInterfaces";
 import {Range as RangeClass, Range} from 'vs/editor/common/core/range';
-import { getUtils, TableElement} from 'vs/editor/contrib/rtv/RTVUtils';
+import {example, getFunctionCode, getUtils, makeEmptyTable, TableElement} from 'vs/editor/contrib/rtv/RTVUtils';
 import {ICodeEditor} from "vs/editor/browser/editorBrowser";
 import {Selection} from "vs/editor/common/core/selection";
 import {RTVSynthModel} from "vs/editor/contrib/rtv/RTVSynthModel";
@@ -13,7 +13,8 @@ import {RTVController} from "vs/editor/contrib/rtv/RTVDisplay";
 import {MarkdownRenderer} from "vs/editor/browser/core/markdownRenderer";
 import {RTVInputBox, RTVSpecification} from "vs/editor/contrib/rtv/index";
 import {ParsedComment} from "./RTVComment";
-// import {parse} from 'python-ast';
+import {parse, createVisitor} from 'python-ast';
+import { TfpdefContext} from "python-ast/dist/parser/Python3Parser";
 
 
 export  const  SYNTHESIZED_COMMENT_START = `#! Start of synth number: `;
@@ -55,6 +56,20 @@ export class CommentsManager {
 		return  this.specifications.getExamples(model.getLinesContent().join("\n"));
 	}
 
+	private convertExampleToString(example: example, idx:number){
+		let leftSide = `#! ${idx}) `;
+		Object.keys(example.inputs).forEach((inputVar) => {
+			leftSide += `${inputVar} = ${example.inputs[inputVar]}, `; // add the input vars
+		});
+		leftSide = leftSide.substring(0, leftSide.length - 2); //remove the last ', '
+
+		let rightSide = ``;
+		Object.keys(example.outputs).forEach((outputVar) => {
+			rightSide += `${outputVar} = ${example.outputs[outputVar]}, `; // add the output vars
+		});
+		rightSide = rightSide.substring(0, rightSide.length - 2); //remove the last ', '
+		return `${leftSide} => ${rightSide} \n`;
+	}
 	/**
 	 * @param box- the box you want its values to be inserted
 	 * @param outVars - The variables that synthesized
@@ -62,24 +77,11 @@ export class CommentsManager {
 	 * @returns the number of lines that lineno needs to be increased.
 	 */
 	public insertExamples(synthModel: RTVSynthModel, outVars: string[]) {
-		let examplesCounter = 0;
+		let examplesCounter = 1;
 		let examples: string = ``;
 		let synthExamples = synthModel.getExamples();
 		for (let example of synthExamples) {
-			let leftSide = `#! ${++examplesCounter}) `;
-			Object.keys(example.inputs).forEach((inputVar) => {
-				leftSide += `${inputVar} = ${example.inputs[inputVar]}, `; // add the input vars
-			});
-			leftSide = leftSide.substring(0, leftSide.length - 2); //remove the last ', '
-
-			let rightSide = ``;
-			Object.keys(example.outputs).forEach((outputVar) => {
-				rightSide += `${outputVar} = ${example.outputs[outputVar]}, `; // add the output vars
-			});
-			rightSide = rightSide.substring(0, rightSide.length - 2); //remove the last ', '
-
-			examples += `${leftSide} => ${rightSide} \n`
-
+			examples += this.convertExampleToString(example, examplesCounter++);
 		}
 
 		this.logger.insertComments(synthModel.getLineno(), examples);
@@ -96,6 +98,12 @@ export class CommentsManager {
 		this.newSynthBlock();
 	}
 
+	public insertOneExample(example:example, lineno:number, examplesIdx:number):void{
+		const exampleString  = this.convertExampleToString(example, examplesIdx).replace("\n","");
+		this.insertExamplesToEditor(exampleString, Object.keys(example.outputs), lineno, false);
+	}
+
+
 	/**
 	 * this function is in charge of inserting the text at the right place in the editor.
 	 * it will also update the cursor position to point to the next line.
@@ -103,7 +111,7 @@ export class CommentsManager {
 	 * @param outVars - the variables that were synthesized
 	 * @param lineno - the line number to insert the text at
 	 */
-	private insertExamplesToEditor(examples: string, outVars: string[], lineno: number) {
+	private insertExamplesToEditor(examples: string, outVars: string[], lineno: number, withProlog:boolean = true) {
 		let model = this.controller.getModelForce();
 		let cursorPos = this.editor.getPosition();
 		let startCol: number;
@@ -123,16 +131,23 @@ export class CommentsManager {
 		let oldText = model.getValueInRange(range);
 		let prolog = SYNTHESIZED_COMMENT_START + this.synthCounter.toString() + " of: " + outVars.toString().replace("[", "").replace("]", "") + "\n";
 		let epilog = "\n" + SYNTHESIZED_COMMENT_END + this.synthCounter.toString() + "\n";
-		let newText = prolog + examples + oldText + epilog;
+		let newText;
+		if (withProlog)
+			newText = prolog + examples + oldText + epilog;
+		else
+			newText = examples;
 
 		let indent = (model.getOptions()!.insertSpaces) ? ' ' : '\t';
 		newText = newText.split('\n').join('\n' + indent.repeat(startCol - 1));
 
 		this.editor.pushUndoStop();
+		let startLine = withProlog ? lineno + newText.split('\n').length - 2 : lineno;
+
+
 		let selection = new Selection(
-			lineno + newText.split('\n').length - 2,
+			startLine,
 			startCol,
-			lineno + newText.split('\n').length - 2,
+			startLine,
 			startCol + newText.length
 		);
 
@@ -141,6 +156,7 @@ export class CommentsManager {
 			[{range: range, text: newText}],
 			[selection]
 		);
+
 	}
 
 	/**
@@ -248,6 +264,10 @@ export class CommentsManager {
 			let box = this.controller.getBox(lineno);
 			//enter a dummy box
 			box.setTableInBox(new Set(["x", "y", "z"]), ["y"], [], false);
+			let inputVarNames = this.getInputVars(lineno);
+			let outVarNames = this.getOutputVars(lineno);
+			let rows = makeEmptyTable(inputVarNames, outVarNames, lineno);
+
 			this.inputBox = new RTVInputBox(
 				this.editor,
 				box.getLine().getElement(),
@@ -255,16 +275,17 @@ export class CommentsManager {
 				box.getModeService(),
 				box.getOpenerService(),
 				lineno,
-				this.controller.getThemeService());
+				this.controller.getThemeService(),
+				inputVarNames,
+				outVarNames,
+				rows
+				);
 
 
 			this.inputBox.bindExitSynth(()=>this.onExit(lineno));
-			this.inputBox.bindOnEnterPresses(()=>{console.log(box.getCellContent())});
-			this.inputBox.bindUpdateCursorPos(this.updateCursorPos)
+			this.inputBox.bindOnEnterPresses(()=>{this.onEnter(lineno)});
 
-			let inputVarNames = this.getInputVars(lineno);
-			let outVarNames = this.getOutputVars(lineno);
-			let rows = this.makeEmptyTable(inputVarNames, outVarNames, lineno);
+
 			this.inputBox.updateBoxContent(rows, true);
 			this.makeTableEditable(rows);
 
@@ -275,45 +296,7 @@ export class CommentsManager {
 	}
 
 	//------------------------------------------------ helping functions-------------------------------------
-	private makeEmptyTable(vars: string[], outVarNames:string[], lineno:number){
-		let rows: TableElement[][] = [];
-		let header: TableElement[] = [];
-		vars.forEach((v: string) => {
-			let name = '**' + v + '**';
-			if (outVarNames.includes(v)) {
-				name = '```html\n<strong>' + v + '</strong><sub>in</sub>```'
-			} else {
-				name = '**' + v + '**'
-			}
-			header.push(new TableElement(name, 'header', 'header', 0, ''));
-		});
-		outVarNames.forEach((ov: string, i: number) => {
-			header.push(new TableElement('```html\n<strong>' + ov + '</strong><sub>out</sub>```', 'header', 'header', 0, '', undefined, i === 0));
-		});
 
-		rows.push(header);
-
-		// Generate one row
-		let row: TableElement[] = [];
-		vars.forEach((v: string) => {
-			let varName = v;
-
-			if (outVarNames.includes(v)) {
-				varName += '_in';
-			}
-
-			row.push(new TableElement("", "", "", lineno, varName, {}));
-		});
-		outVarNames.forEach((v: string, i: number) => {
-			row.push(new TableElement("", "", "", lineno, v, {}, i === 0));
-		});
-		for (let _colIdx = 0; _colIdx < row.length; _colIdx++){
-			row[_colIdx].editable = true;
-		}
-		rows.push(row);
-
-		return rows
-	}
 
 
 	private makeTableEditable(rows: TableElement[][]){
@@ -332,6 +315,11 @@ export class CommentsManager {
 			}
 		}
 	}
+	private onEnter(lineno:number){
+		const exampleIdx = this.getPrevCommentIndex(lineno) + 1;
+		this.insertOneExample(this.inputBox?.getBoxAsExample()!, lineno, exampleIdx);
+		this.onExit(lineno);
+	}
 	private onExit(lineno:number){
 		this.inputBox!.destroy();
 		this.inputBox = undefined;
@@ -343,25 +331,43 @@ export class CommentsManager {
 		this.editor.focus();
 	}
 
-	private updateCursorPos(range:any, node: HTMLElement) {}
 
-	private getInputVars(lineno:number){
+	 getInputVars =(lineno:number)=>{
 		let lineContent = this.editor.getModel()?.getLineContent(lineno+1);
 		if(lineContent?.trim().startsWith("def")){
-			// let functionStr = getFunctionCode(this.editor.getModel()?.getLinesContent()!, lineno+1);
-			// const tree = parse(functionStr);
-			// return extractVariableNames(tree)
-			return ["in"];
+			let functionStr = getFunctionCode(this.editor.getModel()?.getLinesContent()!, lineno+1);
+			const tree = parse(functionStr);
+			let vars:string[] = []
+
+			let TfpdefVisitor =  (ctx: TfpdefContext) => {
+				vars.push(ctx.getChild(0).toString());
+			};
+
+			createVisitor({ visitTfpdef:TfpdefVisitor}).visit(tree);
+			return  vars;
+
 		}
 		return ["tmp_in"];
 	}
 
-	private getOutputVars(lineno:number){
+	 getOutputVars = (lineno:number)=>{
 		let lineContent = this.editor.getModel()?.getLineContent(lineno+1);
 		if(lineContent?.trim().startsWith("def")){
 			return ["rv"];
 		}
 		return ["tmp_out"];
+
+	}
+
+	getPrevCommentIndex = (lineno:number)=>{
+		if(lineno == 1) return 0;
+		let lineContent = this.editor.getModel()?.getLineContent(lineno-1).trim()!;
+		const regex = /^#! *(\d+)/;
+		const match = lineContent.match(regex);
+		if(match && match[1]){
+			return parseInt(match[1]);
+		}
+		return 0;
 
 	}
 
