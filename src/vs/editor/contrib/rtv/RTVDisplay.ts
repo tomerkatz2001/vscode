@@ -2388,6 +2388,10 @@ export class RTVController implements IRTVController {
 		});
 	}
 
+	public renderLayout(){
+		this.updateMaxPixelCol();
+		this.updateLayout();
+	}
 
 	private updateContent(outputVars?: string[], prevEnvs?: Map<number, any>, updateInPlace?: boolean) {
 		this.padBoxArray();

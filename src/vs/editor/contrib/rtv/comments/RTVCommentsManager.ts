@@ -15,6 +15,7 @@ import {RTVInputBox, RTVSpecification} from "vs/editor/contrib/rtv/index";
 import {ParsedComment} from "./RTVComment";
 import {parse, createVisitor} from 'python-ast';
 import { TfpdefContext} from "python-ast/dist/parser/Python3Parser";
+import {FoldingController} from "vs/editor/contrib/folding/folding";
 
 
 export  const  SYNTHESIZED_COMMENT_START = `#! Start of synth number: `;
@@ -36,6 +37,15 @@ export class CommentsManager {
 		this.logger = getUtils().logger(editor);
 		this.specifications = new RTVSpecification();
 		FoldingRangeProviderRegistry.register("*", new SpecificationsRangeProvider());
+		const registerOnDidChangeFolding = ()=> {
+			const foldingController: FoldingController = FoldingController.get(editor);
+			foldingController.getFoldingModel()?.then(foldingModel => {
+				foldingModel!.onDidChange(() => {
+					setTimeout(()=>this.controller.renderLayout(), 200); // after the folding happens.
+				});
+			});
+		};
+		this.editor.onDidChangeModel((e)=> registerOnDidChangeFolding());
 		this.editor.onDidChangeModelContent((e) => { this.onDidChangeModelContent(e); });	}
 
 	/**
