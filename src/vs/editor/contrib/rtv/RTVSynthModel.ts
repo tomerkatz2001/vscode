@@ -3,6 +3,15 @@ import {TableElement, isHtmlEscape, CursorPos, example} from 'vs/editor/contrib/
 
 
 export class RTVSynthModel {
+	set includedTimes(value: Set<number>) {
+		this._includedTimes = value;
+	}
+	set boxEnvs(value:{[k: string]: [v: any]}[]) {
+		this._boxEnvs = value;
+	}
+	set prevEnvs(value: Map<number, any>) {
+		this._prevEnvs = value;
+	}
 
 	private _allEnvs: any[] = [];
 	private _prevEnvs?: Map<number, any>;
@@ -282,7 +291,7 @@ export class RTVSynthModel {
 	private getInputsValues(env: any): {[k:string]: string}{
 		let input: {[k: string] : string} = {};
 		for (let varName of this._boxVars!) {
-			let dontShowVars = ['#', '$', 'rv'];
+			let dontShowVars = ['$', 'rv'];
 			if(dontShowVars.includes(varName)) {
 				continue;
 			}
@@ -440,8 +449,9 @@ export class RTVSynthModel {
 
 	// checks if the cell content is different from its env value
 	public cellContentChanged(idx: number, varname: string, content: string): boolean {
-		let env = this._boxEnvs[idx];
-		return env[varname] !== content;
+		return true; // if the user wants to keep the same value.
+		// let env = this._boxEnvs[idx];
+		// return env[varname] !== content;
 	}
 
 	// record cursor position and the current row (also stored in CursorPos)
