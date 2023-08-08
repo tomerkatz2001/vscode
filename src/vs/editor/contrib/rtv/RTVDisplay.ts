@@ -1753,6 +1753,11 @@ export class RTVController implements IRTVController {
 		this._editor.onMouseWheel((e) => { this.onMouseWheel(e); });
 		this._editor.onKeyUp((e) => { this.onKeyUp(e); });
 		this._editor.onKeyDown((e) => { this.onKeyDown(e); });
+		this._editor.updateOptions({
+			lineNumbersMinChars: 2, // Set the minimum number of characters used for line numbers
+			glyphMargin: true, // Show the glyph margin (the empty space to the left of line numbers)
+			fixedOverflowWidgets: true, // Prevent content from being rendered on the line numbers and glyph margin
+		});
 		//this._modelService.onModelModeChanged((e) => { console.log('BBBB');  })
 		this.commentsManager = new CommentsManager(this, this._editor);
 		this._synthesis = new RTVSynthController(_editor, this, this._themeService, this.commentsManager);
@@ -2778,7 +2783,7 @@ export class RTVController implements IRTVController {
 
 		if (runResults.testResults) {
 			this.logger.newTestResults(runResults.testResults);
-			this.commentsManager.updateComments(new RTVTestResults(runResults.testResults));
+			await this.commentsManager.updateComments(new RTVTestResults(runResults.testResults));
 		}
 		else {
 			this.logger.newTestResults("No tests found");

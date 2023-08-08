@@ -9,6 +9,9 @@ enum BranchType {
 
 
 export class RTVSpecification{
+	get comments(): { [p: number]: ParsedComment } {
+		return this._comments;
+	}
 	private _commentsTree: {[key: number] : Map<BranchType, any>}; // represents the scoops of the comments.
 	private _comments: {[key: number] : ParsedComment}; // map from comment id to comment
 
@@ -71,7 +74,7 @@ export class RTVSpecification{
 				let utils = getUtils();
 				let pythonProcess = utils.runCommentsParser(lines.slice(i).join('\n'));
 				let parsedComment = await pythonProcess;
-
+				parsedComment.lineno = i+1;
 				const parentId = scopeIds[scopeIds.length - 1];
 
 				// Call the function with the comment ID and scope ID

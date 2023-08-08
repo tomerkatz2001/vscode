@@ -1,6 +1,7 @@
 import {IRTVController} from "vs/editor/contrib/rtv/RTVInterfaces";
 import {Range} from "vs/editor/common/core/range";
-import {IModelDecorationOptions, TrackedRangeStickiness } from "vs/editor/common/model";
+import {IModelDecorationOptions, IModelDeltaDecoration, TrackedRangeStickiness} from "vs/editor/common/model";
+import {ICodeEditor} from "vs/editor/browser/editorBrowser";
 
 /**
  * Class that holds and has the responsibility of the underline of the comment block
@@ -8,10 +9,14 @@ import {IModelDecorationOptions, TrackedRangeStickiness } from "vs/editor/common
 export class DecorationManager{
 	commentId: number; // The id of the "start synth" comment this  instance relates.
 	lineno : number = 0; // the lineno of the comment. needs to change on every change!
-	decorations: {[index: number]: Decoration} = {}; //map of all the current decorations {env idx -> Decoration}
-	constructor(private readonly controller: IRTVController, commentId: number, lineno: number){
+	scopeSize: number = 0; //number of lines from the start of the block to the end of it. including the code.
+	decorations: {[index: number]: UnderlineDecoration} = {}; //map of all the current decorations {env idx -> UnderlineDecoration}
+	indentGuides:string[] = [];
+	constructor(private readonly controller: IRTVController, private readonly editor: ICodeEditor, commentId: number, lineno: number, scopeSize:number){
 		this.commentId = commentId;
 		this.lineno = lineno;
+		this.scopeSize = scopeSize;
+		this.addCustomIndentGuides();
 	}
 
 	public addDecoration(envIdx:number, type: DecorationType, onHoverText?: string){
@@ -19,7 +24,7 @@ export class DecorationManager{
 		let lineno = this.lineno+1+envIdx;
 		let model  = this.controller.getModelForce();
 		let range = new Range(lineno,model.getLineFirstNonWhitespaceColumn(lineno), lineno, model.getLineLastNonWhitespaceColumn(lineno));
-		this.decorations[envIdx] = new Decoration(this.controller, range , type, onHoverText); // insert new
+		this.decorations[envIdx] = new UnderlineDecoration(this.controller, range , type, onHoverText); // insert new
 	}
 
 	private removeDecoration(envIdx: number){
@@ -41,19 +46,44 @@ export class DecorationManager{
 	}
 
 	public removeAllDecoration(){
+		this.removeIndentGuides();
 		for(let envIdx in this.decorations){
 			this.removeDecoration(Number(envIdx))
 		}
+		this.editor.layout();
 	}
 
+	private addCustomIndentGuides (){
 
+		const indentGuides: IModelDeltaDecoration[] = [];
+		let range = Array.from(new Array(this.scopeSize+1), (x, i) => i + this.lineno);
+		const col = this.editor.getModel()?.getLineFirstNonWhitespaceColumn(this.lineno)!;
+		for (const position of range) {
+			indentGuides.push({
+				range: new Range(position, col-1, position, col-1),
+				options: {
+					isWholeLine: false,
+					className: 'custom-indent-guide', // CSS class to style the indent guide
+					stickiness: TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+				},
+			});
+		}
+
+		this.indentGuides = this.editor.deltaDecorations([], indentGuides);
+		this.editor.layout();
+	}
+
+	private removeIndentGuides() {
+		this.editor.deltaDecorations(this.indentGuides, []);
+
+	}
 
 
 }
 
 export enum DecorationType{passTest, failedTest}
 
-class Decoration{
+class UnderlineDecoration{
 	id : string;
 	type : DecorationType;
 	range :Range;

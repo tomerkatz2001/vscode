@@ -19,3 +19,7 @@
 	color: green;
 	text-decoration-style: wavy;
 }
+
+.monaco-editor .custom-indent-guide {
+	border-left: 1px solid #555; /* Customize the appearance of the indent guide */
+}

@@ -49,6 +49,22 @@ export class CommentsManager {
 		this.editor.onDidChangeModelContent((e) => { this.onDidChangeModelContent(e); });	}
 
 	/**
+	 * Given a lineno of a #! comment, returns the block index it belongs to.
+	 * @param lineno
+	 * @private
+	 */
+	// private getBlockIdx(lineno:number){
+	// 	let idx = 1
+	// 	for(let i = lineno; i>0; i--){
+	// 		const lineContent = this.editor.getModel()?.getLineContent(i);
+	// 		if(lineContent?.includes(SYNTHESIZED_COMMENT_START)){
+	// 			idx++;
+	// 		}
+	// 	}
+	// 	return idx;
+	// }
+
+	/**
 	 * needs to be called after every synth.
 	 */
 	private newSynthBlock() {
@@ -61,7 +77,7 @@ export class CommentsManager {
 		return this.specifications.ToJSON();
 	}
 
-	public   getExamples()  {
+	public getExamples()  {
 		let model =  this.controller.getModelForce();
 		return  this.specifications.getExamples(model.getLinesContent().join("\n"));
 	}
@@ -80,13 +96,13 @@ export class CommentsManager {
 		rightSide = rightSide.substring(0, rightSide.length - 2); //remove the last ', '
 		return `${leftSide} => ${rightSide} \n`;
 	}
+
 	/**
-	 * @param box- the box you want its values to be inserted
-	 * @param outVars - The variables that synthesized
-	 * @param preEnvs - a map from time i to the env with time i-1.
+	 * @param synthModel the synthmodel the was used to synthesize the code.
 	 * @returns the number of lines that lineno needs to be increased.
 	 */
-	public insertExamples(synthModel: RTVSynthModel, outVars: string[]) {
+	public insertExamples(synthModel: RTVSynthModel) {
+		let outVars = synthModel!.varnames;
 		let examplesCounter = 1;
 		let examples: string = ``;
 		let synthExamples = synthModel.getExamples();
@@ -203,7 +219,6 @@ export class CommentsManager {
 	/**
 	 * This function will search the end of the block that starts at lineno.
 	 * @param lineno
-	 * @param controller
 	 */
 	public getBlockSize(lineno:number):number{
 		let model = this.controller.getModelForce();
@@ -227,7 +242,8 @@ export class CommentsManager {
 		return -1;// error - no end found
 	}
 
-	public updateComments(testResults:RTVTestResults,) {
+	public async updateComments(testResults:RTVTestResults,) {
+		await this.specifications.gatherComments(this.editor.getModel()!.getLinesContent().join("\n"));
 		const blocksLines = testResults.commentsLocation;
 		//delete all the decorations in previous blocks
 		for (let decorationManager of Object.values(this.comments)) {
@@ -236,7 +252,8 @@ export class CommentsManager {
 		this.comments = {};
 		for(let blockId of testResults.getLiveBlockIds()){
 			const results = testResults.getResultsForBlock(blockId);
-			this.comments[blockId] = new DecorationManager(this.controller, blockId, blocksLines[blockId]+1!);
+			let parsedComment = this.specifications.comments[blockId];
+			this.comments[blockId] = new DecorationManager(this.controller, this.editor, blockId, blocksLines[blockId]+1!, this.getBlockSize(parsedComment.lineno));
 			results.forEach((result, index) => {
 				let type = DecorationType.passTest;
 				if(result[0] === false){
@@ -253,6 +270,7 @@ export class CommentsManager {
 		let utils = getUtils();
 		let pythonProcess = utils.runCommentsParser(program.join(""));
 		let parsedComment = await pythonProcess;
+		parsedComment.lineno = lineno;
 		return parsedComment;
 	}
 
@@ -306,7 +324,6 @@ export class CommentsManager {
 	}
 
 	//------------------------------------------------ helping functions-------------------------------------
-
 
 
 	private makeTableEditable(rows: TableElement[][]){
