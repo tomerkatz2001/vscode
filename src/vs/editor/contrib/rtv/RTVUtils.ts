@@ -220,6 +220,9 @@ class LocalSynthProcess implements SynthProcess {
 			this._reject = reject;
 		});
 
+		//for debug write the problem in file:
+		const values_file: string = os.tmpdir() + path.sep + 'tmp_synth_problem.json';
+		fs.writeFileSync(values_file, JSON.stringify(problem) + '\n');
 		// Then send the problem to the synth
 		problem.id = ++this._problemIdx;
 		this._synthProcess.stdin.write(JSON.stringify(problem) + '\n');
