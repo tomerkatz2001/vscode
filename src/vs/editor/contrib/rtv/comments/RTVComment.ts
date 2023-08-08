@@ -1,16 +1,26 @@
 import * as assert from "assert";
+
 enum env_status{pass, fail, live}
 /**
  * class that represents a block of examples, aka a comment, inserted automatically by the synth or manually by the user
  */
 
 export class ParsedComment{
+	get lineno(): number {
+		return this._lineno;
+	}
+
+	set lineno(value: number) {
+		this._lineno = value;
+	}
 	synthesizedVarNames: string[] = []; //
 	private readonly envs : any[] =[];
 	private readonly envs_status :env_status[] =[]; //
 	out : {[varName: string]: string}[] = []; //right of the "=>"
 	commentID:number = 0;
 	size: number; // number of line envs
+	private _lineno: number = -1;
+	private preEnvs?: Map<number, any>; // initialized after calling getEnvsToResynth.
 	constructor(synthesizedVarNames: string[], envs: any[], envs_status: env_status[], out: any[], commentID:number,){
 		this.synthesizedVarNames = synthesizedVarNames;
 		this.envs = envs;
@@ -29,13 +39,27 @@ export class ParsedComment{
 		this.commentID = commentID;
 		this.size = envs.length;
 	}
-
+	get varNames(){
+		// assume that the first env all vars, and all other vars are the same
+		return Object.keys(this.envs[0]).map((v)=>v.replace("_in",""));
+	}
 	public getEnvsToResynth(){
+		let preEnvs: Map<number, any> = new Map<number, any>();
+		let preEnv:any = {};
 		let envs = [];
 		for(let [i, env] of enumerate(this.envs)){
 			let tmp = env;
 			for(let varName in tmp){
 				if(varName.endsWith("_in")){
+					if(typeof env[varName] !== "string"){
+						preEnv[varName.replace("_in", "")] = env[varName].toString();
+					}
+					else if(!tmp[varName].startsWith("[")){
+						preEnv[varName.replace("_in", "")] = `'${env[varName]}'`;
+					}
+					else{
+						preEnv[varName.replace("_in", "")] = env[varName];
+					}
 					delete env[varName];
 				}
 				//if the var is not string, make it a string
@@ -48,15 +72,29 @@ export class ParsedComment{
 			}
 			if(!tmp["#"]){
 				tmp["#"] = "";
+				tmp['time'] = -1;
+			}
+			else{
+				tmp['time'] = parseInt(tmp["#"]);
 			}
 			if(!tmp["$"]){
 				tmp["$"] = "";
 			}
-			tmp['time'] = -1;
+
 			// make each elemnt in the list a string
 			envs.push({...tmp, ... this.out[i]});
+			if(preEnv){
+				preEnvs.set(parseInt(tmp["#"]), {...preEnv, ...tmp});
+				preEnv = {};
+			}
 		}
+		this.preEnvs = preEnvs;
 		return envs;
+	}
+
+	public getPreEnvsToResynth(){
+		console.assert(this.preEnvs);
+		return this.preEnvs;
 	}
 
 	public toJson(){
