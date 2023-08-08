@@ -55,7 +55,7 @@ class EditorStateManager {
 	resynthesizing(strartLine: number, endLine: number) {
 		if(this._state === EditorState.resynthesizing) {return;}
 		this._state = EditorState.resynthesizing;
-		CommentsManager.removeCommentsAndCode(this.controller, this.editor, strartLine, endLine,"resynthesizing...");
+		CommentsManager.removeCommentsAndCode(this.controller, this.editor, strartLine, endLine,this.SYNTHESIZING_INDICATOR);
 	}
 
 	failed() {
@@ -435,69 +435,34 @@ export class RTVSynthController {
 
 		var parsedComment:ParsedComment = await this.commentsManager.getParsedComment(lineno - 1);
 
-
 		let val = await  this.getSpecificationAsJson();
 		const values_file: string = os.tmpdir() + path.sep + 'example.json';
 		fs.writeFileSync(values_file, JSON.stringify(val));
 
-		this.editorState = new EditorStateManager("", lineno, this.editor, this.RTVController);
-		this._synthModel = new RTVSynthModel(Object.keys(parsedComment.out), lineno, new Set(parsedComment.synthesizedVarNames) );
+
+		const blockEnd = this.commentsManager.getBlockSize(lineno) + lineno;
+
+		this.editorState = new EditorStateManager(parsedComment.synthesizedVarNames.join(", "), lineno, this.editor, this.RTVController);
+		this.editorState.resynthesizing(lineno, blockEnd); // replace the old text with the varNames
+		this._synthModel = new RTVSynthModel(parsedComment.synthesizedVarNames, lineno, new Set(parsedComment.varNames));
+		this._synthModel.boxEnvs = parsedComment.getEnvsToResynth();
+		this._synthModel.prevEnvs = parsedComment.getPreEnvsToResynth()!;
+		this._synthModel.includedTimes = new Set(this._synthModel.prevEnvs.keys());
 		this._synthModel.bindBoxContentChanged(()=>{});
 
-
-		var problem:SynthProblem = new SynthProblem(parsedComment.synthesizedVarNames,{},parsedComment.getEnvsToResynth());
-
-		this.logger.synthSubmit(problem);
-		let blockSize = this.commentsManager.getBlockSize(lineno);
-		this.editorState!.resynthesizing(lineno,lineno+blockSize);
-
-		try {
-			const rs: SynthResult | undefined = await this.process.synthesize(problem);
-
-			if (!rs) {
-				// The request was cancelled!
-				return false;
-			}
-
-			this.logger.synthResult(rs);
-
-			if (rs.success) {
-				//let box : RTVDisplayBox = this.RTVController.getBox(this.lineno!) as RTVDisplayBox;
-				this.commentsManager.insertStaticExamples(parsedComment,lineno);
-				this.moveLinenoBy(parsedComment.size + 1); // plus one for the 'start synth' line
-				this.editorState!.program(rs.program!);
-				await this.updateBoxContent(true);
-
-				return true;
-			} else {
-				this.editorState!.failed();
-				if (rs.program) {
-					this._synthView!.addError(rs.program, undefined, 500);
-				}
-			}
-		} catch (err) {
-			// If the synth promise is rejected
-			console.error('Synth problem rejected.');
-			if (err) {
-				console.error(err);
-				this.editorState!.failed();
-			}
-		}
-
-		return false;
-
+		return this.synthesizeFragment();
 
 	}
 	// -----------------------------------------------------------------------------------
 	// UI requests handlers
 	// -----------------------------------------------------------------------------------
 
-	public async synthesizeFragment(staticEnvs?: any[]): Promise<boolean> {
+	public async synthesizeFragment(): Promise<boolean> {
 		// Build and write the synth_example.json file content
 		let envs = [];
 		let optEnvs = [];
 
-		let boxEnvs = staticEnvs ?? this._synthModel!.boxEnvs;
+		let boxEnvs = this._synthModel!.boxEnvs;
 		let includedTimes = this._synthModel!.includedTimes;
 		let prevEnvs = this._synthModel!.prevEnvs;
 		let varnames = this._synthModel!.varnames;
@@ -533,7 +498,7 @@ export class RTVSynthController {
 
 			if (rs.success) {
 				//let box : RTVDisplayBox = this.RTVController.getBox(this.lineno!) as RTVDisplayBox;
-				let linesDelta= this.commentsManager.insertExamples(this._synthModel!, varnames,);
+				let linesDelta= this.commentsManager.insertExamples(this._synthModel!);
 				this.moveLinenoBy(linesDelta);
 				this.editorState!.program(rs.program!);
 				await this.updateBoxContent(true);
