@@ -23,3 +23,8 @@
 .monaco-editor .custom-indent-guide {
 	border-left: 1px solid #555; /* Customize the appearance of the indent guide */
 }
+
+.monaco-editor .custom-indent-guide-col0 {
+	margin-left: 24px;
+	border-left: 1px solid #555;
+}

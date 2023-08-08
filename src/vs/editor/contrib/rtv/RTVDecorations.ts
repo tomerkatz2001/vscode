@@ -55,18 +55,32 @@ export class DecorationManager{
 
 	private addCustomIndentGuides (){
 
+
+
 		const indentGuides: IModelDeltaDecoration[] = [];
 		let range = Array.from(new Array(this.scopeSize+1), (x, i) => i + this.lineno);
 		const col = this.editor.getModel()?.getLineFirstNonWhitespaceColumn(this.lineno)!;
 		for (const position of range) {
-			indentGuides.push({
-				range: new Range(position, col-1, position, col-1),
-				options: {
-					isWholeLine: false,
-					className: 'custom-indent-guide', // CSS class to style the indent guide
-					stickiness: TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
-				},
-			});
+			if(col == 1){
+				indentGuides.push({
+					range: new Range(position, col, position, col),
+						options: {
+							isWholeLine: true,
+							linesDecorationsClassName: "custom-indent-guide-col0",
+						},
+				});
+			}
+			else{
+				indentGuides.push({
+					range: new Range(position, col-1, position, col-1),
+					options: {
+						isWholeLine: false,
+						className: 'custom-indent-guide', // CSS class to style the indent guide
+						stickiness: TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+					},
+				});
+			}
+
 		}
 
 		this.indentGuides = this.editor.deltaDecorations([], indentGuides);
