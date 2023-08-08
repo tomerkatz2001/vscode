@@ -72,7 +72,7 @@ export class ParsedComment{
 			}
 			if(!tmp["#"]){
 				tmp["#"] = "";
-				tmp['time'] = -1;
+				tmp['time'] = -i;
 			}
 			else{
 				tmp['time'] = parseInt(tmp["#"]);
@@ -84,7 +84,7 @@ export class ParsedComment{
 			// make each elemnt in the list a string
 			envs.push({...tmp, ... this.out[i]});
 			if(preEnv){
-				preEnvs.set(parseInt(tmp["#"]), {...preEnv, ...tmp});
+				preEnvs.set(parseInt(tmp["time"]), {...preEnv, ...tmp});
 				preEnv = {};
 			}
 		}
