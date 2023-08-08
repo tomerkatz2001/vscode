@@ -54,34 +54,62 @@ export class DecorationManager{
 	}
 
 	private addCustomIndentGuides (){
-
-
-
 		const indentGuides: IModelDeltaDecoration[] = [];
-		let range = Array.from(new Array(this.scopeSize+1), (x, i) => i + this.lineno);
 		const col = this.editor.getModel()?.getLineFirstNonWhitespaceColumn(this.lineno)!;
-		for (const position of range) {
-			if(col == 1){
-				indentGuides.push({
-					range: new Range(position, col, position, col),
-						options: {
-							isWholeLine: true,
-							linesDecorationsClassName: "custom-indent-guide-col0",
-						},
-				});
-			}
-			else{
-				indentGuides.push({
-					range: new Range(position, col-1, position, col-1),
-					options: {
-						isWholeLine: false,
-						className: 'custom-indent-guide', // CSS class to style the indent guide
-						stickiness: TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
-					},
-				});
-			}
+		let options_top:IModelDecorationOptions;
+		let options_bottom:IModelDecorationOptions;
+		let options_rest:IModelDecorationOptions;
 
+		if(col == 1){
+			options_top = {
+				isWholeLine: true,
+				linesDecorationsClassName: "custom-indent-guide-col0-top"
+			};
+			options_rest = {
+				isWholeLine: true,
+				linesDecorationsClassName: "custom-indent-guide-col0"
+			}
+			options_bottom = {
+				isWholeLine: true,
+				linesDecorationsClassName: "custom-indent-guide-col0-bottom"
+			};
 		}
+		else{
+			options_top = {
+				isWholeLine: false,
+				className : 'custom-indent-guide-top', // CSS class to style the indent guide
+			};
+			options_rest = {
+				isWholeLine: false,
+				className : 'custom-indent-guide', // CSS class to style the indent guide
+			};
+			options_bottom ={
+				isWholeLine: false,
+				className : 'custom-indent-guide-bottom', // CSS class to style the indent guide
+			};
+		}
+
+
+		indentGuides.push(
+			{
+				range: new Range(this.lineno, col, this.lineno, col),
+				options: options_top,
+			}
+		);
+		for(let i = this.lineno+1; i < this.lineno+this.scopeSize; i++){
+			indentGuides.push(
+				{
+					range: new Range(i, col, i ,col),
+					options: options_rest,
+				}
+			);
+		}
+		indentGuides.push(
+			{
+				range: new Range(this.lineno+this.scopeSize, col, this.lineno+this.scopeSize, col),
+				options: options_bottom,
+			}
+		);
 
 		this.indentGuides = this.editor.deltaDecorations([], indentGuides);
 		this.editor.layout();
