@@ -472,6 +472,7 @@ def computeSynthBlocks(lines):
 		parsed_comments[block_id]["code start"] = getFirstNonEmptyLine(code_blocks[block_id])
 
 	return  parsed_comments, code_blocks, comments_line
+
 def getFirstNonEmptyLine(block_code):
 	print(f'{block_code=}')
 
@@ -480,8 +481,6 @@ def getFirstNonEmptyLine(block_code):
 		if line.find("#!") == -1: # we start the code
 			last_comment_lineno = i -1
 			break
-
-
 
 	for i, line in enumerate(block_code[last_comment_lineno+1:]):
 		if line.strip() != "":

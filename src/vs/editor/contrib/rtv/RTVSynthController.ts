@@ -444,7 +444,7 @@ export class RTVSynthController {
 
 		this.editorState = new EditorStateManager(parsedComment.synthesizedVarNames.join(", "), lineno, this.editor, this.RTVController);
 		this.editorState.resynthesizing(lineno, blockEnd); // replace the old text with the varNames
-		this._synthModel = new RTVSynthModel(parsedComment.synthesizedVarNames, lineno, new Set(parsedComment.varNames));
+		this._synthModel = new RTVSynthModel(parsedComment.synthesizedVarNames, lineno, new Set(parsedComment.inVarNames));
 		this._synthModel.boxEnvs = parsedComment.getEnvsToResynth();
 		this._synthModel.prevEnvs = parsedComment.getPreEnvsToResynth()!;
 		this._synthModel.includedTimes = new Set(this._synthModel.prevEnvs.keys());

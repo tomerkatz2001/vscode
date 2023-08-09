@@ -47,9 +47,13 @@ export class ParsedComment{
 		}
 		this.size = envs.length;
 	}
-	get varNames(){
+	get inVarNames(){
 		// assume that the first env all vars, and all other vars are the same
 		return Object.keys(this.envs[0]).map((v)=>v.replace("_in",""));
+	}
+
+	get outVarNames(){
+		return Object.keys(this.out[0]);
 	}
 	public getEnvsToResynth(){
 		let preEnvs: Map<number, any> = new Map<number, any>();

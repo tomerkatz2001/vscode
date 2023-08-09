@@ -16,6 +16,9 @@ import {ParsedComment} from "./RTVComment";
 import {parse, createVisitor} from 'python-ast';
 import { TfpdefContext} from "python-ast/dist/parser/Python3Parser";
 import {FoldingController} from "vs/editor/contrib/folding/folding";
+import {range} from "vs/base/common/arrays";
+
+
 
 
 export  const  SYNTHESIZED_COMMENT_START = `#! Start of specification scope:`;
@@ -244,7 +247,7 @@ export class CommentsManager {
 			decorationManager.removeAllDecoration();
 		}
 		this.comments = {};
-		for(let blockId of testResults.getLiveBlockIds()){
+		for(let blockId of range(1,Object.keys(testResults.commentsLines).length + 1)){
 			const results = testResults.getResultsForBlock(blockId);
 			let parsedComment = this.specifications.comments[blockId];
 			this.comments[blockId] = new DecorationManager(this.controller, this.editor, blockId, blocksLines[blockId]!, this.getBlockSize(parsedComment.lineno));
@@ -368,9 +371,9 @@ export class CommentsManager {
 
 			createVisitor({ visitTfpdef:TfpdefVisitor}).visit(tree);
 			return  vars;
-
 		}
-		return ["tmp_in"];
+		return this.getScopeComment(lineno)!.inVarNames;
+
 	}
 
 	 getOutputVars = (lineno:number)=>{
@@ -378,7 +381,7 @@ export class CommentsManager {
 		if(lineContent?.trim().startsWith("def")){
 			return ["rv"];
 		}
-		return ["tmp_out"];
+		 return this.getScopeComment(lineno)!.outVarNames;
 
 	}
 
@@ -393,31 +396,45 @@ export class CommentsManager {
 		return 0;
 
 	}
+	public getScopeComment(lineno:number){
+		const lines = this.editor.getModel()?.getLinesContent()!;
+		for(let i = lineno; i>0; i--){
+			if(lines[i].includes(SYNTHESIZED_COMMENT_START)){
+				return this.specifications.comments[this.getScopeIdx(i)];
+			}
+		}
+		console.assert(false);
+		return undefined;
+	}
 
 }
 
 
 
 export class RTVTestResults{
+	get commentsLines(): any {
+		return this._commentsLines;
+	}
 	private results: any;
-	private commentsLines: any;
+	private _commentsLines: any;
 
 	constructor(testResults: any){
 		const parsed= JSON.parse(testResults);
 		this.results = parsed[0]; //
-		this.commentsLines = parsed[1];
+		this._commentsLines = parsed[1];
 
 	}
 	get commentsLocation(): any{
-		return this.commentsLines;
+		return this._commentsLines;
 	}
 
 	public getLiveBlockIds(){
+		return Object.keys(this._commentsLines).map(parseInt);
 		// return the ids of the live blocks. it is the first element in the keys of the results separated by ..
-		var ids=  Object.keys(this.results).map((key)=> {
-			return parseInt(key.match(/\d+/g)![0], 10);
-		});
-		return Array.from(new Set(ids).values());
+		// var ids=  Object.keys(this.results).map((key)=> {
+		// 	return parseInt(key.match(/\d+/g)![0], 10);
+		// });
+		// return Array.from(new Set(ids).values());
 	}
 
 	public getResultsForBlock(blockId: number,){

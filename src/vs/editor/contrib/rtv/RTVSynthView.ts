@@ -341,7 +341,14 @@ export class RTVSynthView {
 	}
 
 	public addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, header: boolean = false) {
-		cell.style.borderLeft = this._cellStyle!.borderLeft;
+		if (elmt.leftBorder) {
+			cell.style.borderLeft = '1px solid #454545';
+		}else {
+			cell.style.borderLeft = this._cellStyle!.borderLeft;
+		}
+		if(header){
+			cell.style.borderBottom = '1px solid #454545';
+		}
 		cell.style.paddingLeft = this._cellStyle!.paddingLeft;
 		cell.style.paddingRight = this._cellStyle!.paddingRight;
 		cell.style.paddingTop = this._cellStyle!.paddingTop;
