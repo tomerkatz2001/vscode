@@ -1,11 +1,20 @@
 import * as assert from "assert";
 
+
+
 enum env_status{pass, fail, live}
 /**
  * class that represents a block of examples, aka a comment, inserted automatically by the synth or manually by the user
  */
 
 export class ParsedComment{
+	get commentID(): number {
+		return this._commentID;
+	}
+
+	set commentID(value: number) {
+		this._commentID = value;
+	}
 	get lineno(): number {
 		return this._lineno;
 	}
@@ -17,11 +26,11 @@ export class ParsedComment{
 	private readonly envs : any[] =[];
 	private readonly envs_status :env_status[] =[]; //
 	out : {[varName: string]: string}[] = []; //right of the "=>"
-	commentID:number = 0;
+	private _commentID:number = -1;
 	size: number; // number of line envs
 	private _lineno: number = -1;
 	private preEnvs?: Map<number, any>; // initialized after calling getEnvsToResynth.
-	constructor(synthesizedVarNames: string[], envs: any[], envs_status: env_status[], out: any[], commentID:number,){
+	constructor(synthesizedVarNames: string[], envs: any[], envs_status: env_status[], out: any[],){
 		this.synthesizedVarNames = synthesizedVarNames;
 		this.envs = envs;
 		this.envs_status = envs_status;
@@ -36,7 +45,6 @@ export class ParsedComment{
 				}
 			}
 		}
-		this.commentID = commentID;
 		this.size = envs.length;
 	}
 	get varNames(){
@@ -102,7 +110,7 @@ export class ParsedComment{
 			"outputVarNames": this.synthesizedVarNames,
 			"commentExamples": this.getEnvsToResynth(),
 			"assignments": {},
-			"commentId": this.commentID
+			"commentId": this._commentID
 		};
 	}
 	public removeEnv(envIdx:number){

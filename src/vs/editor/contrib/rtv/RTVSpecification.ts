@@ -1,4 +1,9 @@
-import {ParsedComment, SYNTHESIZED_COMMENT_END, SYNTHESIZED_COMMENT_START} from "vs/editor/contrib/rtv/comments/index";
+import {
+	CommentsManager,
+	ParsedComment,
+	SYNTHESIZED_COMMENT_END,
+	SYNTHESIZED_COMMENT_START
+} from "vs/editor/contrib/rtv/comments/index";
 import {getUtils} from "vs/editor/contrib/rtv/RTVUtils";
 
 enum BranchType {
@@ -70,11 +75,12 @@ export class RTVSpecification{
 			}
 
 			// Check if the line is a comment
-			if (line.trim().startsWith(SYNTHESIZED_COMMENT_START)) {
+			if (line.trim().includes(SYNTHESIZED_COMMENT_START)) {
 				let utils = getUtils();
 				let pythonProcess = utils.runCommentsParser(lines.slice(i).join('\n'));
 				let parsedComment = await pythonProcess;
-				parsedComment.lineno = i+1;
+				parsedComment.commentID =  CommentsManager.getScopeIdx(i, lines);
+				parsedComment.lineno = i + 1;
 				const parentId = scopeIds[scopeIds.length - 1];
 
 				// Call the function with the comment ID and scope ID

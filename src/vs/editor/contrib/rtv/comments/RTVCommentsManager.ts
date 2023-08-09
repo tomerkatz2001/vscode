@@ -18,8 +18,8 @@ import { TfpdefContext} from "python-ast/dist/parser/Python3Parser";
 import {FoldingController} from "vs/editor/contrib/folding/folding";
 
 
-export  const  SYNTHESIZED_COMMENT_START = `#! Start of synth number: `;
-export  const SYNTHESIZED_COMMENT_END = `#! End of synth number: `;
+export  const  SYNTHESIZED_COMMENT_START = `#! Start of specification scope:`;
+export  const SYNTHESIZED_COMMENT_END = `#! End of specification scope`;
 //const FAKE_TIME = 100;
 
 
@@ -30,7 +30,6 @@ export  const SYNTHESIZED_COMMENT_END = `#! End of synth number: `;
 export class CommentsManager {
 	private logger: IRTVLogger;
 	private comments: { [index: number]: DecorationManager } = {}; // map from synthID and comment idx to the decorations ids
-	private synthCounter: number = 0; // the largest comment id there is in the file
 	private specifications: RTVSpecification;
 	private inputBox: RTVInputBox|undefined = undefined; // used to get user's input for more examples.
 	constructor(private readonly controller: RTVController, private readonly editor: ICodeEditor) {
@@ -53,24 +52,21 @@ export class CommentsManager {
 	 * @param lineno
 	 * @private
 	 */
-	// private getBlockIdx(lineno:number){
-	// 	let idx = 1
-	// 	for(let i = lineno; i>0; i--){
-	// 		const lineContent = this.editor.getModel()?.getLineContent(i);
-	// 		if(lineContent?.includes(SYNTHESIZED_COMMENT_START)){
-	// 			idx++;
-	// 		}
-	// 	}
-	// 	return idx;
-	// }
-
-	/**
-	 * needs to be called after every synth.
-	 */
-	private newSynthBlock() {
-		//this.comments[this.synthCounter] = new DecorationManager(this.controller, this.synthCounter);
-		this.synthCounter++;
+	private getScopeIdx(lineno:number){
+		return CommentsManager.getScopeIdx(lineno, this.editor.getModel()!.getLinesContent());
 	}
+	static getScopeIdx(lineno:number, lines:string[]){
+		let idx = 0
+		for(let i = lineno; i>0; i--){
+			const lineContent = lines[i];
+			if(lineContent?.includes(SYNTHESIZED_COMMENT_START)){
+				idx++;
+			}
+		}
+		return idx;
+	}
+
+
 	public async getScopeSpecification()  {
 		let model =  this.controller.getModelForce();
 		await this.specifications.gatherComments(model.getLinesContent().join("\n"));
@@ -112,7 +108,6 @@ export class CommentsManager {
 
 		this.logger.insertComments(synthModel.getLineno(), examples);
 		this.insertExamplesToEditor(examples, outVars, synthModel.getLineno());
-		this.newSynthBlock();
 		// increasing lineno so the synth won't override these comments
 		return (examples.split("\n")).length;
 	}
@@ -121,7 +116,6 @@ export class CommentsManager {
 		let examples:string = parsedComment.asString();
 		this.logger.insertComments(lineno, examples);
 		this.insertExamplesToEditor(examples, parsedComment.synthesizedVarNames, lineno);
-		this.newSynthBlock();
 	}
 
 	public insertOneExample(example:example, lineno:number, examplesIdx:number):void{
@@ -155,11 +149,11 @@ export class CommentsManager {
 		}
 		let range = new RangeClass(lineno, startCol, lineno, endCol);
 		let oldText = model.getValueInRange(range);
-		let prolog = SYNTHESIZED_COMMENT_START + this.synthCounter.toString() + " of: " + outVars.toString().replace("[", "").replace("]", "") + "\n";
-		let epilog = "\n" + SYNTHESIZED_COMMENT_END + this.synthCounter.toString() + "\n";
+		let prolog = SYNTHESIZED_COMMENT_START +  "\n";
+		let epilogue = "\n" + SYNTHESIZED_COMMENT_END + "\n";
 		let newText;
 		if (withProlog)
-			newText = prolog + examples + oldText + epilog;
+			newText = prolog + examples + oldText + epilogue;
 		else
 			newText = examples;
 
@@ -253,7 +247,7 @@ export class CommentsManager {
 		for(let blockId of testResults.getLiveBlockIds()){
 			const results = testResults.getResultsForBlock(blockId);
 			let parsedComment = this.specifications.comments[blockId];
-			this.comments[blockId] = new DecorationManager(this.controller, this.editor, blockId, blocksLines[blockId]+1!, this.getBlockSize(parsedComment.lineno));
+			this.comments[blockId] = new DecorationManager(this.controller, this.editor, blockId, blocksLines[blockId]!, this.getBlockSize(parsedComment.lineno));
 			results.forEach((result, index) => {
 				let type = DecorationType.passTest;
 				if(result[0] === false){
@@ -270,6 +264,8 @@ export class CommentsManager {
 		let utils = getUtils();
 		let pythonProcess = utils.runCommentsParser(program.join(""));
 		let parsedComment = await pythonProcess;
+
+		parsedComment.commentID = this.getScopeIdx(lineno);
 		parsedComment.lineno = lineno;
 		return parsedComment;
 	}

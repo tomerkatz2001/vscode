@@ -417,14 +417,25 @@ def remove_frame_data(data):
 			if "frame" in env:
 				del env["frame"]
 
-def findBlocEnd(block_id, lines):
-	for lineno, line in enumerate(lines):
-		if line.strip().startswith("#! End of synth number:"):
-			if int(blockEnd.parse(line.strip())) == block_id:
-				return lineno
+def findBlocEnd(i, lines):
+	starts = 0
+	ends = 0
+	for lineno, line in enumerate(lines[i:]):
+		if line.strip().find("End of") != -1:
+			ends += 1
+		if line.strip().find("Start of") != -1:
+			starts += 1
+		if starts == ends:
+			return lineno + i
+	return -1
 
+def getBlockId(i, lines):
+	starts = 0
+	for lineno, line in enumerate(lines[:i+1]):
+		if line.strip().find("Start of") != -1:
+			starts += 1
+	return starts
 
-	return len(lines)
 
 def computeSynthBlocks(lines):
 	'''
@@ -442,27 +453,46 @@ def computeSynthBlocks(lines):
 	prev_line=""
 	for lineno, line in enumerate(lines):
 		if line.strip().startswith("#! Start"):
-			block_id = int(blockStart.parse(line.strip()))
-			print(f'{block_id=}')
-			end_lineno = findBlocEnd(block_id, lines)
+			block_id = getBlockId(lineno, lines)
+			#print(f'{block_id=}')
+			end_lineno = findBlocEnd(lineno, lines)
 			comments[block_id]=([line.strip()])
-			comments_line[block_id]=(lineno)
+			comments_line[block_id]=(lineno + 1) # lineno starts at 0
 			code_blocks[block_id]=lines[lineno:end_lineno]
 		elif line.strip().startswith("#!") and prev_line.strip().startswith("#!"):
 			comments[block_id].append(line.strip())
 		prev_line=line
 	parsed_comments = {}
-	print(f'{comments_line=}')
 	for block_id in code_blocks:
 		print(block_id)
 		min_indent = min([len(line) - len(line.lstrip()) if line.strip() != "" else 1000000 for line in code_blocks[block_id]])
 		code_blocks[block_id] = [line[min_indent:] for line in code_blocks[block_id]]
 		parsed_comments[block_id] = parseComment("".join(code_blocks[block_id]))
+		parsed_comments[block_id]["scope id"] = block_id
+		parsed_comments[block_id]["code start"] = getFirstNonEmptyLine(code_blocks[block_id])
 
 	return  parsed_comments, code_blocks, comments_line
+def getFirstNonEmptyLine(block_code):
+	print(f'{block_code=}')
+
+	last_comment_lineno = len(block_code)-1
+	for i, line in enumerate(block_code):
+		if line.find("#!") == -1: # we start the code
+			last_comment_lineno = i -1
+			break
+
+
+
+	for i, line in enumerate(block_code[last_comment_lineno+1:]):
+		if line.strip() != "":
+			print(i + last_comment_lineno)
+			return i + last_comment_lineno
+
+	assert(False)
 
 class UnitTest:
 	def __init__(self, lines, inputs, expected):
+		print(f'{inputs=}')
 		self.lines = lines
 		self.inputs = {name.replace("_in",""): val for name, val in inputs.items()}
 		self.expected = expected
@@ -478,7 +508,7 @@ class UnitTest:
 			return False ,"Exception Thrown" + str(e)
 		for var in self.expected:
 
-			if self.expected[var] != debugger.botframe.f_locals['locals'][var]:
+			if var in debugger.botframe.f_locals['locals'] and self.expected[var] != debugger.botframe.f_locals['locals'][var]:
 				return False, "Expected " + str(self.expected[var]) + " but got " + str(debugger.botframe.f_locals['locals'][var])
 
 		return True, "Passed"
@@ -489,17 +519,22 @@ def compute_tests_results(code_blocks, parsed_comments, comments_line, run_time_
 		compute the unit tests results
 	'''
 	tests = build_tests(code_blocks, parsed_comments, comments_line, run_time_data)
+
 	return runTests(tests)
 
 def build_tests(code_blocks, parsed_comments, comments_line, run_time_data):
 	tests = {}
+	print("building tests...")
+	print(f'{parsed_comments=}')
 	for block_id in parsed_comments:
-		comments_size = len(parsed_comments[block_id]["envs"])+1
-		liveEnvs = run_time_data[comments_line[block_id]+comments_size]
+
+		comment_size = parsed_comments[block_id]["code start"] #includes new lines
+		liveEnvs = run_time_data[comments_line[block_id]+comment_size]
 		for comment_idx in range(len(parsed_comments[block_id]["envs"])):
 			inputs = parsed_comments[block_id]["envs"][comment_idx]
 			expected = parsed_comments[block_id]["out"][comment_idx]
 			targetEnv = {key.replace("_in", ""):value for (key,value) in inputs.items()}
+			print(f'{targetEnv=}, {expected=}')
 			if not isLiveEnv(targetEnv, liveEnvs, list(expected.keys())):
 				tests[(block_id, comment_idx)] = UnitTest(code_blocks[block_id], inputs, expected)
 
@@ -512,7 +547,9 @@ def runTests(tests):
 
 	results = {}
 	for test in tests:
+		print("runnig test", test)
 		results[test] = tests[test].run()
+		print(f'{results[test]}')
 	return results
 
 def isLiveEnv(targetEnv, LiveEnvsList, ignoredVars=[]):

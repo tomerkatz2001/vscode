@@ -287,7 +287,7 @@ export class LocalParseProcess implements ParseProcess {
 		protected _process: ChildProcessWithoutNullStreams) {
 		this._promise = new Promise((resolve, reject) => {
 			this._reject = reject;
-
+			setTimeout(()=>reject("timeout"), 5000);
 			this._process.stdout.on('data', (data) => this.stdout += data);
 			this._process.stderr.on('data', (data) =>
 			{
@@ -296,8 +296,8 @@ export class LocalParseProcess implements ParseProcess {
 			});
 			this._process.on('exit', (exitCode) => {
 				let parsed = JSON.parse(this.stdout);
-
-				resolve(new ParsedComment(parsed["varnames"], parsed["envs"],[], parsed["out"], parsed["synthCount"]));
+				console.log("hi i am here");
+				resolve(new ParsedComment(parsed["varnames"], parsed["envs"],[], parsed["out"]));
 			});
 		});
 	}
