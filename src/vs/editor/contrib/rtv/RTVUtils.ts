@@ -12,13 +12,14 @@ import {
 	SynthResult,
 	SynthProcess,
 	RunProcess,
-	ParseProcess,
+	ParseProcess, ReSynthProcess,
 } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 // import { runAtThisOrScheduleAtNextAnimationFrame } from 'vs/base/browser/dom';
 // import { MainThreadFileSystem } from 'vs/workbench/api/browser/mainThreadFileSystem';
 import {ParsedComment} from "vs/editor/contrib/rtv/comments/RTVComment";
+import {RTVSpecification} from "vs/editor/contrib/rtv/RTVSpecification";
 
 // Helper functions / class
 export function getOSEnvVariable(v: string): string {
@@ -232,7 +233,7 @@ class LocalSynthProcess implements SynthProcess {
 		return rs;
 	}
 
-	public resynthesize(problem: SynthProblem): Promise<SynthResult | undefined> {
+	public resynthesize(problem: RTVSpecification): Promise<SynthResult | undefined> {
 		if (this._reject) {
 			this._reject();
 			this._resolve = undefined;
@@ -246,8 +247,117 @@ class LocalSynthProcess implements SynthProcess {
 		});
 
 		// Then send the problem to the synth
-		problem.id = ++this._problemIdx;
+
 		this._synthProcess.stdin.write(JSON.stringify(problem) + '\n');
+		console.log(`Started synth process: ${this._problemIdx}`);
+
+		// And we can return!
+		return rs;
+	}
+
+	public stop(): boolean {
+		if (this._reject) {
+			this._reject();
+			this._reject = undefined;
+			this._resolve = undefined;
+			return true;
+		}
+		return false;
+	}
+
+	public dispose() {
+		this._synthProcess?.kill('SIGKILL');
+	}
+
+	public connected(): boolean {
+		return this._synthProcess &&
+			// this._synthProcess.connected &&
+			!this._synthProcess.stdin.destroyed;
+	}
+}
+
+export class LocalReSynthProcess implements ReSynthProcess {
+	private _resolve?: (value: SynthResult) => void = undefined;
+	private _reject?: () => void = undefined;
+	private _problemIdx: number = -1;
+	private _synthProcess: ChildProcessWithoutNullStreams;
+
+	constructor(protected logger?: IRTVLogger) {
+		this.logger?.synthProcessStart();
+
+		if (HEAP) {
+			this._synthProcess = spawn(JAVA, [`-Xmx${HEAP}`, '-jar', SYNTH, 'makeItResynth']);
+
+		} else {
+			this._synthProcess = spawn(JAVA, ['-jar', SYNTH, 'makeItResynth']);
+		}
+
+		// shut down the synthesizer with the editor
+		process.on('exit', () => this.dispose());
+		process.on('beforeExit', async () => this.dispose());
+		process.on('uncaughtException', () => this.dispose());
+		process.on('SIGINT', () => this.dispose());
+
+		// Log if the synth crashes/exits
+		this._synthProcess.on('exit', () => this.logger?.synthProcessEnd());
+		this._synthProcess.on('close', () => this.logger?.synthProcessEnd());
+
+		// Log all synthesizer output
+		this._synthProcess.stdout.on('data', data => this.logger?.synthStdout(data));
+		this._synthProcess.stderr.on('data', data => this.logger?.synthStderr(data));
+
+		// Set up the listeners we use to communicate with the synth
+		this._synthProcess.stdout.on('data', (data) => {
+			const resultStr = String.fromCharCode.apply(null, data);
+
+			if (this._resolve && this._reject) {
+				try {
+					// TODO Check result id
+					const rs = JSON.parse(resultStr) as SynthResult;
+					if (rs.id === this._problemIdx || rs.id === 0) { // TODO remove the rs.id===0 the synthesizer dont update the result id
+						// request not discarded
+						this._resolve(rs);
+						this._resolve = undefined;
+						this._reject = undefined;
+					} else if (rs.id === -1) {
+						console.error(`The synthesizer crashed!`, rs);
+					} else {
+						console.error(`Request already discarded: ${rs.id}`);
+					}
+				} catch (e) {
+					console.error('Failed to parse synth output: ' + String.fromCharCode.apply(null, data));
+				}
+			} else {
+				console.error('Synth output when not waiting on promise: ');
+				console.error(resultStr);
+			}
+		});
+
+		this._synthProcess
+	}
+
+
+
+	public reSynthesize(problem: RTVSpecification): Promise<SynthResult | undefined> {
+		if (this._reject) {
+			this._reject();
+			this._resolve = undefined;
+			this._reject = undefined;
+		}
+
+		// First, create the promise we're returning.
+		const rs: Promise<SynthResult> = new Promise((resolve, reject) => {
+			this._resolve = resolve;
+			this._reject = reject;
+		});
+
+
+		// doc the probelm for debug
+		const values_file: string = os.tmpdir() + path.sep + 'resynth_problem.json';
+		fs.writeFileSync(values_file, problem.ToJSON() + '\n');
+		// Then send the problem to the synth
+
+		this._synthProcess.stdin.write(problem.ToJSON() + '\n');
 		console.log(`Started synth process: ${this._problemIdx}`);
 
 		// And we can return!
@@ -295,9 +405,13 @@ export class LocalParseProcess implements ParseProcess {
 				this.stderr += data;
 			});
 			this._process.on('exit', (exitCode) => {
-				let parsed = JSON.parse(this.stdout);
-				console.log("hi i am here");
-				resolve(new ParsedComment(parsed["varnames"], parsed["envs"],[], parsed["out"]));
+				try {
+					let parsed = JSON.parse(this.stdout);
+					resolve(new ParsedComment(parsed["varnames"], parsed["envs"], [], parsed["out"]));
+				}
+				catch (e) {
+					console.error("error while parsing the comments");
+				}
 			});
 		});
 	}
@@ -326,6 +440,7 @@ class LocalUtils implements Utils {
 	readonly EOL: string = os.EOL;
 	_logger?: IRTVLogger;
 	_synth?: SynthProcess;
+	_resynth?: ReSynthProcess;
 
 	logger(editor: ICodeEditor): IRTVLogger {
 		if (!this._logger) {
@@ -398,6 +513,20 @@ class LocalUtils implements Utils {
 			}
 		}
 		return this._synth;
+	}
+
+	resynthesizer(): ReSynthProcess{
+		// create a new process on init and when the existing child process is killed
+		// TODO: maybe there's a better way to handle this...?
+		if (!this._resynth || !this._resynth.connected()) {
+			if (SYNTH !== '') {
+				this._resynth = new LocalReSynthProcess(this._logger);
+			} else {
+				console.log("error");
+				console.log(1/0);
+			}
+		}
+		return this._resynth!;
 	}
 }
 

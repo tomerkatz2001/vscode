@@ -8,12 +8,12 @@ enum env_status{pass, fail, live}
  */
 
 export class ParsedComment{
-	get commentID(): number {
-		return this._commentID;
+	get scopeId(): number {
+		return this.commentId;
 	}
 
-	set commentID(value: number) {
-		this._commentID = value;
+	set scopeId(value: number) {
+		this.commentId = value;
 	}
 	get lineno(): number {
 		return this._lineno;
@@ -22,22 +22,35 @@ export class ParsedComment{
 	set lineno(value: number) {
 		this._lineno = value;
 	}
-	synthesizedVarNames: string[] = []; //
+	outputVarNames: string[] = []; //
 	private readonly envs : any[] =[];
 	private readonly envs_status :env_status[] =[]; //
 	out : {[varName: string]: string}[] = []; //right of the "=>"
-	private _commentID:number = -1;
+	private commentId:number = -1;
 	size: number; // number of line envs
 	private _lineno: number = -1;
+	// @ts-ignore
+	private commentExamples?: any[];
 	private preEnvs?: Map<number, any>; // initialized after calling getEnvsToResynth.
+	private assignments:string[] = [];
 	constructor(synthesizedVarNames: string[], envs: any[], envs_status: env_status[], out: any[],){
-		this.synthesizedVarNames = synthesizedVarNames;
+		this.outputVarNames = synthesizedVarNames;
 		this.envs = envs;
+		for (let env of envs) {
+			for (let [key, value] of Object.entries(env)) {
+				if (typeof value === "string") {
+					env[key] = `'${value}'`;
+				}
+				else {
+					env[key] = String(value);
+				}
+			}
+		}
 		this.envs_status = envs_status;
 		this.out = out;
 		for (let o of out) {
 			for (let [key, value] of Object.entries(o)) {
-				if (typeof value === "string") {
+				if (typeof value === "string" && !value.startsWith("[")) { //actual string and not a list
 					o[key] = `'${value}'`;
 				}
 				else {
@@ -46,6 +59,9 @@ export class ParsedComment{
 			}
 		}
 		this.size = envs.length;
+		for(let v of synthesizedVarNames) {
+			this.assignments.push(`${v} = 666`);
+		}
 	}
 	get inVarNames(){
 		// assume that the first env all vars, and all other vars are the same
@@ -63,23 +79,8 @@ export class ParsedComment{
 			let tmp = env;
 			for(let varName in tmp){
 				if(varName.endsWith("_in")){
-					if(typeof env[varName] !== "string"){
-						preEnv[varName.replace("_in", "")] = env[varName].toString();
-					}
-					else if(!tmp[varName].startsWith("[")){
-						preEnv[varName.replace("_in", "")] = `'${env[varName]}'`;
-					}
-					else{
-						preEnv[varName.replace("_in", "")] = env[varName];
-					}
+					preEnv[varName.replace("_in", "")] = env[varName]
 					delete env[varName];
-				}
-				//if the var is not string, make it a string
-				else if(typeof tmp[varName] !== "string"){
-					tmp[varName] = tmp[varName].toString();
-				}
-				else if(!tmp[varName].startsWith("[")){// if the var is string and not arr add another quote
-					tmp[varName] = `'${tmp[varName]}'`;
 				}
 			}
 			if(!tmp["#"]){
@@ -101,6 +102,7 @@ export class ParsedComment{
 			}
 		}
 		this.preEnvs = preEnvs;
+		this.commentExamples = envs;
 		return envs;
 	}
 
@@ -111,10 +113,10 @@ export class ParsedComment{
 
 	public toJson(){
 		return {
-			"outputVarNames": this.synthesizedVarNames,
+			"outputVarNames": this.outputVarNames,
 			"commentExamples": this.getEnvsToResynth(),
-			"assignments": {},
-			"commentId": this._commentID
+			"assignments": this.assignments,
+			"commentId": this.commentId
 		};
 	}
 	public removeEnv(envIdx:number){

@@ -2,16 +2,23 @@ import { Range as RangeClass } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { getUtils, TableElement } from 'vs/editor/contrib/rtv/RTVUtils';
-import { Utils, RunResult, SynthResult, SynthProblem, IRTVLogger, IRTVController, ViewMode, SynthProcess } from './RTVInterfaces';
+import {
+	Utils,
+	RunResult,
+	SynthResult,
+	SynthProblem,
+	IRTVLogger,
+	IRTVController,
+	ViewMode,
+	SynthProcess,
+	ReSynthProcess
+} from './RTVInterfaces';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { RTVDisplayBox } from 'vs/editor/contrib/rtv/RTVDisplay';
 import { RTVSynthView } from 'vs/editor/contrib/rtv/RTVSynthView';
 import { RTVSynthModel } from 'vs/editor/contrib/rtv/RTVSynthModel';
 import {CommentsManager, ParsedComment} from "vs/editor/contrib/rtv/comments/index";
 
-import * as path from 'path';
-import * as fs from 'fs';
-import * as os from 'os';
 
 enum EditorState {
 	Synthesizing,
@@ -122,6 +129,7 @@ export class RTVSynthController {
 	lineno?: number = undefined;
 	utils: Utils;
 	process: SynthProcess;
+	resynthProcess: ReSynthProcess;
 	editorState?: EditorStateManager = undefined;
 
 	constructor(
@@ -133,6 +141,7 @@ export class RTVSynthController {
 		this.utils = getUtils();
 		this.logger = this.utils.logger(editor);
 		this.process = this.utils.synthesizer();
+		this.resynthProcess = this.utils.resynthesizer();
 		this.enabled = false;
 
 		// In case the user click's out of the boxes.
@@ -262,8 +271,8 @@ export class RTVSynthController {
 	// -----------------------------------------------------------------------------------
 	// Interface
 	// -----------------------------------------------------------------------------------
-	public async getSpecificationAsJson(){
-		var s = await this.commentsManager.getScopeSpecification();
+	public async getSpecificationAsJson(socpeIdx: number){
+		var s = await this.commentsManager.getScopeSpecification(socpeIdx);
 		var s2 = await this.commentsManager.getExamples();
 
 		return `{"scopeTree": ${s}, "scopes": ${s2}}`;
@@ -428,29 +437,60 @@ export class RTVSynthController {
 	public async startResynthesis(lineno: number) {
 		this.enabled = true;
 		//get the values from the comment
-		let scopSpec = await this.commentsManager.getScopeSpecification();
-		console.log(scopSpec);
-		let sceps =  this.commentsManager.getExamples();
-		console.log(sceps);
+		const model = this.editor.getModel()!;
+		const scopeIdx = CommentsManager.getScopeIdx(lineno, model.getLinesContent())
+		let scopSpec = await this.commentsManager.getScopeSpecification(scopeIdx);
+		// console.log(scopSpec);
+		// let sceps =  this.commentsManager.getExamples();
+		// console.log(sceps);
 
 		var parsedComment:ParsedComment = await this.commentsManager.getParsedComment(lineno - 1);
 
-		let val = await  this.getSpecificationAsJson();
-		const values_file: string = os.tmpdir() + path.sep + 'example.json';
-		fs.writeFileSync(values_file, JSON.stringify(val));
 
 
 		const blockEnd = this.commentsManager.getBlockSize(lineno) + lineno;
 
-		this.editorState = new EditorStateManager(parsedComment.synthesizedVarNames.join(", "), lineno, this.editor, this.RTVController);
+		this.editorState = new EditorStateManager(parsedComment.outputVarNames.join(", "), lineno, this.editor, this.RTVController);
 		this.editorState.resynthesizing(lineno, blockEnd); // replace the old text with the varNames
-		this._synthModel = new RTVSynthModel(parsedComment.synthesizedVarNames, lineno, new Set(parsedComment.inVarNames));
+		this._synthModel = new RTVSynthModel(parsedComment.outputVarNames, lineno, new Set(parsedComment.inVarNames));
 		this._synthModel.boxEnvs = parsedComment.getEnvsToResynth();
 		this._synthModel.prevEnvs = parsedComment.getPreEnvsToResynth()!;
 		this._synthModel.includedTimes = new Set(this._synthModel.prevEnvs.keys());
 		this._synthModel.bindBoxContentChanged(()=>{});
 
-		return this.synthesizeFragment();
+		try {
+			console.log(scopSpec.ToJSON())
+			const rs: SynthResult | undefined = await this.resynthProcess.reSynthesize(scopSpec)
+
+			if (!rs) {
+				// The request was cancelled!
+				return;
+			}
+
+			this.logger.synthResult(rs);
+
+			if (rs.success) {
+				//let box : RTVDisplayBox = this.RTVController.getBox(this.lineno!) as RTVDisplayBox;
+				let linesDelta= this.commentsManager.insertExamples(this._synthModel!);
+				this.moveLinenoBy(linesDelta);
+				this.editorState!.program(rs.program!);
+				await this.updateBoxContent(true);
+
+				return;
+			} else {
+				this.editorState!.failed();
+				if (rs.program) {
+					this._synthView!.addError(rs.program, undefined, 500);
+				}
+			}
+		} catch (err) {
+			// If the synth promise is rejected
+			console.error('Synth problem rejected.');
+			if (err) {
+				console.error(err);
+				this.editorState!.failed();
+			}
+		}
 
 	}
 	// -----------------------------------------------------------------------------------

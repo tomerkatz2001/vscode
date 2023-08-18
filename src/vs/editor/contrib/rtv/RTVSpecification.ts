@@ -15,35 +15,92 @@ enum BranchType {
 
 export class RTVSpecification{
 	get comments(): { [p: number]: ParsedComment } {
-		return this._comments;
+		return this.scopes;
 	}
-	private _commentsTree: {[key: number] : Map<BranchType, any>}; // represents the scoops of the comments.
-	private _comments: {[key: number] : ParsedComment}; // map from comment id to comment
+	private scopesTree: {[key: number] : Map<BranchType, any>}; // represents the scoops of the comments.
+	private scopes: {[key: number] : ParsedComment}; // map from comment id to comment
 
-	constructor(){
-		this._commentsTree = {};
-		this._comments = {};
+	constructor(tree: {[key: number] : Map<BranchType, any>} = {}, scopes:{[key: number] : ParsedComment} = {}){
+		this.scopesTree = tree;
+		this.scopes = scopes;
 	}
+
 
 	private clear(){
-		this._commentsTree = {};
-		this._comments = {};
+		this.scopesTree = {};
+		this.scopes = {};
 	}
+	public getSpecificationOfScope(scopeIdx:number){
+		let correctSubtree = null;
+		for(const key of Object.keys(this.scopesTree).map(x=>parseInt(x))){
+			let subtree: {[p: number]: Map<BranchType, any>} = {};
+			subtree[key] = this.scopesTree[key];
+			let res = this.getSubtreeAux(scopeIdx, subtree);
+			if(res){
+				correctSubtree = res;
+				break;
+			}
+		}
 
+		return new RTVSpecification(correctSubtree!, this.scopes)
+	}
+	private getSubtreeAux(scopeIdx:number, _commentTree: {[key: number] : Map<BranchType, any>}): {[key: number] : Map<BranchType, any>} | null
+	{
+		const root = parseInt(Object.keys(_commentTree)[0]); // there is only one root
+		if(root == scopeIdx){
+			return _commentTree
+		}
+		else{
+			if(_commentTree[root].has(BranchType.T)){
+				const sons: {[key: number] : Map<BranchType, any>} = _commentTree[root].get(BranchType.T);
+				for(const key of Object.keys(sons).map(x=>parseInt(x))){
+					let subtree: {[p: number]: Map<BranchType, any>} = {};
+					subtree[key] = sons[key];
+					let res: {[key: number] : Map<BranchType, any>} | null = this.getSubtreeAux(scopeIdx, subtree)
+					if(res){
+						return res
+					}
+				}
+			}
+			if(_commentTree[root].has(BranchType.F)){
+				const sons: {[key: number] : Map<BranchType, any>} = _commentTree[root].get(BranchType.F);
+				for(const key of Object.keys(sons).map(x=>parseInt(x))){
+					let subtree: {[p: number]: Map<BranchType, any>} = {};
+					subtree[key] = sons[key];
+					let res: {[key: number] : Map<BranchType, any>} | null = this.getSubtreeAux(scopeIdx, subtree)
+					if(res){
+						return res
+					}
+				}
+			}
+			if(_commentTree[root].has(BranchType.NoBranch)){
+				const sons: {[key: number] : Map<BranchType, any>} = _commentTree[root].get(BranchType.NoBranch);
+				for(const key of Object.keys(sons).map(x=>parseInt(x))){
+					let subtree: {[p: number]: Map<BranchType, any>} = {};
+					subtree[key] = sons[key];
+					let res: {[key: number] : Map<BranchType, any>} | null = this.getSubtreeAux(scopeIdx, subtree)
+					if(res){
+						return res
+					}
+				}
+			}
+			return null
+		}
+	}
 	public addComment(comment: ParsedComment, parent: number, branch: BranchType){
-		let succeeded = this.addCommentAux(comment, parent, branch, this._commentsTree);
-		if(!succeeded && this._comments[parent] == undefined){ // the same scope as the "root" - can be more than one root
-			this._commentsTree[comment.commentID] = new Map<BranchType, any>();
-			this._comments[comment.commentID] = comment;
+		let succeeded = this.addCommentAux(comment, parent, branch, this.scopesTree);
+		if(!succeeded && this.scopes[parent] == undefined){ // the same scope as the "root" - can be more than one root
+			this.scopesTree[comment.scopeId] = new Map<BranchType, any>();
+			this.scopes[comment.scopeId] = comment;
 		}
 	}
 
 	private addCommentAux(comment: ParsedComment, parent: number, branch: BranchType, tree: {[key: number] : Map<BranchType, any>}): boolean{
 		if(tree[parent] != undefined) {// parent is root
 			let prevSon: {[key: number] : Map<BranchType, any>} = tree[parent].get(branch);
-			let node: {[key: number] : Map<BranchType, any>} = {[comment.commentID]: new Map<BranchType, any>()};
+			let node: {[key: number] : Map<BranchType, any>} = {[comment.scopeId]: new Map<BranchType, any>()};
 			tree[parent].set(branch, {...node, ...prevSon});
-			this._comments[comment.commentID] = comment;
+			this.scopes[comment.scopeId] = comment;
 			return true;
 		}
 		for (const _branch of Object.values(tree)) {// try to find parent in the tree
@@ -79,13 +136,13 @@ export class RTVSpecification{
 				let utils = getUtils();
 				let pythonProcess = utils.runCommentsParser(lines.slice(i).join('\n'));
 				let parsedComment = await pythonProcess;
-				parsedComment.commentID =  CommentsManager.getScopeIdx(i, lines);
+				parsedComment.scopeId =  CommentsManager.getScopeIdx(i, lines);
 				parsedComment.lineno = i + 1;
 				const parentId = scopeIds[scopeIds.length - 1];
 
 				// Call the function with the comment ID and scope ID
 				this.addComment(parsedComment, parentId, branches[branches.length - 1]);
-				scopeIds.push(parsedComment.commentID);
+				scopeIds.push(parsedComment.scopeId);
 			} else if (line.includes(SYNTHESIZED_COMMENT_END)) {
 				// End of a scope, remove the last scope ID
 				scopeIds.pop();
@@ -110,7 +167,7 @@ export class RTVSpecification{
 			if (objValue.constructor == Map) {
 				let thenString = objValue.get(BranchType.T) != undefined ? '"T": '+this.my_stringify2(objValue.get(BranchType.T)) : "";
 				let elseString = objValue.get(BranchType.F) != undefined ? '"F": '+this.my_stringify2(objValue.get(BranchType.F)) : "";
-				let noBranchString = objValue.get(BranchType.NoBranch) != undefined ? '"NoBranch": '+this.my_stringify2(objValue.get(BranchType.NoBranch)) : "";
+				let noBranchString = objValue.get(BranchType.NoBranch) != undefined ? '"NB": '+this.my_stringify2(objValue.get(BranchType.NoBranch)) : "";
 				keyValueString += '{' + thenString + elseString +  noBranchString + '}';
 			}
 			else {
@@ -121,14 +178,18 @@ export class RTVSpecification{
 		return "{" + keyValueArray.join(",") + "}";
 	}
 	public ToJSON(): string{
-		return this.my_stringify2(this._commentsTree);
+		return "{" +
+			`"scopesTree": ${this.my_stringify2(this.scopesTree)},`+
+			`"scopes": ${this.examplesToJson()}` +
+			"}";
 	}
 
 	private examplesToJson():string{
-
+		//this.makeSpecReadyForStringify();
 		var examples = new Array();
-		for(const [commentId,parrsedComment] of Object.entries(this._comments)){
-			examples.push(`"${commentId}"` + ":" + JSON.stringify(parrsedComment.toJson()));
+		for(const [commentId,parrsedComment] of Object.entries(this.scopes)){
+			parrsedComment.getEnvsToResynth();
+			examples.push(`"${commentId}"` + ":" + JSON.stringify(parrsedComment));
 		}
 		return "{" + examples.join(",") + "}";
 }
@@ -138,6 +199,11 @@ export class RTVSpecification{
 		// }
 		return this.examplesToJson()
 	}
+
+	// private makeSpecReadyForStringify(){
+	// 	//this will make each parsed comment to contain the field the synthesizer expects.
+	// 	Object.entries(this.scopes).forEach(([idx, comment])=>comment.getEnvsToResynth());
+	// }
 }
 
 

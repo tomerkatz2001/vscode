@@ -16,7 +16,8 @@ import {ParsedComment} from "./RTVComment";
 import {parse, createVisitor} from 'python-ast';
 import { TfpdefContext} from "python-ast/dist/parser/Python3Parser";
 import {FoldingController} from "vs/editor/contrib/folding/folding";
-import {range} from "vs/base/common/arrays";
+import  {range} from "vs/base/common/arrays";
+
 
 
 
@@ -31,13 +32,16 @@ export  const SYNTHESIZED_COMMENT_END = `#! End of specification scope`;
 
 // this class is in charge of all the comments in the editor.
 export class CommentsManager {
+	get specifications(): RTVSpecification {
+		return this._specifications;
+	}
 	private logger: IRTVLogger;
 	private comments: { [index: number]: DecorationManager } = {}; // map from synthID and comment idx to the decorations ids
-	private specifications: RTVSpecification;
+	private _specifications: RTVSpecification;
 	private inputBox: RTVInputBox|undefined = undefined; // used to get user's input for more examples.
 	constructor(private readonly controller: RTVController, private readonly editor: ICodeEditor) {
 		this.logger = getUtils().logger(editor);
-		this.specifications = new RTVSpecification();
+		this._specifications = new RTVSpecification();
 		FoldingRangeProviderRegistry.register("*", new SpecificationsRangeProvider());
 		const registerOnDidChangeFolding = ()=> {
 			const foldingController: FoldingController = FoldingController.get(editor);
@@ -70,15 +74,16 @@ export class CommentsManager {
 	}
 
 
-	public async getScopeSpecification()  {
+	public async getScopeSpecification(scopeIdx: number)  {
 		let model =  this.controller.getModelForce();
-		await this.specifications.gatherComments(model.getLinesContent().join("\n"));
-		return this.specifications.ToJSON();
+		await this._specifications.gatherComments(model.getLinesContent().join("\n"));
+		return this._specifications.getSpecificationOfScope(scopeIdx)
+
 	}
 
 	public getExamples()  {
 		let model =  this.controller.getModelForce();
-		return  this.specifications.getExamples(model.getLinesContent().join("\n"));
+		return  this._specifications.getExamples(model.getLinesContent().join("\n"));
 	}
 
 	private convertExampleToString(example: example, idx:number){
@@ -118,7 +123,7 @@ export class CommentsManager {
 	public insertStaticExamples(parsedComment:ParsedComment, lineno:number): void {
 		let examples:string = parsedComment.asString();
 		this.logger.insertComments(lineno, examples);
-		this.insertExamplesToEditor(examples, parsedComment.synthesizedVarNames, lineno);
+		this.insertExamplesToEditor(examples, parsedComment.outputVarNames, lineno);
 	}
 
 	public insertOneExample(example:example, lineno:number, examplesIdx:number):void{
@@ -240,7 +245,7 @@ export class CommentsManager {
 	}
 
 	public async updateComments(testResults:RTVTestResults,) {
-		await this.specifications.gatherComments(this.editor.getModel()!.getLinesContent().join("\n"));
+		await this._specifications.gatherComments(this.editor.getModel()!.getLinesContent().join("\n"));
 		const blocksLines = testResults.commentsLocation;
 		//delete all the decorations in previous blocks
 		for (let decorationManager of Object.values(this.comments)) {
@@ -249,7 +254,7 @@ export class CommentsManager {
 		this.comments = {};
 		for(let blockId of range(1,Object.keys(testResults.commentsLines).length + 1)){
 			const results = testResults.getResultsForBlock(blockId);
-			let parsedComment = this.specifications.comments[blockId];
+			let parsedComment = this._specifications.comments[blockId];
 			this.comments[blockId] = new DecorationManager(this.controller, this.editor, blockId, blocksLines[blockId]!, this.getBlockSize(parsedComment.lineno));
 			results.forEach((result, index) => {
 				let type = DecorationType.passTest;
@@ -268,7 +273,7 @@ export class CommentsManager {
 		let pythonProcess = utils.runCommentsParser(program.join(""));
 		let parsedComment = await pythonProcess;
 
-		parsedComment.commentID = this.getScopeIdx(lineno);
+		parsedComment.scopeId = this.getScopeIdx(lineno);
 		parsedComment.lineno = lineno;
 		return parsedComment;
 	}
@@ -400,7 +405,7 @@ export class CommentsManager {
 		const lines = this.editor.getModel()?.getLinesContent()!;
 		for(let i = lineno; i>0; i--){
 			if(lines[i].includes(SYNTHESIZED_COMMENT_START)){
-				return this.specifications.comments[this.getScopeIdx(i)];
+				return this._specifications.comments[this.getScopeIdx(i)];
 			}
 		}
 		console.assert(false);

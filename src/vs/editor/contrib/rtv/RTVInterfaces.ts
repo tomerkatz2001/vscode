@@ -7,6 +7,7 @@ import {IRange} from "vs/editor/common/core/range";
 import {ParsedComment} from "vs/editor/contrib/rtv/comments/index";
 import {IModeService} from "vs/editor/common/services/modeService";
 import {IOpenerService} from "vs/platform/opener/common/opener";
+import {RTVSpecification} from "vs/editor/contrib/rtv/RTVSpecification";
 
 export interface IRTVDisplayBox {
 	/**
@@ -261,6 +262,7 @@ export interface Utils {
 	runCommentsParser(program: string): ParseProcess;
 	validate(input: string): Promise<string | undefined>;
 	synthesizer(): SynthProcess;
+	resynthesizer(): ReSynthProcess;
 }
 
 /**
@@ -297,6 +299,8 @@ export class SynthProblem {
 
 
 
+
+
 /**
  * A "Process" interface that lets us share the API
  * between the local and remote versions of RTVDisplay.
@@ -307,6 +311,11 @@ export interface RunProcess extends PromiseLike<RunResult> {
 
 export interface ParseProcess extends PromiseLike<ParsedComment> {
 	kill(): boolean;
+}
+export interface ReSynthProcess {
+	reSynthesize(problem: RTVSpecification): Promise<SynthResult | undefined>;
+	stop(): boolean;
+	connected(): boolean;
 }
 export interface SynthProcess {
 	synthesize(problem: SynthProblem): Promise<SynthResult | undefined>;

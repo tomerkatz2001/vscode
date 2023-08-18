@@ -7,13 +7,13 @@ import {
 	SynthResult,
 	SynthProblem,
 	IRTVController,
-	ParseProcess
+	ParseProcess, ReSynthProcess
 } from 'vs/editor/contrib/rtv/RTVInterfaces';
 import { RTVLogger } from 'vs/editor/contrib/rtv/RTVLogger';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
 import {spawn} from "child_process";
-import {LocalParseProcess} from "vs/editor/contrib/rtv/RTVUtils";
+import {LocalParseProcess, LocalReSynthProcess} from "vs/editor/contrib/rtv/RTVUtils";
 
 declare const window: {
 	editor: ICodeEditor
@@ -264,6 +264,11 @@ class RemoteUtils implements Utils {
 		const file = "";
 		const local_process = spawn("", ["", program]);
 		return new LocalParseProcess(file, local_process);
+	}
+
+	resynthesizer(): ReSynthProcess {
+		// NOT Supported!!!!!!
+		return new LocalReSynthProcess();
 	}
 
 	async saveProgram(program: string): Promise<void> {

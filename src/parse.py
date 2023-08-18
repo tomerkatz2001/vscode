@@ -54,8 +54,11 @@ def parseComment(comment):
 
 
 def main(input):
-	parsed_comment = parseComment(input)
-	print(json.dumps(parsed_comment, indent = 4))
+    try:
+	    parsed_comment = parseComment(input)
+	    print(json.dumps(parsed_comment, indent = 4))
+    except:
+	    print(json.dumps({}))
 
 
 

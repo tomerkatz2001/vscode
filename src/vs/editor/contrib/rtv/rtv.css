@@ -24,21 +24,21 @@
 	margin-left: -10px;
 	border-left:1px solid white;
 	background: #1E1E1E;
-	width: 5px !important
+	width: 4px !important
 }
 .monaco-editor .custom-indent-guide-top {
 	margin-left: -10px;
 	border-left:1px solid white;
 	border-top:1px solid white;
 	background: #1E1E1E;
-	width: 5px !important
+	width: 4px !important
 }
 .monaco-editor .custom-indent-guide-bottom {
 	margin-left: -10px;
 	border-left:1px solid white;
 	border-bottom:1px solid white;
 	background: #1E1E1E;
-	width: 5px !important
+	width: 4px !important
 }
 
 .monaco-editor .custom-indent-guide-col0 {
