@@ -1,7 +1,7 @@
 import { Range as RangeClass } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
-import { getUtils, TableElement } from 'vs/editor/contrib/rtv/RTVUtils';
+import {getUtils, replaceAll, TableElement} from 'vs/editor/contrib/rtv/RTVUtils';
 import {
 	Utils,
 	RunResult,
@@ -73,6 +73,7 @@ class EditorStateManager {
 
 	program(program: string) {
 		this._state = EditorState.HasProgram;
+		program = replaceAll(program, "\t","    "); // in the editor tab is 4 spaces. idk how to read the tab size :(.
 		this.insertFragment(program);
 	}
 
@@ -453,17 +454,17 @@ export class RTVSynthController {
 		this.editorState = new EditorStateManager(parsedComment.outputVarNames.join(", "), lineno, this.editor, this.RTVController);
 		this.editorState.resynthesizing(lineno, blockEnd); // replace the old text with the varNames
 		this._synthModel = new RTVSynthModel(parsedComment.outputVarNames, lineno, new Set(parsedComment.inVarNames));
-		this._synthModel.boxEnvs = parsedComment.getEnvsToResynth();
+		this._synthModel.boxEnvs = parsedComment.getEnvsToDisplay();
 		this._synthModel.prevEnvs = parsedComment.getPreEnvsToResynth()!;
-		this._synthModel.includedTimes = new Set(this._synthModel.prevEnvs.keys());
+		this._synthModel.includedTimes = new Set([-1]);
 		this._synthModel.bindBoxContentChanged(()=>{});
-
+		this.RTVController.disable()
 		try {
-			console.log(scopSpec.ToJSON())
 			const rs: SynthResult | undefined = await this.resynthProcess.reSynthesize(scopSpec)
 
 			if (!rs) {
 				// The request was cancelled!
+				this.RTVController.enable()
 				return;
 			}
 
@@ -474,11 +475,13 @@ export class RTVSynthController {
 				let linesDelta= this.commentsManager.insertExamples(this._synthModel!);
 				this.moveLinenoBy(linesDelta);
 				this.editorState!.program(rs.program!);
+				this.RTVController.enable();
 				await this.updateBoxContent(true);
 
 				return;
 			} else {
 				this.editorState!.failed();
+				this.RTVController.enable();
 				if (rs.program) {
 					this._synthView!.addError(rs.program, undefined, 500);
 				}
@@ -486,6 +489,7 @@ export class RTVSynthController {
 		} catch (err) {
 			// If the synth promise is rejected
 			console.error('Synth problem rejected.');
+			this.RTVController.enable();
 			if (err) {
 				console.error(err);
 				this.editorState!.failed();
