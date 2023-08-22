@@ -31,6 +31,7 @@ export class ParsedComment{
 	private _lineno: number = -1;
 	// @ts-ignore
 	private commentExamples?: any[];
+	private rawCommentExamples?: any[];
 	private preEnvs?: Map<number, any>; // initialized after calling getEnvsToResynth.
 	private assignments:string[] = [];
 	constructor(synthesizedVarNames: string[], envs: any[], envs_status: env_status[], out: any[],){
@@ -38,8 +39,11 @@ export class ParsedComment{
 		this.envs = envs;
 		for (let env of envs) {
 			for (let [key, value] of Object.entries(env)) {
-				if (typeof value === "string") {
+				if (typeof value === "string" ) {
 					env[key] = `'${value}'`;
+				}
+				else if(typeof value === "object"){
+					env[key] = `[${value}]`;
 				}
 				else {
 					env[key] = String(value);
@@ -50,8 +54,11 @@ export class ParsedComment{
 		this.out = out;
 		for (let o of out) {
 			for (let [key, value] of Object.entries(o)) {
-				if (typeof value === "string" && !value.startsWith("[")) { //actual string and not a list
+				if (typeof value === "string" ) {
 					o[key] = `'${value}'`;
+				}
+				else if(typeof value === "object"){
+					o[key] = `[${value}]`;
 				}
 				else {
 					o[key] = String(value);
@@ -64,23 +71,29 @@ export class ParsedComment{
 		}
 	}
 	get inVarNames(){
+		let inVars:Set<string> = new Set();
+		for (let env of this.envs){
+			Object.keys(env).forEach(v=> inVars.add(v))
+		}
+		return Array.from(inVars)
 		// assume that the first env all vars, and all other vars are the same
-		return Object.keys(this.envs[0]).map((v)=>v.replace("_in",""));
+		// return Object.keys(this.envs[0]).map((v)=>v.replace("_in",""));
 	}
 
 	get outVarNames(){
 		return Object.keys(this.out[0]);
 	}
 	public getEnvsToResynth(){
+		this.rawCommentExamples = [];
 		let preEnvs: Map<number, any> = new Map<number, any>();
 		let preEnv:any = {};
 		let envs = [];
 		for(let [i, env] of enumerate(this.envs)){
-			let tmp = env;
+			let tmp = JSON.parse(JSON.stringify(env));
 			for(let varName in tmp){
 				if(varName.endsWith("_in")){
 					preEnv[varName.replace("_in", "")] = env[varName]
-					delete env[varName];
+					delete tmp[varName];
 				}
 			}
 			if(!tmp["#"]){
@@ -96,6 +109,7 @@ export class ParsedComment{
 
 			// make each elemnt in the list a string
 			envs.push({...tmp, ... this.out[i]});
+			this.rawCommentExamples.push({... env, ...this.out[i], "time": -1})
 			if(preEnv){
 				preEnvs.set(parseInt(tmp["time"]), {...preEnv, ...tmp});
 				preEnv = {};
@@ -105,7 +119,10 @@ export class ParsedComment{
 		this.commentExamples = envs;
 		return envs;
 	}
-
+	public getEnvsToDisplay(){
+		this.getEnvsToResynth();
+		return this.rawCommentExamples!;
+	}
 	public getPreEnvsToResynth(){
 		console.assert(this.preEnvs);
 		return this.preEnvs;

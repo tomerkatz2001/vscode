@@ -968,7 +968,6 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 	}
 
 	public setTableInBox(vars:Set<string>, outVarNames:string[], envs:any[], updateInPlace?:boolean, prevEnvs?: Map<number, any>) {
-
 		// Generate header
 		let rows: TableElement[][] = [];
 		let header: TableElement[] = [];
@@ -1524,7 +1523,7 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 			boxTop = boxTop - (pixelPosAtLine.height / 2);
 		}
 		//let left = this._controller.maxPixelCol+50;
-		let left = this._controller.maxPixelCol + 130;
+		let left = this._controller.maxPixelColAt(this.lineNumber) + 130;
 		let zoom_adjusted_left = left - ((1 - this._zoom) * (this._box.offsetWidth / 2));
 		let zoom_adjusted_top = boxTop - ((1 - this._zoom) * (this._box.offsetHeight / 2));
 		this._box.style.top = zoom_adjusted_top.toString() + 'px';
@@ -1539,7 +1538,7 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 		let midPointTop = pixelPosAtLine.top + (pixelPosAtLine.height / 2);
 
 		//this._line.move(this._controller.maxPixelCol-50, midPointTop, left, top);
-		this._line.move(this._controller.maxPixelCol + 30, midPointTop, left, top);
+		this._line.move(this._controller.maxPixelColAt(this.lineNumber) + 30, midPointTop, left, top);
 
 	}
 
@@ -1925,6 +1924,28 @@ export class RTVController implements IRTVController {
 
 	get maxPixelCol() {
 		return this._maxPixelCol;
+	}
+	public maxPixelColAt(lineno:number, delta:number = 5):number{
+		let model = this._editor.getModel();
+		if (model === null) {
+			return 0 ;
+		}
+		let max = 0;
+		let lineCount = model.getLineCount();
+		let startSearch = Math.max(1, lineno - delta);
+		let endSearch = Math.min(lineCount, lineno + delta )
+		for (let line = startSearch; line <=endSearch ; line++) {
+			let s = model.getLineContent(line);
+			if (s.length > 0 && s[0] === '#' && !s.includes("#!")) {
+				continue;
+			}
+			let col = model.getLineMaxColumn(line);
+			let pixelPos = this._editor.getScrolledVisiblePosition(new Position(line, col));
+			if (pixelPos !== null && pixelPos.left > max) {
+				max = pixelPos.left;
+			}
+		}
+		return max;
 	}
 
 	get loopFocusController(): LoopFocusController | null {
@@ -3366,6 +3387,9 @@ export class RTVController implements IRTVController {
 	}
 
 	private onKeyDown(e: IKeyboardEvent) {
+		if(this._editor.getSelection()?.isEmpty() === false && e.ctrlKey && e.keyCode == KeyCode.KEY_3){
+			this.commentsManager.wrapWithExamples(this._editor.getSelection()!);
+		}
 		if (e.keyCode === KeyCode.Escape) {
 			if (this._editor.getSelection()?.isEmpty() === true) {
 				this.changeViewMode(this.viewMode);

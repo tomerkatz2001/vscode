@@ -538,10 +538,10 @@ export function getUtils(): Utils {
 	return utils;
 }
 
-export function makeEmptyTable(vars: string[], outVarNames:string[], lineno:number): TableElement[][]{
+export function makeEmptyTable(inputVarNames: string[], outVarNames:string[], lineno:number): TableElement[][]{
 	let rows: TableElement[][] = [];
 	let header: TableElement[] = [];
-	vars.forEach((v: string) => {
+	inputVarNames.forEach((v: string) => {
 		let name = '**' + v + '**';
 		if (outVarNames.includes(v)) {
 			name = '```html\n<strong>' + v + '</strong><sub>in</sub>```'
@@ -558,7 +558,7 @@ export function makeEmptyTable(vars: string[], outVarNames:string[], lineno:numb
 
 	// Generate one row
 	let row: TableElement[] = [];
-	vars.forEach((v: string) => {
+	inputVarNames.forEach((v: string) => {
 		let varName = v;
 
 		if (outVarNames.includes(v)) {
@@ -610,6 +610,10 @@ export function getFunctionCode(lines: string[], functionLine: number): string {
 }
 
 export function range (start:number, end:number) { return [...Array(1+end-start).keys()].map(v => start+v) }
+
+export function replaceAll(string:string, search:string, replace:string):string {
+	return string.split(search).join(replace);
+}
 
 
 

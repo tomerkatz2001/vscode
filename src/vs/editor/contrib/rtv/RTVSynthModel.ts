@@ -95,14 +95,17 @@ export class RTVSynthModel {
 			this._allEnvs = this._allEnvs.concat(runResults[2][line]);
 		}
 
-		this._prevEnvs = new Map<number, any>();
+		this._prevEnvs = RTVSynthModel.createPreEnvs(this._allEnvs);
+	}
+	public static createPreEnvs(allEnvs: any[]){
+		let prevEnvs = new Map<number, any>();
 
-		for (const startEnv of this._allEnvs) {
+		for (const startEnv of allEnvs) {
 			const start = startEnv['time'];
 			let minDelta = 1024 * 1024;
 			let minEnv = undefined;
 
-			for (const env of this._allEnvs) {
+			for (const env of allEnvs) {
 				const time = env['time'];
 				if (time) {
 					const delta = start - time;
@@ -118,11 +121,11 @@ export class RTVSynthModel {
 			}
 
 			if (minEnv) {
-				this._prevEnvs.set(start, minEnv);
+				prevEnvs.set(start, minEnv);
 			}
 		}
+		return prevEnvs;
 	}
-
 	/**
 	 * Updates `boxEnvs' and builds `rows`
 	 * @param newEnvs
@@ -303,7 +306,9 @@ export class RTVSynthModel {
 				}
 			}
 			else{
-				input[varName] = env[varName] as unknown as string;
+				if(Object.keys(env).includes(varName)) {
+					input[varName] = env[varName] as unknown as string;
+				}
 			}
 		}
 		return input;

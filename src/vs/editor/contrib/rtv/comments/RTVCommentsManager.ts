@@ -9,7 +9,7 @@ import {DecorationManager, DecorationType} from "vs/editor/contrib/rtv/RTVDecora
 import {FoldingRangeProviderRegistry} from "vs/editor/common/modes";
 import {SpecificationsRangeProvider} from "vs/editor/contrib/rtv/comments/SpecificationsRangeProvider";
 import {IModelContentChangedEvent} from "vs/editor/common/model/textModelEvents";
-import {RTVController} from "vs/editor/contrib/rtv/RTVDisplay";
+import {RTVController, RTVDisplayBox} from "vs/editor/contrib/rtv/RTVDisplay";
 import {MarkdownRenderer} from "vs/editor/browser/core/markdownRenderer";
 import {RTVInputBox, RTVSpecification} from "vs/editor/contrib/rtv/index";
 import {ParsedComment} from "./RTVComment";
@@ -120,6 +120,50 @@ export class CommentsManager {
 		return (examples.split("\n")).length;
 	}
 
+	public async wrapWithExamples(range: Range)  {
+		// Update the projection box with the new value
+		const runResults: any = await this.controller.updateBoxes();
+
+		let firstLineno = range.startLineNumber;
+		let lastLineno = range.endLineNumber;
+		let firstBox:RTVDisplayBox;
+		for(let i=firstLineno - 1; i < lastLineno; i++){
+			if(this.controller.envs[i]){
+				firstBox = this.controller.getBox(i+1);
+				break
+			}
+		}
+		let liveVars = firstBox!.allVars();
+
+		let allEnvs:any[] = [];
+		for (let line in (runResults[2] as { [k: string]: any[]; })) {
+			allEnvs = allEnvs.concat(runResults[2][line]);
+		}
+		const prevEnvs = RTVSynthModel.createPreEnvs(allEnvs)
+		let time = firstBox!.getEnvs()[0]["time"];
+		let prevVars:string[] = [];
+		if(time){
+			let prevEnv = prevEnvs.get(time);
+			if (prevEnv){
+				prevVars = Object.keys(prevEnv);
+			}
+		}
+
+		let inputVars = Array.from(liveVars).filter(v => prevVars.includes(v)); // keep all vars that also in preEnv
+		let outputVars = this.getAllAssignedVars(firstLineno, lastLineno);
+		let insertScope = ()=>{
+			let userExample = this.inputBox?.getBoxAsExample()!
+			let exampleAsString  = this.convertExampleToString(userExample, 1);
+			this.insertExamplesToEditor(exampleAsString, Object.keys(userExample.outputs), firstLineno, lastLineno);
+			this.onExit(firstLineno);
+		}
+		if(this.controller)
+		this.setUpInputBox(inputVars, outputVars,firstLineno,insertScope);
+		console.log(liveVars);
+		console.log(outputVars);
+
+
+	}
 	public insertStaticExamples(parsedComment:ParsedComment, lineno:number): void {
 		let examples:string = parsedComment.asString();
 		this.logger.insertComments(lineno, examples);
@@ -128,7 +172,7 @@ export class CommentsManager {
 
 	public insertOneExample(example:example, lineno:number, examplesIdx:number):void{
 		const exampleString  = this.convertExampleToString(example, examplesIdx).replace("\n","");
-		this.insertExamplesToEditor(exampleString, Object.keys(example.outputs), lineno, false);
+		this.insertExamplesToEditor(exampleString, Object.keys(example.outputs), lineno, lineno, false);
 	}
 
 
@@ -139,7 +183,7 @@ export class CommentsManager {
 	 * @param outVars - the variables that were synthesized
 	 * @param lineno - the line number to insert the text at
 	 */
-	private insertExamplesToEditor(examples: string, outVars: string[], lineno: number, withProlog:boolean = true) {
+	private insertExamplesToEditor(examples: string, outVars: string[], lineno: number, endLineno:number = lineno, withProlog:boolean = true) {
 		let model = this.controller.getModelForce();
 		let cursorPos = this.editor.getPosition();
 		let startCol: number;
@@ -155,7 +199,7 @@ export class CommentsManager {
 			startCol = model.getLineFirstNonWhitespaceColumn(lineno);
 			endCol = model.getLineMaxColumn(lineno);
 		}
-		let range = new RangeClass(lineno, startCol, lineno, endCol);
+		let range = new RangeClass(lineno, startCol, endLineno, endCol);
 		let oldText = model.getValueInRange(range);
 		let prolog = SYNTHESIZED_COMMENT_START +  "\n";
 		let epilogue = "\n" + SYNTHESIZED_COMMENT_END + "\n";
@@ -252,10 +296,27 @@ export class CommentsManager {
 			decorationManager.removeAllDecoration();
 		}
 		this.comments = {};
+		let commentCols: Map<number, number> = new Map;
+		let colComments: Map<number, number> = new Map; // the reverse of the above map sorry about these names
+		range(1,Object.keys(testResults.commentsLines).length + 1).forEach(blockId=>{
+			let col = this.editor.getModel()?.getLineFirstNonWhitespaceColumn(blocksLines[blockId]!)!;
+			commentCols.set(blockId, col);
+			if(!colComments.has(col)){
+				colComments.set(col, 0);
+			}
+			else{
+				colComments.set(col, colComments.get(col)!+1);
+			}
+			}
+		);
 		for(let blockId of range(1,Object.keys(testResults.commentsLines).length + 1)){
 			const results = testResults.getResultsForBlock(blockId);
 			let parsedComment = this._specifications.comments[blockId];
-			this.comments[blockId] = new DecorationManager(this.controller, this.editor, blockId, blocksLines[blockId]!, this.getBlockSize(parsedComment.lineno));
+			const blockCol = commentCols.get(blockId)!
+			let deltaCol = colComments.get(blockCol)!;
+			colComments.set(blockCol, colComments.get(blockCol)!-1);
+
+			this.comments[blockId] = new DecorationManager(this.controller, this.editor, blockId, blocksLines[blockId]!, this.getBlockSize(parsedComment.lineno), deltaCol);
 			results.forEach((result, index) => {
 				let type = DecorationType.passTest;
 				if(result[0] === false){
@@ -278,6 +339,42 @@ export class CommentsManager {
 		return parsedComment;
 	}
 
+	private setUpInputBox(inputVarNames:string[], outputVarsNames: string[], lineno:number, onEnterPressed:()=>void){
+		this.controller.changeViewMode(ViewMode.Stealth);
+		this.controller.disable();
+
+
+		let box = this.controller.getBox(lineno);
+		//enter a dummy box
+		box.setTableInBox(new Set(["x", "y", "z"]), ["y"], [], false);
+
+		let rows = makeEmptyTable(inputVarNames, outputVarsNames, lineno);
+
+		inputVarNames = inputVarNames.map(varName=> outputVarsNames.includes(varName) ? `${varName}_in` : varName);
+		this.inputBox = new RTVInputBox(
+			this.editor,
+			box.getLine().getElement(),
+			box.getElement(),
+			box.getModeService(),
+			box.getOpenerService(),
+			lineno,
+			this.controller.getThemeService(),
+			inputVarNames,
+			outputVarsNames,
+			rows
+		);
+
+
+		this.inputBox.bindExitSynth(()=>this.onExit(lineno));
+		this.inputBox.bindOnEnterPresses(onEnterPressed);
+
+
+		this.inputBox.updateBoxContent(rows, true);
+		this.makeTableEditable(rows);
+
+		this.inputBox.selectFirstEditableCell();
+
+	}
 	private async onDidChangeModelContent(e: IModelContentChangedEvent){
 		let cursorPos = this.editor.getPosition();
 		if (cursorPos === null) {
@@ -286,44 +383,11 @@ export class CommentsManager {
 		let lineno = cursorPos.lineNumber;
 		const lineContent = this.controller.getLineContent(lineno).trim();
 		if(lineContent === "#!" && !this.inputBox){
-			this.logger.projectionBoxCreated();
-
-			this.controller.changeViewMode(ViewMode.Stealth);
-			this.controller.disable();
-
-
-			// TODO: split to cases, above a function def, additional example to synth or range?
-			let box = this.controller.getBox(lineno);
-			//enter a dummy box
-			box.setTableInBox(new Set(["x", "y", "z"]), ["y"], [], false);
 			let inputVarNames = this.getInputVars(lineno);
 			let outVarNames = this.getOutputVars(lineno);
-			let rows = makeEmptyTable(inputVarNames, outVarNames, lineno);
-
-			this.inputBox = new RTVInputBox(
-				this.editor,
-				box.getLine().getElement(),
-				box.getElement(),
-				box.getModeService(),
-				box.getOpenerService(),
-				lineno,
-				this.controller.getThemeService(),
-				inputVarNames,
-				outVarNames,
-				rows
-				);
-
-
-			this.inputBox.bindExitSynth(()=>this.onExit(lineno));
-			this.inputBox.bindOnEnterPresses(()=>{this.onEnter(lineno)});
-
-
-			this.inputBox.updateBoxContent(rows, true);
-			this.makeTableEditable(rows);
-
-			this.inputBox.selectFirstEditableCell();
-
-
+			this.setUpInputBox(inputVarNames, outVarNames, lineno, ()=>{this.onEnter(lineno)});
+			this.onExit(lineno);
+			this.setUpInputBox(inputVarNames, outVarNames, lineno, ()=>{this.onEnter(lineno)});
 		}
 	}
 
@@ -388,6 +452,20 @@ export class CommentsManager {
 		}
 		 return this.getScopeComment(lineno)!.outVarNames;
 
+	}
+
+	getAllAssignedVars = (i:number, j:number) =>{
+		let varNames:string[] = [];
+		for(let lineno= i; lineno<=j; lineno++){
+			let lineContent = this.editor.getModel()?.getLineContent(lineno);
+			if(lineContent?.includes("=") && !lineContent?.includes("=>")){
+				varNames= varNames.concat(lineContent?.split("=")[0].split(","));
+			}
+		}
+
+		varNames =  Array.from(new Set(varNames).values()); // remove dups
+		varNames = varNames.map(x=>x.trim());
+		return varNames;
 	}
 
 	getPrevCommentIndex = (lineno:number)=>{

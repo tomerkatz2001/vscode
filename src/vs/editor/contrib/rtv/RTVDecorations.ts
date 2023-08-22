@@ -12,10 +12,12 @@ export class DecorationManager{
 	scopeSize: number = 0; //number of lines from the start of the block to the end of it. including the code.
 	decorations: {[index: number]: UnderlineDecoration} = {}; //map of all the current decorations {env idx -> UnderlineDecoration}
 	indentGuides:string[] = [];
-	constructor(private readonly controller: IRTVController, private readonly editor: ICodeEditor, commentId: number, lineno: number, scopeSize:number){
+	deltaCol: number = 0;
+	constructor(private readonly controller: IRTVController, private readonly editor: ICodeEditor, commentId: number, lineno: number, scopeSize:number, deltaCol:number = 0){
 		this.commentId = commentId;
 		this.lineno = lineno;
 		this.scopeSize = scopeSize;
+		this.deltaCol = deltaCol;
 		this.addCustomIndentGuides();
 	}
 
@@ -60,7 +62,7 @@ export class DecorationManager{
 		let options_bottom:IModelDecorationOptions;
 		let options_rest:IModelDecorationOptions;
 
-		if(col == 1){
+		if(col == 1 && this.deltaCol ==0){
 			options_top = {
 				isWholeLine: true,
 				linesDecorationsClassName: "custom-indent-guide-col0-top"
@@ -72,6 +74,20 @@ export class DecorationManager{
 			options_bottom = {
 				isWholeLine: true,
 				linesDecorationsClassName: "custom-indent-guide-col0-bottom"
+			};
+		}
+		else if(col == 1 && this.deltaCol != 0){
+			options_top = {
+				isWholeLine: true,
+				linesDecorationsClassName: "custom-indent-guide-col-1-top"
+			};
+			options_rest = {
+				isWholeLine: true,
+				linesDecorationsClassName: "custom-indent-guide-col-1"
+			}
+			options_bottom = {
+				isWholeLine: true,
+				linesDecorationsClassName: "custom-indent-guide-col-1-bottom"
 			};
 		}
 		else{
@@ -92,21 +108,21 @@ export class DecorationManager{
 
 		indentGuides.push(
 			{
-				range: new Range(this.lineno, col, this.lineno, col),
+				range: new Range(this.lineno, col-this.deltaCol, this.lineno, col-this.deltaCol),
 				options: options_top,
 			}
 		);
 		for(let i = this.lineno+1; i < this.lineno+this.scopeSize; i++){
 			indentGuides.push(
 				{
-					range: new Range(i, col, i ,col),
+					range: new Range(i, col-this.deltaCol, i ,col-this.deltaCol),
 					options: options_rest,
 				}
 			);
 		}
 		indentGuides.push(
 			{
-				range: new Range(this.lineno+this.scopeSize, col, this.lineno+this.scopeSize, col),
+				range: new Range(this.lineno+this.scopeSize, col-this.deltaCol, this.lineno+this.scopeSize, col-this.deltaCol),
 				options: options_bottom,
 			}
 		);
