@@ -42,6 +42,9 @@ export class ParsedComment{
 				if (typeof value === "string" ) {
 					env[key] = `'${value}'`;
 				}
+				else if(Array.isArray(value)){
+					env[key] = `[${value}]`;
+				}
 				else if(typeof value === "object"){
 					env[key] = `[${value}]`;
 				}
@@ -57,8 +60,11 @@ export class ParsedComment{
 				if (typeof value === "string" ) {
 					o[key] = `'${value}'`;
 				}
-				else if(typeof value === "object"){
+				else if(Array.isArray(value)){ // array
 					o[key] = `[${value}]`;
+				}
+				else if( typeof value == "object"){ // dict
+					o[key] = value
 				}
 				else {
 					o[key] = String(value);

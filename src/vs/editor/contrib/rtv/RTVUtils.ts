@@ -410,6 +410,7 @@ export class LocalParseProcess implements ParseProcess {
 					resolve(new ParsedComment(parsed["varnames"], parsed["envs"], [], parsed["out"]));
 				}
 				catch (e) {
+					console.log(this.stdout)
 					console.error("error while parsing the comments");
 				}
 			});

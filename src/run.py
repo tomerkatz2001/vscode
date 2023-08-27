@@ -417,7 +417,7 @@ def remove_frame_data(data):
 			if "frame" in env:
 				del env["frame"]
 
-def findBlocEnd(i, lines):
+def findBlockEnd(i, lines):
 	starts = 0
 	ends = 0
 	for lineno, line in enumerate(lines[i:]):
@@ -434,8 +434,33 @@ def getBlockId(i, lines):
 	for lineno, line in enumerate(lines[:i+1]):
 		if line.strip().find("Start of") != -1:
 			starts += 1
+	if findBlockEnd(i, lines) == -1: # no end to this block:
+	    return -starts
 	return starts
 
+
+def getFunctionEnd(function_line, lines):
+    print("hi")
+    function_indent = re.match(r'^\s*', lines[function_line - 1]).group(0) if re.match(r'^\s*', lines[function_line - 1]) else ''
+
+    last_line = function_line
+    inFunction_flag = False
+    i = function_line
+    while i < len(lines):
+        line = lines[i]
+        last_line = i
+
+        line_indent = re.match(r'^\s*', line).group(0) if re.match(r'^\s*', line) else ''
+
+        if len(line_indent) <= len(function_indent) and inFunction_flag:
+            print("i", i)
+            break
+        if "def" in line: # all the comments are done
+                    inFunction_flag = True
+
+        i += 1
+
+    return last_line
 
 def computeSynthBlocks(lines):
 	'''
@@ -447,21 +472,23 @@ def computeSynthBlocks(lines):
 		code_blocks : the code that was generated in block_id
 
 	'''
-	comments={}
+
 	comments_line={}
 	code_blocks ={}
 	prev_line=""
 	for lineno, line in enumerate(lines):
 		if line.strip().startswith("#! Start"):
 			block_id = getBlockId(lineno, lines)
-			#print(f'{block_id=}')
-			end_lineno = findBlocEnd(lineno, lines)
-			comments[block_id]=([line.strip()])
-			comments_line[block_id]=(lineno + 1) # lineno starts at 0
-			code_blocks[block_id]=lines[lineno:end_lineno]
-		elif line.strip().startswith("#!") and prev_line.strip().startswith("#!"):
-			comments[block_id].append(line.strip())
-		prev_line=line
+			print("blocklok", block_id)
+			if block_id > 0: # noraml scope
+			    end_lineno = findBlockEnd(lineno, lines)
+			else: #function scope
+			   end_lineno = getFunctionEnd(lineno, lines)
+			print(f'{end_lineno=}')
+			comments_line[block_id] = lineno + 1 # lineno starts at 0
+			code_blocks[block_id] = lines[lineno : end_lineno]
+
+
 	parsed_comments = {}
 	for block_id in code_blocks:
 		print(block_id)
@@ -489,6 +516,8 @@ def getFirstNonEmptyLine(block_code):
 
 	assert(False)
 
+
+
 class UnitTest:
 	def __init__(self, lines, inputs, expected):
 		print(f'{inputs=}')
@@ -501,16 +530,19 @@ class UnitTest:
 			runs the unit test and returns the result of the test and the exception if any as a tuple
 		'''
 		debugger = bdb.Bdb()
+		problems={}
 		try:
 			debugger.run("".join(self.lines), locals=self.inputs)
 		except Exception as e:
 			return False ,"Exception Thrown" + str(e)
 		for var in self.expected:
-
 			if var in debugger.botframe.f_locals['locals'] and self.expected[var] != debugger.botframe.f_locals['locals'][var]:
-				return False, "Expected " + str(self.expected[var]) + " but got " + str(debugger.botframe.f_locals['locals'][var])
+			    problems[var] = ( str(self.expected[var]), str(debugger.botframe.f_locals['locals'][var]))
+		if len(problems) == 0:
+		    return True, ""
 
-		return True, "Passed"
+		error_string = "\n".join([f"{var} is expected to be {problems[var][0]} but it is {problems[var][0]}" for var in problems.keys()])
+		return False, error_string
 
 
 def compute_tests_results(code_blocks, parsed_comments, comments_line, run_time_data):
@@ -533,11 +565,29 @@ def build_tests(code_blocks, parsed_comments, comments_line, run_time_data):
 			inputs = parsed_comments[block_id]["envs"][comment_idx]
 			expected = parsed_comments[block_id]["out"][comment_idx]
 			targetEnv = {key.replace("_in", ""):value for (key,value) in inputs.items()}
-			print(f'{targetEnv=}, {expected=}')
 			if not isLiveEnv(targetEnv, liveEnvs, list(expected.keys())):
-				tests[(block_id, comment_idx)] = UnitTest(code_blocks[block_id], inputs, expected)
+			    if block_id < 0:
+			        code_blocks[block_id].append(addFunctionCall(code_blocks[block_id]))
+			    tests[(block_id, comment_idx)] = UnitTest(code_blocks[block_id], inputs, expected)
 
 	return tests
+
+def addFunctionCall(lines):
+    for line in lines:
+        if "def" in line:
+            function_pattern = r"def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)\s*:"
+
+            match = re.match(function_pattern, line)
+            if match:
+                function_name = match.group(1)
+                parameters = match.group(2)
+                parameter_list = [param.strip() for param in parameters.split(',')]
+                parameter_string = ', '.join(parameter_list)
+
+                function_call = f"rv = {function_name}({parameter_string})\n"
+                return function_call
+            else:
+                return ""
 
 def runTests(tests):
 	'''

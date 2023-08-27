@@ -16,7 +16,6 @@ import {ParsedComment} from "./RTVComment";
 import {parse, createVisitor} from 'python-ast';
 import { TfpdefContext} from "python-ast/dist/parser/Python3Parser";
 import {FoldingController} from "vs/editor/contrib/folding/folding";
-import  {range} from "vs/base/common/arrays";
 
 
 
@@ -70,10 +69,33 @@ export class CommentsManager {
 				idx++;
 			}
 		}
+		if(this.isFuncSpec(lineno, lines)){
+			return -idx;
+		}
 		return idx;
 	}
 
-
+	/**
+	 * This function will check if the comment at lineno is a function comment or a scope comment
+	 * @param lineno - line number to start look from
+	 * @param lines - all the lines in the editor
+	 */
+	static isFuncSpec(lineno: number, lines:string[]){
+		let startCount = 0
+		let endCount= 0
+		for(let line of lines.slice(lineno)){
+			if (line.includes(SYNTHESIZED_COMMENT_START)){
+				startCount++;
+			}
+			if (line.includes(SYNTHESIZED_COMMENT_END)){
+				endCount++;
+			}
+			if (startCount === endCount){
+				return false
+			}
+		}
+		return true //no end found - it is a function block
+	}
 	public async getScopeSpecification(scopeIdx: number)  {
 		let model =  this.controller.getModelForce();
 		await this._specifications.gatherComments(model.getLinesContent().join("\n"));
@@ -285,7 +307,7 @@ export class CommentsManager {
 			}
 			i++;
 		}
-		return -1;// error - no end found
+		return -1;// error - no end found - it is a function block
 	}
 
 	public async updateComments(testResults:RTVTestResults,) {
@@ -298,7 +320,7 @@ export class CommentsManager {
 		this.comments = {};
 		let commentCols: Map<number, number> = new Map;
 		let colComments: Map<number, number> = new Map; // the reverse of the above map sorry about these names
-		range(1,Object.keys(testResults.commentsLines).length + 1).forEach(blockId=>{
+		Object.keys(testResults.commentsLines).map(x=>parseInt(x)).forEach(blockId=>{
 			let col = this.editor.getModel()?.getLineFirstNonWhitespaceColumn(blocksLines[blockId]!)!;
 			commentCols.set(blockId, col);
 			if(!colComments.has(col)){
@@ -309,7 +331,7 @@ export class CommentsManager {
 			}
 			}
 		);
-		for(let blockId of range(1,Object.keys(testResults.commentsLines).length + 1)){
+		for(let blockId of Object.keys(testResults.commentsLines).map(x=>parseInt(x))){
 			const results = testResults.getResultsForBlock(blockId);
 			let parsedComment = this._specifications.comments[blockId];
 			const blockCol = commentCols.get(blockId)!
@@ -521,7 +543,7 @@ export class RTVTestResults{
 	}
 
 	public getResultsForBlock(blockId: number,){
-		const tupleKeys:any[]  = Object.keys(this.results).map(tupleString => tupleString.match(/\d+/g)!.map(x => parseInt(x, 10))) ;
+		const tupleKeys:any[]  = Object.keys(this.results).map(tupleString => tupleString.match(/-?\d+/g)!.map(x => parseInt(x, 10))) ;
 		const keys = tupleKeys.filter(x => x[0] === blockId);
 		const results = new Map<number, any>();
 		for (let key of keys){

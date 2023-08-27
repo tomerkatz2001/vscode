@@ -10,7 +10,8 @@ amountParser = regex(r' *')#string("(")>> regex(r'[0-9]*') << string("), ")
 numberParser = regex(r' *-?\d+ *')
 stringParser = regex(r'\".*?\"|\'.*?\'')
 listParser = regex(r'\[[^=]*\]')
-valuesParser = sepEndBy1((nameParser << regex(r' *= *')) + (numberParser ^ stringParser ^ listParser), regex(r' *, *')^regex(r' *'))
+dictParser = regex(r'\{[^=]*\}')
+valuesParser = sepEndBy1((nameParser << regex(r' *= *')) + (numberParser ^ stringParser ^ listParser^dictParser), regex(r' *, *')^regex(r' *'))
 blockStart = regex(r" *#! *Start of specification scope: *")
 counter = 0
 @generate
@@ -41,7 +42,6 @@ def tryEval(val):
 def parseComment(comment):
 	parser = (blockStart + (regex(r' *')+regex(r'(\!\!)* *'))) >> envs
 	parser_result = parser.parse(comment)
-
 	inputs = [{t[0]: tryEval(t[1]) for t in line[1][0]} for line in parser_result] #left of the ""=>"
 	outputs = [{t[0]: tryEval(t[1]) for t in line[1][1]} for line in parser_result] #right of the ""=>""
 	outputVarNames = list(outputs[0].keys())

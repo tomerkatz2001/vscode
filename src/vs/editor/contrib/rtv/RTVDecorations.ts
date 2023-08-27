@@ -18,7 +18,8 @@ export class DecorationManager{
 		this.lineno = lineno;
 		this.scopeSize = scopeSize;
 		this.deltaCol = deltaCol;
-		this.addCustomIndentGuides();
+		if(commentId > 0) // no guide for functions
+			this.addCustomIndentGuides();
 	}
 
 	public addDecoration(envIdx:number, type: DecorationType, onHoverText?: string){

@@ -294,7 +294,7 @@ export class RTVSynthModel {
 	private getInputsValues(env: any): {[k:string]: string}{
 		let input: {[k: string] : string} = {};
 		for (let varName of this._boxVars!) {
-			let dontShowVars = ['$', 'rv'];
+			let dontShowVars = ['$', 'rv', "#"];
 			if(dontShowVars.includes(varName)) {
 				continue;
 			}
