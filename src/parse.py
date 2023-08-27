@@ -11,7 +11,8 @@ numberParser = regex(r' *-?\d+ *')
 stringParser = regex(r'\".*?\"|\'.*?\'')
 listParser = regex(r'\[[^=]*\]')
 dictParser = regex(r'\{[^=]*\}')
-valuesParser = sepEndBy1((nameParser << regex(r' *= *')) + (numberParser ^ stringParser ^ listParser^dictParser), regex(r' *, *')^regex(r' *'))
+boolParser = regex(r'True|False')
+valuesParser = sepEndBy1((nameParser << regex(r' *= *')) + (numberParser ^ stringParser ^ listParser^dictParser^boolParser), regex(r' *, *')^regex(r' *'))
 blockStart = regex(r" *#! *Start of specification scope: *")
 counter = 0
 @generate

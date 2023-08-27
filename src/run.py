@@ -440,7 +440,6 @@ def getBlockId(i, lines):
 
 
 def getFunctionEnd(function_line, lines):
-    print("hi")
     function_indent = re.match(r'^\s*', lines[function_line - 1]).group(0) if re.match(r'^\s*', lines[function_line - 1]) else ''
 
     last_line = function_line
@@ -532,16 +531,18 @@ class UnitTest:
 		debugger = bdb.Bdb()
 		problems={}
 		try:
-			debugger.run("".join(self.lines), locals=self.inputs)
+		    print(f"{self.inputs=}")
+		    print(f"{''.join(self.lines)=}")
+		    debugger.run("".join(self.lines), locals=self.inputs, globals = self.inputs)
 		except Exception as e:
-			return False ,"Exception Thrown" + str(e)
+			return False ,"Exception Thrown: " + str(e)
 		for var in self.expected:
 			if var in debugger.botframe.f_locals['locals'] and self.expected[var] != debugger.botframe.f_locals['locals'][var]:
 			    problems[var] = ( str(self.expected[var]), str(debugger.botframe.f_locals['locals'][var]))
 		if len(problems) == 0:
 		    return True, ""
 
-		error_string = "\n".join([f"{var} is expected to be {problems[var][0]} but it is {problems[var][0]}" for var in problems.keys()])
+		error_string = "\n".join([f"{var} is expected to be {problems[var][0]} but it is {problems[var][1]}" for var in problems.keys()])
 		return False, error_string
 
 

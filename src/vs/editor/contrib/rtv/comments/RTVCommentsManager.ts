@@ -329,9 +329,6 @@ export class CommentsManager {
 			else{
 				colComments.set(col, colComments.get(col)!+1);
 			}
-			}
-		);
-		for(let blockId of Object.keys(testResults.commentsLines).map(x=>parseInt(x))){
 			const results = testResults.getResultsForBlock(blockId);
 			let parsedComment = this._specifications.comments[blockId];
 			const blockCol = commentCols.get(blockId)!
@@ -347,6 +344,7 @@ export class CommentsManager {
 				this.comments[blockId].addDecoration(index, type, result[1]);
 			});
 		}
+		);
 	}
 
 	public async getParsedComment(lineno: number): Promise<ParsedComment> {
@@ -464,7 +462,6 @@ export class CommentsManager {
 			return  vars;
 		}
 		return this.getScopeComment(lineno)!.inVarNames;
-
 	}
 
 	 getOutputVars = (lineno:number)=>{
