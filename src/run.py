@@ -603,6 +603,7 @@ def runTests(tests):
 	return results
 
 def isLiveEnv(targetEnv, LiveEnvsList, ignoredVars=[]):
+		return False
 		ignoredVars+=['time', "lineno", "#", "$", "prev_lineno", "next_lineno"]
 		for liveEnv in LiveEnvsList:
 			isSame = True
