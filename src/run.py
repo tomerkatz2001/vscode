@@ -452,7 +452,6 @@ def getFunctionEnd(function_line, lines):
         line_indent = re.match(r'^\s*', line).group(0) if re.match(r'^\s*', line) else ''
 
         if len(line_indent) <= len(function_indent) and inFunction_flag:
-            print("i", i)
             break
         if "def" in line: # all the comments are done
                     inFunction_flag = True
@@ -477,6 +476,7 @@ def computeSynthBlocks(lines):
 	prev_line=""
 	for lineno, line in enumerate(lines):
 		if line.strip().startswith("#! Start"):
+			print("start block")
 			block_id = getBlockId(lineno, lines)
 			print("blocklok", block_id)
 			if block_id > 0: # noraml scope
@@ -484,8 +484,9 @@ def computeSynthBlocks(lines):
 			else: #function scope
 			   end_lineno = getFunctionEnd(lineno, lines)
 			print(f'{end_lineno=}')
-			comments_line[block_id] = lineno + 1 # lineno starts at 0
+			comments_line[block_id]={"start": lineno + 1, "end": end_lineno + 1} # lineno starts at 0
 			code_blocks[block_id] = lines[lineno : end_lineno]
+
 
 
 	parsed_comments = {}
@@ -561,7 +562,7 @@ def build_tests(code_blocks, parsed_comments, comments_line, run_time_data):
 	for block_id in parsed_comments:
 
 		comment_size = parsed_comments[block_id]["code start"] #includes new lines
-		liveEnvs = run_time_data[comments_line[block_id]+comment_size]
+		liveEnvs = run_time_data[comments_line[block_id]["start"]+comment_size]
 		for comment_idx in range(len(parsed_comments[block_id]["envs"])):
 			inputs = parsed_comments[block_id]["envs"][comment_idx]
 			expected = parsed_comments[block_id]["out"][comment_idx]
@@ -603,7 +604,7 @@ def runTests(tests):
 	return results
 
 def isLiveEnv(targetEnv, LiveEnvsList, ignoredVars=[]):
-		return False
+		#return False
 		ignoredVars+=['time', "lineno", "#", "$", "prev_lineno", "next_lineno"]
 		for liveEnv in LiveEnvsList:
 			isSame = True
@@ -648,6 +649,7 @@ def main(file, values_file = None):
 	try:
 		parsed_comments, code_blocks, comments_line = computeSynthBlocks(lines)
 		results = compute_tests_results(code_blocks, parsed_comments, comments_line, run_time_data)
+		print(f'{comments_line=}')
 	except Exception as e:
 		print(e)
 		results = {}

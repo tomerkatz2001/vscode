@@ -321,7 +321,7 @@ export class CommentsManager {
 		let commentCols: Map<number, number> = new Map;
 		let colComments: Map<number, number> = new Map; // the reverse of the above map sorry about these names
 		Object.keys(testResults.commentsLines).map(x=>parseInt(x)).forEach(blockId=>{
-			let col = this.editor.getModel()?.getLineFirstNonWhitespaceColumn(blocksLines[blockId]!)!;
+			let col = this.editor.getModel()?.getLineFirstNonWhitespaceColumn(blocksLines[blockId].start!)!;
 			commentCols.set(blockId, col);
 			if(!colComments.has(col)){
 				colComments.set(col, 0);
@@ -335,7 +335,7 @@ export class CommentsManager {
 			let deltaCol = colComments.get(blockCol)!;
 			colComments.set(blockCol, colComments.get(blockCol)!-1);
 
-			this.comments[blockId] = new DecorationManager(this.controller, this.editor, blockId, blocksLines[blockId]!, this.getBlockSize(parsedComment.lineno), deltaCol);
+			this.comments[blockId] = new DecorationManager(this.controller, this.editor, blockId, blocksLines[blockId].start!, this.getBlockSize(parsedComment.lineno), deltaCol);
 			results.forEach((result, index) => {
 				let type = DecorationType.passTest;
 				if(result[0] === false){
@@ -511,14 +511,18 @@ export class CommentsManager {
 
 }
 
-
+type linesInfo={
+	start : number,
+	end : number
+}
 
 export class RTVTestResults{
-	get commentsLines(): any {
+	get commentsLines():  {[p: string]: linesInfo}
+	{
 		return this._commentsLines;
 	}
 	private results: any;
-	private _commentsLines: any;
+	private _commentsLines: {[commentId:string]: linesInfo};
 
 	constructor(testResults: any){
 		const parsed= JSON.parse(testResults);
@@ -526,7 +530,7 @@ export class RTVTestResults{
 		this._commentsLines = parsed[1];
 
 	}
-	get commentsLocation(): any{
+	get commentsLocation():  {[p: string]: linesInfo} {
 		return this._commentsLines;
 	}
 
