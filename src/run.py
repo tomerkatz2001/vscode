@@ -501,8 +501,6 @@ def computeSynthBlocks(lines):
 	return  parsed_comments, code_blocks, comments_line
 
 def getFirstNonEmptyLine(block_code):
-	print(f'{block_code=}')
-
 	last_comment_lineno = len(block_code)-1
 	for i, line in enumerate(block_code):
 		if line.find("#!") == -1: # we start the code
@@ -591,6 +589,49 @@ def addFunctionCall(lines):
             else:
                 return ""
 
+#check if env1 -> env2.
+def implies(env1, env2):
+	vars_1 = set(env1.keys())
+	vars_2 = set(env1.keys())
+	if not vars_1.issubset(vars_2):
+		return False
+	for var in vars_1:
+		if env1[var] != env2[var]:
+			return False
+	return True
+
+#check if scope1 is nedted inside of scope2: scope2{scope1{}}
+def isNested(scope1, scope2):
+	return scope1["start"] >= scope2["start"] and scope1["end"] <= scope2["end"]
+
+def agreeOnValues(env1, env2):
+	vars_1 = set(env1.keys())
+	vars_2 = set(env2.keys())
+	for var in vars_1 & vars_2:
+		if env1[var] != env2[var]:
+			return False
+	return True
+
+
+def checkConflicts(parsed_comments, comments_line):
+	print("checkConflicts...")
+	scopes = list(comments_line.keys())
+	print(scopes)
+	for scopeIdx1 in scopes:
+		for scopeIdx2 in scopes:
+			print(comments_line[scopeIdx1])
+			if isNested(comments_line[scopeIdx1], comments_line[scopeIdx2]):
+				for i in range(len(parsed_comments[scopeIdx1]['envs'])):
+					for j in range(len(parsed_comments[scopeIdx2]['envs'])):
+						inputs_1 = parsed_comments[scopeIdx1]['envs'][i]
+						outs_1 = parsed_comments[scopeIdx1]['out'][i]
+						inputs_2 = parsed_comments[scopeIdx2]['envs'][j]
+						outs_2 = parsed_comments[scopeIdx2]['out'][j]
+						if implies(inputs_1, inputs_2) and not agreeOnValues(outs_1, outs_2):
+							print("conflict!!!!!!!!")
+							print(f"example {i} from scope {scopeIdx1} is in conflict with example {j} from scope {scopeIdx2} ")
+
+
 def runTests(tests):
 	'''
 		runs the unit tests and returns the results of the tests
@@ -649,8 +690,10 @@ def main(file, values_file = None):
 	try:
 		parsed_comments, code_blocks, comments_line = computeSynthBlocks(lines)
 		results = compute_tests_results(code_blocks, parsed_comments, comments_line, run_time_data)
-		print(f'{comments_line=}')
+		checkConflicts(parsed_comments, comments_line)
+		print(f'{parsed_comments=}')
 	except Exception as e:
+		print("error")
 		print(e)
 		results = {}
 	with open(file + ".test", "w") as out:
