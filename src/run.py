@@ -614,6 +614,7 @@ def agreeOnValues(env1, env2):
 
 
 def checkConflicts(parsed_comments, comments_line):
+	conflicts = []
 	print("checkConflicts...")
 	scopes = list(comments_line.keys())
 	print(scopes)
@@ -628,9 +629,9 @@ def checkConflicts(parsed_comments, comments_line):
 						inputs_2 = parsed_comments[scopeIdx2]['envs'][j]
 						outs_2 = parsed_comments[scopeIdx2]['out'][j]
 						if implies(inputs_1, inputs_2) and not agreeOnValues(outs_1, outs_2):
-							print("conflict!!!!!!!!")
+							conflicts += [((scopeIdx1, i), (scopeIdx2, j))]
 							print(f"example {i} from scope {scopeIdx1} is in conflict with example {j} from scope {scopeIdx2} ")
-
+	return conflicts
 
 def runTests(tests):
 	'''
@@ -645,7 +646,7 @@ def runTests(tests):
 	return results
 
 def isLiveEnv(targetEnv, LiveEnvsList, ignoredVars=[]):
-		#return False
+		return False
 		ignoredVars+=['time', "lineno", "#", "$", "prev_lineno", "next_lineno"]
 		for liveEnv in LiveEnvsList:
 			isSame = True
@@ -690,8 +691,8 @@ def main(file, values_file = None):
 	try:
 		parsed_comments, code_blocks, comments_line = computeSynthBlocks(lines)
 		results = compute_tests_results(code_blocks, parsed_comments, comments_line, run_time_data)
-		checkConflicts(parsed_comments, comments_line)
-		print(f'{parsed_comments=}')
+		#checkConflicts(parsed_comments, comments_line)
+		print(f'{results=}')
 	except Exception as e:
 		print("error")
 		print(e)
