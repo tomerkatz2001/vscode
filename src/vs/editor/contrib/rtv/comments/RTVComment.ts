@@ -135,12 +135,12 @@ export class ParsedComment{
 	}
 
 	public toJson(){
-		return {
+		return JSON.stringify({
 			"outputVarNames": this.outputVarNames,
-			"commentExamples": this.getEnvsToResynth(),
+			"rawCommentExamples": this.rawCommentExamples,
 			"assignments": this.assignments,
 			"commentId": this.commentId
-		};
+		});
 	}
 	public removeEnv(envIdx:number){
 		this.envs.splice(envIdx,1);

@@ -25,7 +25,14 @@ export class RTVSpecification{
 		this.scopes = scopes;
 	}
 
+	public ignoreInnerSpecs(){
+		console.assert(Object.keys(this.scopesTree).length == 1) // only one root
+		let rootId = parseInt(Object.keys(this.scopesTree)[0])
+		let emptyMap = new Map<BranchType, any>();
 
+		this.scopesTree =  {[rootId]: emptyMap}
+
+	}
 	private clear(){
 		this.scopesTree = {};
 		this.scopes = {};
@@ -168,7 +175,7 @@ export class RTVSpecification{
 				let thenString = objValue.get(BranchType.T) != undefined ? '"T": '+this.my_stringify2(objValue.get(BranchType.T)) : "";
 				let elseString = objValue.get(BranchType.F) != undefined ? '"F": '+this.my_stringify2(objValue.get(BranchType.F)) : "";
 				let noBranchString = objValue.get(BranchType.NoBranch) != undefined ? '"NB": '+this.my_stringify2(objValue.get(BranchType.NoBranch)) : "";
-				keyValueString += '{' + thenString + elseString +  noBranchString + '}';
+				keyValueString += '{' + [thenString ,elseString,  noBranchString].filter(s=>s!="").join(",") + '}';
 			}
 			else {
 				keyValueString += this.my_stringify2(objValue);
@@ -189,7 +196,7 @@ export class RTVSpecification{
 		var examples = new Array();
 		for(const [commentId,parrsedComment] of Object.entries(this.scopes)){
 			parrsedComment.getEnvsToResynth();
-			examples.push(`"${commentId}"` + ":" + JSON.stringify(parrsedComment));
+			examples.push(`"${commentId}"` + ":" + parrsedComment.toJson());
 		}
 		return "{" + examples.join(",") + "}";
 }

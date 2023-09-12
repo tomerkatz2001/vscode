@@ -19,6 +19,7 @@ import { RTVSynthView } from 'vs/editor/contrib/rtv/RTVSynthView';
 import { RTVSynthModel } from 'vs/editor/contrib/rtv/RTVSynthModel';
 import {CommentsManager, ParsedComment} from "vs/editor/contrib/rtv/comments/index";
 
+let SCOOPY = false;
 
 enum EditorState {
 	Synthesizing,
@@ -459,6 +460,10 @@ export class RTVSynthController {
 		this._synthModel.includedTimes = new Set([-1]);
 		this._synthModel.bindBoxContentChanged(()=>{});
 		this.RTVController.disable()
+
+		if(!SCOOPY){
+			scopSpec.ignoreInnerSpecs();
+		}
 		try {
 			const rs: SynthResult | undefined = await this.resynthProcess.reSynthesize(scopSpec)
 
