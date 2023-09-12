@@ -448,7 +448,11 @@ export class RTVSynthController {
 
 		var parsedComment:ParsedComment = await this.commentsManager.getParsedComment(lineno - 1);
 
-
+		var linesBeforeResynth = this.RTVController.getModelForce().getLinesContent();
+		let commentIdx = CommentsManager.getScopeIdx(lineno-1, linesBeforeResynth)
+		if(commentIdx < 0){ // no resynth of func
+			return
+		}
 
 		const blockEnd = this.commentsManager.getBlockSize(lineno) + lineno;
 
@@ -481,15 +485,25 @@ export class RTVSynthController {
 				this.moveLinenoBy(linesDelta);
 				this.editorState!.program(rs.program!);
 				this.RTVController.enable();
+				await this.RTVController.updateBoxes();
 				await this.updateBoxContent(true);
+
 
 				return;
 			} else {
 				this.editorState!.failed();
+				this.editor.getModel()?.popStackElement();
+				this.editor.getModel()?.popStackElement();
 				this.RTVController.enable();
+				let range = new RangeClass(1, 1, linesBeforeResynth.length, 1000);
+				linesBeforeResynth = linesBeforeResynth.map(l=>l.replace("!!", ""))
+				this.editor.executeEdits(this.RTVController.getId(), [
+					{ range: range, text: linesBeforeResynth.join("\n") },
+				]);
 				if (rs.program) {
 					this._synthView!.addError(rs.program, undefined, 500);
 				}
+
 			}
 		} catch (err) {
 			// If the synth promise is rejected
@@ -498,6 +512,11 @@ export class RTVSynthController {
 			if (err) {
 				console.error(err);
 				this.editorState!.failed();
+				let range = new RangeClass(1, 1, linesBeforeResynth.length, 1000);
+				linesBeforeResynth = linesBeforeResynth.map(l=>l.replace("!!", ""))
+				this.editor.executeEdits(this.RTVController.getId(), [
+					{ range: range, text: linesBeforeResynth.join("\n") },
+				]);
 			}
 		}
 

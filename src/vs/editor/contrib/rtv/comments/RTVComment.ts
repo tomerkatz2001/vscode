@@ -49,7 +49,15 @@ export class ParsedComment{
 					env[key] = `[${value}]`;
 				}
 				else {
-					env[key] = String(value);
+					if(value == false){
+						env[key] = 'False'
+					}
+					else if(value == true){
+						env[key] = 'True'
+					}
+					else {
+						env[key] = String(value);
+					}
 				}
 			}
 		}
@@ -67,7 +75,15 @@ export class ParsedComment{
 					o[key] = value
 				}
 				else {
-					o[key] = String(value);
+					if(value == false){
+						o[key] = 'False'
+					}
+					else if(value == true){
+						o[key] = 'True'
+					}
+					else {
+						o[key] = String(value);
+					}
 				}
 			}
 		}
