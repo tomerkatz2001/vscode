@@ -29,7 +29,7 @@ def envs():
 
 @generate
 def blockEnd():
-	yield string("#! End of specification scope")
+	yield regex(r" *#! *End of specification scope *")
 	id = yield numberParser
 	return id
 
@@ -55,11 +55,12 @@ def parseComment(comment):
 
 
 def main(input):
-    try:
-	    parsed_comment = parseComment(input)
-	    print(json.dumps(parsed_comment, indent = 4))
-    except:
-	    print(json.dumps({}))
+	try:
+		cleaned_input = "\n".join([line.strip() for line in input.split("\n")])
+		parsed_comment = parseComment(cleaned_input)
+		print(json.dumps(parsed_comment, indent = 4))
+	except:
+		print(json.dumps({}))
 
 
 

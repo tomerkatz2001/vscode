@@ -476,14 +476,11 @@ def computeSynthBlocks(lines):
 	prev_line=""
 	for lineno, line in enumerate(lines):
 		if line.strip().startswith("#! Start"):
-			print("start block")
 			block_id = getBlockId(lineno, lines)
-			print("blocklok", block_id)
 			if block_id > 0: # noraml scope
 			    end_lineno = findBlockEnd(lineno, lines)
 			else: #function scope
 			   end_lineno = getFunctionEnd(lineno, lines)
-			print(f'{end_lineno=}')
 			comments_line[block_id]={"start": lineno + 1, "end": end_lineno + 1} # lineno starts at 0
 			code_blocks[block_id] = lines[lineno : end_lineno]
 
@@ -491,7 +488,6 @@ def computeSynthBlocks(lines):
 
 	parsed_comments = {}
 	for block_id in code_blocks:
-		print(block_id)
 		min_indent = min([len(line) - len(line.lstrip()) if line.strip() != "" else 1000000 for line in code_blocks[block_id]])
 		code_blocks[block_id] = [line[min_indent:] for line in code_blocks[block_id]]
 		parsed_comments[block_id] = parseComment("".join(code_blocks[block_id]))
@@ -509,7 +505,6 @@ def getFirstNonEmptyLine(block_code):
 
 	for i, line in enumerate(block_code[last_comment_lineno+1:]):
 		if line.strip() != "":
-			print(i + last_comment_lineno)
 			return i + last_comment_lineno
 
 	assert(False)
@@ -518,7 +513,6 @@ def getFirstNonEmptyLine(block_code):
 
 class UnitTest:
 	def __init__(self, lines, inputs, expected):
-		print(f'{inputs=}')
 		self.lines = lines
 		self.inputs = {name.replace("_in",""): val for name, val in inputs.items()}
 		self.expected = expected
@@ -530,8 +524,6 @@ class UnitTest:
 		debugger = bdb.Bdb()
 		problems={}
 		try:
-		    print(f"{self.inputs=}")
-		    print(f"{''.join(self.lines)=}")
 		    debugger.run("".join(self.lines), locals=self.inputs, globals = self.inputs)
 		except Exception as e:
 			return False ,"Exception Thrown: " + str(e)
@@ -692,7 +684,7 @@ def main(file, values_file = None):
 		parsed_comments, code_blocks, comments_line = computeSynthBlocks(lines)
 		results = compute_tests_results(code_blocks, parsed_comments, comments_line, run_time_data)
 		#checkConflicts(parsed_comments, comments_line)
-		print(f'{results=}')
+		#print(f'{results=}')
 	except Exception as e:
 		print("error")
 		print(e)
