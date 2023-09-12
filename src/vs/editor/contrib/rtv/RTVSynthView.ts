@@ -20,7 +20,7 @@ export class ErrorHoverManager {
 		this.errorHover = undefined;
 	}
 
-	public add(element: HTMLElement, msg: string, timeout: number = 0, fadeout: number = 1000) {
+	public add(element: HTMLElement, msg: string, timeout: number = 0, fadeout: number = 1000, onLeft = false) {
 		this.addHoverTimer.run(timeout, async () => {
 			if (this.errorHover) {
 				this.errorHover.remove();
@@ -58,8 +58,16 @@ export class ErrorHoverManager {
 
 			let position = element.getBoundingClientRect();
 			this.errorHover.style.position = 'fixed';
-			this.errorHover.style.top = position.top.toString() + 'px';
-			this.errorHover.style.left = position.right.toString() + 'px';
+
+			if(onLeft){
+				this.errorHover.style.bottom = position.top.toString() + 'px';
+				this.errorHover.style.left = position.left.toString() + 'px';
+			}
+			else{
+				this.errorHover.style.top = position.top.toString() + 'px';
+				this.errorHover.style.left = position.right.toString() + 'px';
+			}
+
 			this.errorHover.style.padding = '3px';
 
 			// Add it to the DOM

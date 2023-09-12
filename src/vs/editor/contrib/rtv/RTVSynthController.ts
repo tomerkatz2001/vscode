@@ -15,11 +15,11 @@ import {
 } from './RTVInterfaces';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { RTVDisplayBox } from 'vs/editor/contrib/rtv/RTVDisplay';
-import { RTVSynthView } from 'vs/editor/contrib/rtv/RTVSynthView';
+import {ErrorHoverManager, RTVSynthView} from 'vs/editor/contrib/rtv/RTVSynthView';
 import { RTVSynthModel } from 'vs/editor/contrib/rtv/RTVSynthModel';
 import {CommentsManager, ParsedComment} from "vs/editor/contrib/rtv/comments/index";
 
-let SCOOPY = false;
+let SCOOPY = true;
 
 enum EditorState {
 	Synthesizing,
@@ -491,9 +491,10 @@ export class RTVSynthController {
 
 				return;
 			} else {
+				let errorManager = new ErrorHoverManager(this.editor);
+				let tmpBox = this.RTVController.getBox(lineno)
+				errorManager.add(tmpBox.getElement(), "re-synthesis failed", 5, 1000, true )
 				this.editorState!.failed();
-				this.editor.getModel()?.popStackElement();
-				this.editor.getModel()?.popStackElement();
 				this.RTVController.enable();
 				let range = new RangeClass(1, 1, linesBeforeResynth.length, 1000);
 				linesBeforeResynth = linesBeforeResynth.map(l=>l.replace("!!", ""))
@@ -508,6 +509,9 @@ export class RTVSynthController {
 		} catch (err) {
 			// If the synth promise is rejected
 			console.error('Synth problem rejected.');
+			let errorManager = new ErrorHoverManager(this.editor);
+			let tmpBox = this.RTVController.getBox(lineno)
+			errorManager.add(tmpBox.getElement(), "re-synthesis failed", 5, 1000, true)
 			this.RTVController.enable();
 			if (err) {
 				console.error(err);
