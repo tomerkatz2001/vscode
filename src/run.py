@@ -584,10 +584,12 @@ def addFunctionCall(lines):
 #check if env1 -> env2.
 def implies(env1, env2):
 	vars_1 = set(env1.keys())
-	vars_2 = set(env1.keys())
-	if not vars_1.issubset(vars_2):
+	vars_2 = set(env2.keys())
+# 	print(f"{vars_1=}, {vars_2=}")
+# 	print(f"{vars_2.issubset(vars_1)=}")
+	if not vars_2.issubset(vars_1):
 		return False
-	for var in vars_1:
+	for var in vars_2:
 		if env1[var] != env2[var]:
 			return False
 	return True
@@ -604,7 +606,16 @@ def agreeOnValues(env1, env2):
 			return False
 	return True
 
+def removeConflictsDups(conflicts):
+    seen = set()
+    result_list = []
 
+    for tup in conflicts:
+        sorted_tup = tuple(sorted(tup))  # Sort the elements within each tuple
+        if sorted_tup not in seen:
+            result_list.append(tup)
+            seen.add(sorted_tup)
+    return result_list
 def checkConflicts(parsed_comments, comments_line):
 	conflicts = []
 	print("checkConflicts...")
@@ -616,14 +627,18 @@ def checkConflicts(parsed_comments, comments_line):
 			if isNested(comments_line[scopeIdx1], comments_line[scopeIdx2]):
 				for i in range(len(parsed_comments[scopeIdx1]['envs'])):
 					for j in range(len(parsed_comments[scopeIdx2]['envs'])):
+						#print(f"{scopeIdx1=}, {scopeIdx2=}, {i=}, {j=}")
 						inputs_1 = parsed_comments[scopeIdx1]['envs'][i]
 						outs_1 = parsed_comments[scopeIdx1]['out'][i]
 						inputs_2 = parsed_comments[scopeIdx2]['envs'][j]
 						outs_2 = parsed_comments[scopeIdx2]['out'][j]
+						print(f"{implies(inputs_1, inputs_2)=}, {inputs_1=}, {inputs_2=} ")
+						print(f"{agreeOnValues(outs_1, outs_2)=}, {outs_1=}, {outs_2=}")
 						if implies(inputs_1, inputs_2) and not agreeOnValues(outs_1, outs_2):
 							conflicts += [((scopeIdx1, i), (scopeIdx2, j))]
 							print(f"example {i} from scope {scopeIdx1} is in conflict with example {j} from scope {scopeIdx2} ")
-	return conflicts
+
+	return removeConflictsDups(conflicts)
 
 def runTests(tests):
 	'''
@@ -683,14 +698,17 @@ def main(file, values_file = None):
 	try:
 		parsed_comments, code_blocks, comments_line = computeSynthBlocks(lines)
 		results = compute_tests_results(code_blocks, parsed_comments, comments_line, run_time_data)
-		#checkConflicts(parsed_comments, comments_line)
-		#print(f'{results=}')
+		conflicts = checkConflicts(parsed_comments, comments_line)
+		print(f'{results=}')
+		print(f'{conflicts=}')
 	except Exception as e:
 		print("error")
 		print(e)
 		results = {}
 	with open(file + ".test", "w") as out:
 		out.write(json.dumps(({str(k): v for k, v in results.items()}, comments_line)))
+	with open(file+ ".conflicts", "w") as out:
+		out.write(json.dumps({i: conflicts[i] for i in range(len(conflicts))}))
 
 	if exception != None:
 		raise exception
