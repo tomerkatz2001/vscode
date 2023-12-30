@@ -49,10 +49,10 @@ export class ParsedComment{
 					env[key] = `[${value}]`;
 				}
 				else {
-					if(value == false){
+					if(value === false){
 						env[key] = 'False'
 					}
-					else if(value == true){
+					else if(value === true){
 						env[key] = 'True'
 					}
 					else {
@@ -75,10 +75,10 @@ export class ParsedComment{
 					o[key] = value
 				}
 				else {
-					if(value == false){
+					if(value === false){
 						o[key] = 'False'
 					}
-					else if(value == true){
+					else if(value === true){
 						o[key] = 'True'
 					}
 					else {

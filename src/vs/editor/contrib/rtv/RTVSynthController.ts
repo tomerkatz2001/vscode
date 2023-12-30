@@ -183,7 +183,6 @@ export class RTVSynthController {
 	public isEnabled() : boolean {
 		return this.enabled;
 	}
-
 	onBoxContentChanged = (rows: TableElement[][], init: boolean = false) => {
 		this._synthView!.updateBoxContent(rows, init);
 	}
@@ -442,6 +441,16 @@ export class RTVSynthController {
 		const model = this.editor.getModel()!;
 		const scopeIdx = CommentsManager.getScopeIdx(lineno, model.getLinesContent())
 		let scopSpec = await this.commentsManager.getScopeSpecification(scopeIdx);
+		if(this.commentsManager.blockContainsConflict(scopeIdx)){ // if conflict is present no synth
+			let errorManager = new ErrorHoverManager(this.editor);
+			let tmpBox:RTVDisplayBox = this.RTVController.getBox(lineno) as RTVDisplayBox
+			tmpBox.updateLayout(0);
+			let currPos = this.RTVController.getCursorPos()!;
+			errorManager.add(tmpBox.getElement(), "Warning! Can't synthesize this scope: " +
+				"this scope or some\nof its nested scopes contain conflicting examples.\n" +
+				"Resolve them and try again.", 10, 2000, false, currPos.column*8+280, currPos.lineNumber*40 +55);
+			return
+		}
 		// console.log(scopSpec);
 		// let sceps =  this.commentsManager.getExamples();
 		// console.log(sceps);

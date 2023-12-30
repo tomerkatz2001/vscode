@@ -283,7 +283,7 @@ export class RTVInputBox extends RTVSynthView{
 		let utils = getUtils();
 		let error = await utils.validate(cell.textContent!.trim());
 		if (error) {
-			this.addError(error, cell, 500);
+			//this.addError(error, cell, 500);
 			return false;
 		}
 		this.updateBoxState(varname, cell.innerText.trim());

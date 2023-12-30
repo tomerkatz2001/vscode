@@ -59,7 +59,8 @@ class PyodideWorkerResponse {
 		public readonly stderr: string,
 		public readonly exitCode: number | null,
 		public readonly result: string | undefined,
-		public readonly testResults: string|undefined) {}
+		public readonly testResults: string|undefined,
+		public readonly conflictsResults: string|undefined) {}
 }
 
 abstract class PyodideRequest {

@@ -101,12 +101,14 @@ class LocalRunProcess implements RunProcess {
 			this._process.on('exit', (exitCode) => {
 				let result = undefined;
 				let testResults = undefined;
+				let conflictResults = undefined;
 				if (exitCode !== null) {
 					result = fs.readFileSync(this._file + '.out').toString();
 				}
 				testResults = fs.readFileSync(this._file + '.test').toString();
+				conflictResults = fs.readFileSync(this._file + ".conflicts").toString();
 
-				resolve(new RunResult(this.stdout, this.stderr, exitCode, result, testResults));
+				resolve(new RunResult(this.stdout, this.stderr, exitCode, result, testResults, conflictResults));
 			});
 		});
 	}
@@ -249,7 +251,7 @@ class LocalSynthProcess implements SynthProcess {
 		// Then send the problem to the synth
 
 		this._synthProcess.stdin.write(JSON.stringify(problem) + '\n');
-		console.log(`Started synth process: ${this._problemIdx}`);
+		console.log(`Started resynth process: ${this._problemIdx}`);
 
 		// And we can return!
 		return rs;
@@ -358,7 +360,7 @@ export class LocalReSynthProcess implements ReSynthProcess {
 		// Then send the problem to the synth
 
 		this._synthProcess.stdin.write(problem.ToJSON() + '\n');
-		console.log(`Started synth process: ${this._problemIdx}`);
+		console.log(`Started re-synth process: ${this._problemIdx}, problem can be found in ${values_file}`);
 
 		// And we can return!
 		return rs;

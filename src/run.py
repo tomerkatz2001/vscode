@@ -705,6 +705,7 @@ def main(file, values_file = None):
 		print("error")
 		print(e)
 		results = {}
+		conflicts=[]
 	with open(file + ".test", "w") as out:
 		out.write(json.dumps(({str(k): v for k, v in results.items()}, comments_line)))
 	with open(file+ ".conflicts", "w") as out:

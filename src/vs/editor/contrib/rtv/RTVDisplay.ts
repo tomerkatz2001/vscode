@@ -1822,6 +1822,9 @@ export class RTVController implements IRTVController {
 		this._config.updateValue(boxAlignsToTopOfLineKey, v);
 	}
 
+	public getCursorPos():Position|null{
+		return this._editor.getPosition()
+	}
 	get boxBorder(): boolean {
 		return this._config.getValue(boxBorderKey);
 	}
@@ -2804,7 +2807,21 @@ export class RTVController implements IRTVController {
 
 		if (runResults.testResults) {
 			this.logger.newTestResults(runResults.testResults);
-			await this.commentsManager.updateComments(new RTVTestResults(runResults.testResults));
+			let testResults: RTVTestResults = new RTVTestResults(runResults.testResults);
+			if(runResults.conflictsResults){
+				const parsed= JSON.parse(runResults.conflictsResults);
+				let conflicts:number[][][] = Object.values(parsed);
+				conflicts.forEach((conflict)=>{
+					let firstComment = conflict[0];
+					let secondComment = conflict[1];
+					let commentsLocations = testResults.commentsLocation;
+					let firstLineno = commentsLocations[firstComment[0]].start + firstComment[1] +1// block_line + commentId + 1 //for head and 0 indexing
+					let secondLineno = commentsLocations[secondComment[0]].start + secondComment[1]+1
+					testResults.markAsConflict(firstComment[0], firstComment[1], firstLineno, secondComment[0], secondComment[1], secondLineno);
+				})
+
+			}
+			await this.commentsManager.updateComments(testResults);
 		}
 		else {
 			this.logger.newTestResults("No tests found");

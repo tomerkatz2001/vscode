@@ -128,6 +128,8 @@ export class RTVSpecification{
 		let scopeIds: number[] = [-1];
 		let branches: BranchType[] = [BranchType.NoBranch];
 		let branchesIndent: number[] = [0];
+		const pythonScopeIntents:number = 4;
+		const assignmentPattern: RegExp = /^\s*([a-zA-Z_]\w*)\s*\+?-?\*?=\s*.*$/;
 
 		for (let i = 0; i < lines.length; i++) {
 			const line = lines[i]
@@ -150,16 +152,28 @@ export class RTVSpecification{
 				// Call the function with the comment ID and scope ID
 				this.addComment(parsedComment, parentId, branches[branches.length - 1]);
 				scopeIds.push(parsedComment.scopeId);
-			} else if (line.includes(SYNTHESIZED_COMMENT_END)) {
+				if(branches[branches.length-1] == BranchType.F || branches[branches.length-1] == BranchType.T){ // need to see explicitly another cond
+					branches.pop()
+				}
+			}
+			else if (assignmentPattern.test(line)){
+				const match = line.match(assignmentPattern);
+				const variableName = match && match[1];// no support for double assignment
+				let emptyParsedComment  = new ParsedComment([variableName!], [], [], []);
+				const parentId = scopeIds[scopeIds.length - 1];
+				this.addComment(emptyParsedComment, parentId, branches[branches.length - 1]);
+			}
+			else if (line.includes(SYNTHESIZED_COMMENT_END)) {
 				// End of a scope, remove the last scope ID
 				scopeIds.pop();
 			} else if (line.trim().startsWith('if')) {
 				// in if branch
 				branches.push(BranchType.T);
-				branchesIndent.push(lineIndent);
+				branchesIndent.push(lineIndent + pythonScopeIntents);
 			} else if (line.trim().startsWith('else')) {
+
 				branches.push(BranchType.F);
-				branchesIndent.push(lineIndent);
+				branchesIndent.push(lineIndent + pythonScopeIntents);
 			}
 		}
 	}

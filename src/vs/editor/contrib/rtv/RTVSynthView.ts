@@ -20,7 +20,7 @@ export class ErrorHoverManager {
 		this.errorHover = undefined;
 	}
 
-	public add(element: HTMLElement, msg: string, timeout: number = 0, fadeout: number = 1000, onLeft = false) {
+	public add(element: HTMLElement, msg: string, timeout: number = 0, fadeout: number = 1000, onLeft = false, left:number|undefined = undefined, top:number|undefined=undefined) {
 		this.addHoverTimer.run(timeout, async () => {
 			if (this.errorHover) {
 				this.errorHover.remove();
@@ -59,7 +59,11 @@ export class ErrorHoverManager {
 			let position = element.getBoundingClientRect();
 			this.errorHover.style.position = 'fixed';
 
-			if(onLeft){
+			if(left && top){
+				this.errorHover.style.left = left + 'px';
+				this.errorHover.style.top = top + 'px';
+			}
+			else if(onLeft){
 				this.errorHover.style.bottom = position.top.toString() + 'px';
 				this.errorHover.style.left = position.left.toString() + 'px';
 			}

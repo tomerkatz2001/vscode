@@ -13,6 +13,7 @@ export class DecorationManager{
 	decorations: {[index: number]: UnderlineDecoration} = {}; //map of all the current decorations {env idx -> UnderlineDecoration}
 	indentGuides:string[] = [];
 	deltaCol: number = 0;
+	decorationsTypes: {[index: number]: DecorationType} = {}= {}
 	constructor(private readonly controller: IRTVController, private readonly editor: ICodeEditor, commentId: number, lineno: number, scopeSize:number, deltaCol:number = 0){
 		this.commentId = commentId;
 		this.lineno = lineno;
@@ -28,12 +29,14 @@ export class DecorationManager{
 		let model  = this.controller.getModelForce();
 		let range = new Range(lineno,model.getLineFirstNonWhitespaceColumn(lineno), lineno, model.getLineLastNonWhitespaceColumn(lineno));
 		this.decorations[envIdx] = new UnderlineDecoration(this.controller, range , type, onHoverText); // insert new
+		this.decorationsTypes[envIdx] = type;
 	}
 
 	private removeDecoration(envIdx: number){
 		if(this.decorations[envIdx]){ // if already have decoration
 			this.decorations[envIdx].remove();
 			delete this.decorations[envIdx]
+			delete this.decorationsTypes[envIdx]
 		}
 	}
 	/**
@@ -140,7 +143,7 @@ export class DecorationManager{
 
 }
 
-export enum DecorationType{passTest, failedTest}
+export enum DecorationType{passTest, failedTest, conflict}
 
 class UnderlineDecoration{
 	id : string;
@@ -161,6 +164,9 @@ class UnderlineDecoration{
 				break;
 			case DecorationType.failedTest:
 				className = "RTV-failed-class";
+				break;
+			case DecorationType.conflict:
+				className = "RTV-conflict-class";
 				break;
 		}
 		//this.updateDisplayMessage(onHover);

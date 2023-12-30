@@ -8,6 +8,8 @@ import {ParsedComment} from "vs/editor/contrib/rtv/comments/index";
 import {IModeService} from "vs/editor/common/services/modeService";
 import {IOpenerService} from "vs/platform/opener/common/opener";
 import {RTVSpecification} from "vs/editor/contrib/rtv/RTVSpecification";
+import {Position} from "vs/editor/common/core/position";
+
 
 export interface IRTVDisplayBox {
 	/**
@@ -69,6 +71,7 @@ export class BoxUpdateEvent {
 export interface IRTVController extends IEditorContribution {
 	// Utility functions for accessing the editor or PB content
 	getBox(lineno: number): IRTVDisplayBox;
+	getCursorPos(): Position|null;
 	getLineContent(lineno: number): string;
 	getProgram(): string;
 	getModelForce(): ITextModel;
@@ -276,6 +279,7 @@ export class RunResult {
 		public readonly exitCode: number | null,
 		public readonly result: string | undefined,
 		public readonly testResults : string | undefined,
+		public readonly conflictsResults: string | undefined
 	) {}
 }
 

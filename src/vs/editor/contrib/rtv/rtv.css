@@ -19,6 +19,11 @@
 	color: green;
 	text-decoration-style: wavy;
 }
+.monaco-editor .RTV-conflict-class {
+	text-decoration: underline;
+	color: darkorange;
+	text-decoration-style: wavy;
+}
 
 .monaco-editor .custom-indent-guide {
 	margin-left: -10px;

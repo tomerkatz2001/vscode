@@ -9,16 +9,13 @@ import {DecorationManager, DecorationType} from "vs/editor/contrib/rtv/RTVDecora
 import {FoldingRangeProviderRegistry} from "vs/editor/common/modes";
 import {SpecificationsRangeProvider} from "vs/editor/contrib/rtv/comments/SpecificationsRangeProvider";
 import {IModelContentChangedEvent} from "vs/editor/common/model/textModelEvents";
-import {RTVController, RTVDisplayBox} from "vs/editor/contrib/rtv/RTVDisplay";
+import {RTVController} from "vs/editor/contrib/rtv/RTVDisplay";
 import {MarkdownRenderer} from "vs/editor/browser/core/markdownRenderer";
 import {RTVInputBox, RTVSpecification} from "vs/editor/contrib/rtv/index";
 import {ParsedComment} from "./RTVComment";
-import {parse, createVisitor} from 'python-ast';
-import { TfpdefContext} from "python-ast/dist/parser/Python3Parser";
+import {createVisitor, parse} from 'python-ast';
+import {TfpdefContext} from "python-ast/dist/parser/Python3Parser";
 import {FoldingController} from "vs/editor/contrib/folding/folding";
-
-
-
 
 
 export  const  SYNTHESIZED_COMMENT_START = `#! Start of specification scope:`;
@@ -148,21 +145,30 @@ export class CommentsManager {
 
 		let firstLineno = range.startLineNumber;
 		let lastLineno = range.endLineNumber;
-		let firstBox:RTVDisplayBox;
-		for(let i=firstLineno - 1; i < lastLineno; i++){
-			if(this.controller.envs[i]){
-				firstBox = this.controller.getBox(i+1);
-				break
-			}
-		}
-		let liveVars = firstBox!.allVars();
+		// let firstBox:RTVDisplayBox;
+		// for(let i=firstLineno - 1; i < lastLineno; i++){
+		// 	if(this.controller.envs[i]){
+		// 		firstBox = this.controller.getBox(i+1);
+		// 		break
+		// 	}
+		// }
+		let reserved_names:string[] = ["time", "#", "$", "lineno", "prev_lineno", "next_lineno", "__run_py__"];
+
 
 		let allEnvs:any[] = [];
 		for (let line in (runResults[2] as { [k: string]: any[]; })) {
 			allEnvs = allEnvs.concat(runResults[2][line]);
 		}
 		const prevEnvs = RTVSynthModel.createPreEnvs(allEnvs)
-		let time = firstBox!.getEnvs()[0]["time"];
+
+		let lineEnvs = allEnvs.filter(env=> env["lineno"] == firstLineno-1);
+
+		let time = lineEnvs[0]["time"];
+		let liveVars = Object.keys(lineEnvs[0]).filter(v=>!reserved_names.includes(v))
+		if(!time) {
+			time = lineEnvs[1]["time"]; // maybe in the second TODO:fix it
+			liveVars = Object.keys(lineEnvs[1]).filter(v => !reserved_names.includes(v))
+		}
 		let prevVars:string[] = [];
 		if(time){
 			let prevEnv = prevEnvs.get(time);
@@ -170,8 +176,8 @@ export class CommentsManager {
 				prevVars = Object.keys(prevEnv);
 			}
 		}
-
-		let inputVars = Array.from(liveVars).filter(v => prevVars.includes(v)); // keep all vars that also in preEnv
+		prevVars.push('c') //TODO: the for loop element
+		let inputVars = Array.from(liveVars).filter(v => prevVars.includes(v) && !reserved_names.includes(v)); // keep all vars that also in preEnv
 		let outputVars = this.getAllAssignedVars(firstLineno, lastLineno);
 		let insertScope = ()=>{
 			let userExample = this.inputBox?.getBoxAsExample()!
@@ -209,7 +215,7 @@ export class CommentsManager {
 		let model = this.controller.getModelForce();
 		let cursorPos = this.editor.getPosition();
 		let startCol: number;
-		let endCol: number;
+		let endCol: number = 0;
 		if (
 			model.getLineContent(lineno).trim() === '' &&
 			cursorPos !== null &&
@@ -218,13 +224,18 @@ export class CommentsManager {
 			startCol = cursorPos.column;
 			endCol = cursorPos.column;
 		} else {
-			startCol = model.getLineFirstNonWhitespaceColumn(lineno);
-			endCol = model.getLineMaxColumn(lineno);
+			startCol = 1//model.getLineFirstNonWhitespaceColumn(lineno);
+			for(let i= lineno; i<=endLineno;i++){
+				endCol = Math.max(model.getLineMaxColumn(i), endCol);
+			}
+
 		}
+		let firstLineIndet = model.getLineFirstNonWhitespaceColumn(lineno);
+		examples = examples.split("\n").map((s)=> {if (s!=""){return  " ".repeat(firstLineIndet-1) +s} else return "" }).join("\n");
 		let range = new RangeClass(lineno, startCol, endLineno, endCol);
 		let oldText = model.getValueInRange(range);
-		let prolog = SYNTHESIZED_COMMENT_START +  "\n";
-		let epilogue = "\n" + SYNTHESIZED_COMMENT_END + "\n";
+		let prolog = " ".repeat(firstLineIndet-1) + SYNTHESIZED_COMMENT_START +  "\n";
+		let epilogue = "\n" + " ".repeat(firstLineIndet-1) + SYNTHESIZED_COMMENT_END + "\n";
 		let newText;
 		if (withProlog)
 			newText = prolog + examples + oldText + epilogue;
@@ -332,7 +343,7 @@ export class CommentsManager {
 			const results = testResults.getResultsForBlock(blockId);
 			let parsedComment = this._specifications.comments[blockId];
 			const blockCol = commentCols.get(blockId)!
-			let deltaCol = colComments.get(blockCol)!;
+			let deltaCol = -(blockId-3)//colComments.get(blockCol)!;
 			colComments.set(blockCol, colComments.get(blockCol)!-1);
 
 			this.comments[blockId] = new DecorationManager(this.controller, this.editor, blockId, blocksLines[blockId].start!, this.getBlockSize(parsedComment.lineno), deltaCol);
@@ -341,12 +352,18 @@ export class CommentsManager {
 				if(result[0] === false){
 					type = DecorationType.failedTest;
 				}
+				else if(result[0] === 'conflict'){
+					type = DecorationType.conflict;
+				}
 				this.comments[blockId].addDecoration(index, type, result[1]);
 			});
 		}
 		);
 	}
 
+	public blockContainsConflict(blockId:number):boolean{
+		return Object.values(this.comments[blockId].decorationsTypes).includes(DecorationType.conflict);
+	}
 	public async getParsedComment(lineno: number): Promise<ParsedComment> {
 		let model = this.controller.getModelForce();
 		let program = model.getLinesContent().slice(lineno);
@@ -474,11 +491,14 @@ export class CommentsManager {
 	}
 
 	getAllAssignedVars = (i:number, j:number) =>{
+		const assignmentPattern: RegExp = /^\s*([a-zA-Z_]\w*)\s*\+?-?\*?=\s*.*$/;
 		let varNames:string[] = [];
 		for(let lineno= i; lineno<=j; lineno++){
 			let lineContent = this.editor.getModel()?.getLineContent(lineno);
-			if(lineContent?.includes("=") && !lineContent?.includes("=>")){
-				varNames= varNames.concat(lineContent?.split("=")[0].split(","));
+			if (assignmentPattern.test(lineContent!) && !lineContent?.includes("=>")) {
+				const match = lineContent!.match(assignmentPattern);
+				const variableName = match && match[1];// no support for double assignment
+				varNames= varNames.concat(variableName!);
 			}
 		}
 
@@ -488,6 +508,7 @@ export class CommentsManager {
 	}
 
 	getPrevCommentIndex = (lineno:number)=>{
+
 		if(lineno == 1) return 0;
 		let lineContent = this.editor.getModel()?.getLineContent(lineno-1).trim()!;
 		const regex = /^#! *(\d+)/;
@@ -528,7 +549,22 @@ export class RTVTestResults{
 		const parsed= JSON.parse(testResults);
 		this.results = parsed[0]; //
 		this._commentsLines = parsed[1];
+	}
 
+	public markAsConflict(envIdx1:number, commentIdx1:number, lineno1:number, envIdx2: number, commentIdx2:number, lineno2:number):void{
+		let conflictString = 'This example is in conflict with the example on line:'
+		if(this.results[(`(${envIdx1}, ${commentIdx1})`)][0] === 'conflict'){
+			this.results[(`(${envIdx1}, ${commentIdx1})`)] = ['conflict', this.results[(`(${envIdx1}, ${commentIdx1})`)][1] + `, ${lineno2}`];
+		}
+		else{
+			this.results[(`(${envIdx1}, ${commentIdx1})`)] = ['conflict', `${conflictString} ${lineno2}`];
+		}
+		if(this.results[(`(${envIdx2}, ${commentIdx2})`)][0] === 'conflict'){
+			this.results[(`(${envIdx2}, ${commentIdx2})`)] = ['conflict', this.results[(`(${envIdx2}, ${commentIdx2})`)][1] + `, ${lineno1}`];
+		}
+		else {
+			this.results[(`(${envIdx2}, ${commentIdx2})`)] = ['conflict', `${conflictString} ${lineno1}`];
+		}
 	}
 	get commentsLocation():  {[p: string]: linesInfo} {
 		return this._commentsLines;
