@@ -109,24 +109,24 @@ export class DecorationManager{
 			};
 		}
 
-
+		const guide_col = col + this.deltaCol - 2;
 		indentGuides.push(
 			{
-				range: new Range(this.lineno, col-this.deltaCol, this.lineno, col-this.deltaCol),
+				range: new Range(this.lineno, guide_col, this.lineno, guide_col),
 				options: options_top,
 			}
 		);
 		for(let i = this.lineno+1; i < this.lineno+this.scopeSize; i++){
 			indentGuides.push(
 				{
-					range: new Range(i, col-this.deltaCol, i ,col-this.deltaCol),
+					range: new Range(i, guide_col, i ,guide_col),
 					options: options_rest,
 				}
 			);
 		}
 		indentGuides.push(
 			{
-				range: new Range(this.lineno+this.scopeSize, col-this.deltaCol, this.lineno+this.scopeSize, col-this.deltaCol),
+				range: new Range(this.lineno+this.scopeSize, guide_col, this.lineno+this.scopeSize, guide_col),
 				options: options_bottom,
 			}
 		);

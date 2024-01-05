@@ -329,24 +329,32 @@ export class CommentsManager {
 			decorationManager.removeAllDecoration();
 		}
 		this.comments = {};
-		let commentCols: Map<number, number> = new Map;
-		let colComments: Map<number, number> = new Map; // the reverse of the above map sorry about these names
+		let endLinenos: number[] = [1];
+		let currentMargin: number = 0;
+		//the tests aer organized by ordered - from top to bottom.
 		Object.keys(testResults.commentsLines).map(x=>parseInt(x)).forEach(blockId=>{
-			let col = this.editor.getModel()?.getLineFirstNonWhitespaceColumn(blocksLines[blockId].start!)!;
-			commentCols.set(blockId, col);
-			if(!colComments.has(col)){
-				colComments.set(col, 0);
+			let commentInfo:linesInfo = blocksLines[blockId];
+
+			while(commentInfo.start > endLinenos[endLinenos.length-1])
+			{
+				endLinenos.pop();
+			}
+			const col = this.editor.getModel()!.getLineFirstNonWhitespaceColumn(commentInfo.start);
+			const prevCol = this.editor.getModel()!.getLineFirstNonWhitespaceColumn(endLinenos[endLinenos.length-1])
+			if(col > prevCol){
+				currentMargin = 1; // no need to add margin there is indent
 			}
 			else{
-				colComments.set(col, colComments.get(col)!+1);
+				currentMargin = endLinenos.length;
 			}
+			endLinenos.push(commentInfo.end);
+
+
+
 			const results = testResults.getResultsForBlock(blockId);
 			let parsedComment = this._specifications.comments[blockId];
-			const blockCol = commentCols.get(blockId)!
-			let deltaCol = -(blockId-3)//colComments.get(blockCol)!;
-			colComments.set(blockCol, colComments.get(blockCol)!-1);
 
-			this.comments[blockId] = new DecorationManager(this.controller, this.editor, blockId, blocksLines[blockId].start!, this.getBlockSize(parsedComment.lineno), deltaCol);
+			this.comments[blockId] = new DecorationManager(this.controller, this.editor, blockId, blocksLines[blockId].start!, this.getBlockSize(parsedComment.lineno), currentMargin);
 			results.forEach((result, index) => {
 				let type = DecorationType.passTest;
 				if(result[0] === false){
