@@ -39,57 +39,42 @@ export class ParsedComment{
 		this.envs = envs;
 		for (let env of envs) {
 			for (let [key, value] of Object.entries(env)) {
-				if (typeof value === "string" ) {
-					env[key] = `'${value}'`;
-				}
-				else if(Array.isArray(value)){
-					env[key] = `[${value}]`;
-				}
-				else if(typeof value === "object"){
-					env[key] = `[${value}]`;
-				}
-				else {
-					if(value === false){
-						env[key] = 'False'
-					}
-					else if(value === true){
-						env[key] = 'True'
-					}
-					else {
-						env[key] = String(value);
-					}
-				}
+				env[key] = this.convertToString(value);
 			}
 		}
 		this.envs_status = envs_status;
 		this.out = out;
 		for (let o of out) {
 			for (let [key, value] of Object.entries(o)) {
-				if (typeof value === "string" ) {
-					o[key] = `'${value}'`;
-				}
-				else if(Array.isArray(value)){ // array
-					o[key] = `[${value}]`;
-				}
-				else if( typeof value == "object"){ // dict
-					o[key] = value
-				}
-				else {
-					if(value === false){
-						o[key] = 'False'
-					}
-					else if(value === true){
-						o[key] = 'True'
-					}
-					else {
-						o[key] = String(value);
-					}
-				}
+				o[key] = this.convertToString(value);
 			}
 		}
 		this.size = envs.length;
 		for(let v of synthesizedVarNames) {
 			this.assignments.push(`${v} = 666`);
+		}
+	}
+
+	private convertToString(o: any): string{
+		if (typeof o === "string" ) {
+			return `'${o}'`;
+		}
+		else if(Array.isArray(o)){
+			return `[${o.map(this.convertToString).join(",")}]`;
+		}
+		else if(typeof o === "object"){
+			return `[${o}]`;
+		}
+		else {
+			if(o === false){
+				return 'False'
+			}
+			else if(o === true){
+				return  'True'
+			}
+			else {
+				return  String(o);
+			}
 		}
 	}
 	get inVarNames(){
