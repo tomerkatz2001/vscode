@@ -66,7 +66,7 @@ export class DecorationManager{
 		let options_bottom:IModelDecorationOptions;
 		let options_rest:IModelDecorationOptions;
 
-		if(col == 1 && this.deltaCol ==0){
+		if(col == 1 && this.deltaCol == 0){
 			options_top = {
 				isWholeLine: true,
 				linesDecorationsClassName: "custom-indent-guide-col0-top"
@@ -109,7 +109,7 @@ export class DecorationManager{
 			};
 		}
 
-		const guide_col = col + this.deltaCol - 2;
+		const guide_col = col + this.deltaCol - 1;
 		indentGuides.push(
 			{
 				range: new Range(this.lineno, guide_col, this.lineno, guide_col),

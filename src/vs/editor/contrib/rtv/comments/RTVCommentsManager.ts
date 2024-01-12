@@ -335,21 +335,20 @@ export class CommentsManager {
 		Object.keys(testResults.commentsLines).map(x=>parseInt(x)).forEach(blockId=>{
 			let commentInfo:linesInfo = blocksLines[blockId];
 
-			while(commentInfo.start > endLinenos[endLinenos.length-1])
+			while(commentInfo.start >= endLinenos[endLinenos.length-1])
 			{
 				endLinenos.pop();
 			}
 			const col = this.editor.getModel()!.getLineFirstNonWhitespaceColumn(commentInfo.start);
 			const prevCol = this.editor.getModel()!.getLineFirstNonWhitespaceColumn(endLinenos[endLinenos.length-1])
 			if(col > prevCol){
-				currentMargin = 1; // no need to add margin there is indent
+				currentMargin = 0; // no need to add margin there is indent
 			}
 			else{
-				currentMargin = endLinenos.length;
+				let currentIndents = endLinenos.map(x=> this.editor.getModel()!.getLineFirstNonWhitespaceColumn(x)).filter(x=> x == col);
+				currentMargin = currentIndents.length ;
 			}
 			endLinenos.push(commentInfo.end);
-
-
 
 			const results = testResults.getResultsForBlock(blockId);
 			let parsedComment = this._specifications.comments[blockId];
