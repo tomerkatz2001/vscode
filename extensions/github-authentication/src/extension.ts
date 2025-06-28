@@ -4,85 +4,79 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import { GitHubAuthenticationProvider, onDidChangeSessions } from './github';
-import { uriHandler } from './githubServer';
-import Logger from './common/logger';
-import TelemetryReporter from 'vscode-extension-telemetry';
+import { GitHubAuthenticationProvider, UriEventHandler } from './github';
 
-export async function activate(context: vscode.ExtensionContext) {
-	const { name, version, aiKey } = require('../package.json') as { name: string, version: string, aiKey: string };
-	const telemetryReporter = new TelemetryReporter(name, version, aiKey);
+const settingNotSent = '"github-enterprise.uri" not set';
+const settingInvalid = '"github-enterprise.uri" invalid';
 
+class NullAuthProvider implements vscode.AuthenticationProvider {
+	private _onDidChangeSessions = new vscode.EventEmitter<vscode.AuthenticationProviderAuthenticationSessionsChangeEvent>();
+	onDidChangeSessions = this._onDidChangeSessions.event;
+
+	private readonly _disposable: vscode.Disposable;
+
+	constructor(private readonly _errorMessage: string) {
+		this._disposable = vscode.authentication.registerAuthenticationProvider('github-enterprise', 'GitHub Enterprise', this);
+	}
+
+	createSession(): Thenable<vscode.AuthenticationSession> {
+		throw new Error(this._errorMessage);
+	}
+
+	getSessions(): Thenable<vscode.AuthenticationSession[]> {
+		return Promise.resolve([]);
+	}
+	removeSession(): Thenable<void> {
+		throw new Error(this._errorMessage);
+	}
+
+	dispose() {
+		this._onDidChangeSessions.dispose();
+		this._disposable.dispose();
+	}
+}
+
+function initGHES(context: vscode.ExtensionContext, uriHandler: UriEventHandler): vscode.Disposable {
+	const settingValue = vscode.workspace.getConfiguration().get<string>('github-enterprise.uri');
+	if (!settingValue) {
+		const provider = new NullAuthProvider(settingNotSent);
+		context.subscriptions.push(provider);
+		return provider;
+	}
+
+	// validate user value
+	let uri: vscode.Uri;
+	try {
+		uri = vscode.Uri.parse(settingValue, true);
+	} catch (e) {
+		vscode.window.showErrorMessage(vscode.l10n.t('GitHub Enterprise Server URI is not a valid URI: {0}', e.message ?? e));
+		const provider = new NullAuthProvider(settingInvalid);
+		context.subscriptions.push(provider);
+		return provider;
+	}
+
+	const githubEnterpriseAuthProvider = new GitHubAuthenticationProvider(context, uriHandler, uri);
+	context.subscriptions.push(githubEnterpriseAuthProvider);
+	return githubEnterpriseAuthProvider;
+}
+
+export function activate(context: vscode.ExtensionContext) {
+	const uriHandler = new UriEventHandler();
+	context.subscriptions.push(uriHandler);
 	context.subscriptions.push(vscode.window.registerUriHandler(uriHandler));
-	const loginService = new GitHubAuthenticationProvider();
 
-	await loginService.initialize(context);
+	context.subscriptions.push(new GitHubAuthenticationProvider(context, uriHandler));
 
-	context.subscriptions.push(vscode.commands.registerCommand('github.provide-token', () => {
-		return loginService.manuallyProvideToken();
-	}));
-
-	context.subscriptions.push(vscode.authentication.registerAuthenticationProvider({
-		id: 'github',
-		label: 'GitHub',
-		supportsMultipleAccounts: false,
-		onDidChangeSessions: onDidChangeSessions.event,
-		getSessions: () => Promise.resolve(loginService.sessions),
-		login: async (scopeList: string[]) => {
-			try {
-				/* __GDPR__
-					"login" : { }
-				*/
-				telemetryReporter.sendTelemetryEvent('login');
-
-				const session = await loginService.login(scopeList.sort().join(' '));
-				Logger.info('Login success!');
-				onDidChangeSessions.fire({ added: [session.id], removed: [], changed: [] });
-				return session;
-			} catch (e) {
-				// If login was cancelled, do not notify user.
-				if (e.message === 'Cancelled') {
-					/* __GDPR__
-						"loginCancelled" : { }
-					*/
-					telemetryReporter.sendTelemetryEvent('loginCancelled');
-					throw e;
-				}
-
-				/* __GDPR__
-					"loginFailed" : { }
-				*/
-				telemetryReporter.sendTelemetryEvent('loginFailed');
-
-				vscode.window.showErrorMessage(`Sign in failed: ${e}`);
-				Logger.error(e);
-				throw e;
-			}
-		},
-		logout: async (id: string) => {
-			try {
-				/* __GDPR__
-					"logout" : { }
-				*/
-				telemetryReporter.sendTelemetryEvent('logout');
-
-				await loginService.logout(id);
-				onDidChangeSessions.fire({ added: [], removed: [id], changed: [] });
-			} catch (e) {
-				/* __GDPR__
-					"logoutFailed" : { }
-				*/
-				telemetryReporter.sendTelemetryEvent('logoutFailed');
-
-				vscode.window.showErrorMessage(`Sign out failed: ${e}`);
-				Logger.error(e);
-				throw e;
+	let before = vscode.workspace.getConfiguration().get<string>('github-enterprise.uri');
+	let githubEnterpriseAuthProvider = initGHES(context, uriHandler);
+	context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+		if (e.affectsConfiguration('github-enterprise.uri')) {
+			const after = vscode.workspace.getConfiguration().get<string>('github-enterprise.uri');
+			if (before !== after) {
+				githubEnterpriseAuthProvider?.dispose();
+				before = after;
+				githubEnterpriseAuthProvider = initGHES(context, uriHandler);
 			}
 		}
 	}));
-
-	return;
 }
-
-// this method is called when your extension is deactivated
-export function deactivate() { }

@@ -3,131 +3,41 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
-import { Color } from 'vs/base/common/color';
-import { IDisposable, toDisposable, Disposable } from 'vs/base/common/lifecycle';
-import * as platform from 'vs/platform/registry/common/platform';
-import { ColorIdentifier } from 'vs/platform/theme/common/colorRegistry';
-import { Event, Emitter } from 'vs/base/common/event';
-import { IEnvironmentService } from 'vs/platform/environment/common/environment';
-import { ColorScheme } from 'vs/platform/theme/common/theme';
-import { CSSIcon } from 'vs/base/common/codicons';
+import { Codicon } from '../../../base/common/codicons.js';
+import { Color } from '../../../base/common/color.js';
+import { Emitter, Event } from '../../../base/common/event.js';
+import { Disposable, IDisposable, toDisposable } from '../../../base/common/lifecycle.js';
+import { IEnvironmentService } from '../../environment/common/environment.js';
+import { createDecorator } from '../../instantiation/common/instantiation.js';
+import * as platform from '../../registry/common/platform.js';
+import { ColorIdentifier } from './colorRegistry.js';
+import { IconContribution, IconDefinition } from './iconRegistry.js';
+import { ColorScheme, ThemeTypeSelector } from './theme.js';
 
 export const IThemeService = createDecorator<IThemeService>('themeService');
-
-export interface ThemeColor {
-	id: string;
-}
-
-export namespace ThemeColor {
-	export function isThemeColor(obj: any): obj is ThemeColor {
-		return obj && typeof obj === 'object' && typeof (<ThemeColor>obj).id === 'string';
-	}
-}
 
 export function themeColorFromId(id: ColorIdentifier) {
 	return { id };
 }
 
-// theme icon
-export interface ThemeIcon {
-	readonly id: string;
-	readonly color?: ThemeColor;
-}
+export const FileThemeIcon = Codicon.file;
+export const FolderThemeIcon = Codicon.folder;
 
-export namespace ThemeIcon {
-	export function isThemeIcon(obj: any): obj is ThemeIcon {
-		return obj && typeof obj === 'object' && typeof (<ThemeIcon>obj).id === 'string' && (typeof (<ThemeIcon>obj).color === 'undefined' || ThemeColor.isThemeColor((<ThemeIcon>obj).color));
-	}
-
-	const _regexFromString = /^\$\(([a-z.]+\/)?([a-z-~]+)\)$/i;
-
-	export function fromString(str: string): ThemeIcon | undefined {
-		const match = _regexFromString.exec(str);
-		if (!match) {
-			return undefined;
-		}
-		let [, owner, name] = match;
-		if (!owner || owner === 'codicon/') {
-			return { id: name };
-		}
-		return { id: owner + name };
-	}
-
-	export function modify(icon: ThemeIcon, modifier: 'disabled' | 'spin' | undefined): ThemeIcon {
-		let id = icon.id;
-		const tildeIndex = id.lastIndexOf('~');
-		if (tildeIndex !== -1) {
-			id = id.substring(0, tildeIndex);
-		}
-		if (modifier) {
-			id = `${id}~${modifier}`;
-		}
-		return { id };
-	}
-
-	export function isEqual(ti1: ThemeIcon, ti2: ThemeIcon): boolean {
-		return ti1.id === ti2.id && ti1.color?.id === ti2.color?.id;
-	}
-
-	const _regexAsClassName = /^(codicon\/)?([a-z-]+)(~[a-z]+)?$/i;
-
-	export function asClassNameArray(icon: ThemeIcon): string[] {
-		const match = _regexAsClassName.exec(icon.id);
-		if (!match) {
-			return ['codicon', 'codicon-error'];
-		}
-		let [, , name, modifier] = match;
-		let className = `codicon-${name}`;
-		if (modifier) {
-			return ['codicon', className, modifier.substr(1)];
-		}
-		return ['codicon', className];
-	}
-
-
-	export function asClassName(icon: ThemeIcon): string {
-		return asClassNameArray(icon).join(' ');
-	}
-
-	export function asCSSSelector(icon: ThemeIcon): string {
-		return '.' + asClassNameArray(icon).join('.');
-	}
-
-	export function asCSSIcon(icon: ThemeIcon): CSSIcon {
-		return {
-			classNames: asClassName(icon)
-		};
-	}
-
-	export function asCodiconLabel(icon: ThemeIcon): string {
-		return '$(' + icon.id + ')';
-	}
-
-	export function revive(icon: any): ThemeIcon | undefined {
-		if (ThemeIcon.isThemeIcon(icon)) {
-			return { id: icon.id, color: icon.color ? { id: icon.color.id } : undefined };
-		}
-		return undefined;
-	}
-}
-
-export const FileThemeIcon = { id: 'file' };
-export const FolderThemeIcon = { id: 'folder' };
-
-export function getThemeTypeSelector(type: ColorScheme): string {
+export function getThemeTypeSelector(type: ColorScheme): ThemeTypeSelector {
 	switch (type) {
-		case ColorScheme.DARK: return 'vs-dark';
-		case ColorScheme.HIGH_CONTRAST: return 'hc-black';
-		default: return 'vs';
+		case ColorScheme.DARK: return ThemeTypeSelector.VS_DARK;
+		case ColorScheme.HIGH_CONTRAST_DARK: return ThemeTypeSelector.HC_BLACK;
+		case ColorScheme.HIGH_CONTRAST_LIGHT: return ThemeTypeSelector.HC_LIGHT;
+		default: return ThemeTypeSelector.VS;
 	}
 }
 
 export interface ITokenStyle {
-	readonly foreground?: number;
-	readonly bold?: boolean;
-	readonly underline?: boolean;
-	readonly italic?: boolean;
+	readonly foreground: number | undefined;
+	readonly bold: boolean | undefined;
+	readonly underline: boolean | undefined;
+	readonly strikethrough: boolean | undefined;
+	readonly italic: boolean | undefined;
 }
 
 export interface IColorTheme {
@@ -172,6 +82,16 @@ export interface IFileIconTheme {
 	readonly hidesExplorerArrows: boolean;
 }
 
+export interface IProductIconTheme {
+	/**
+	 * Resolves the definition for the given icon as defined by the theme.
+	 *
+	 * @param iconContribution The icon
+	 */
+	getIcon(iconContribution: IconContribution): IconDefinition | undefined;
+}
+
+
 export interface ICssStyleCollector {
 	addRule(rule: string): void;
 }
@@ -190,6 +110,10 @@ export interface IThemeService {
 	getFileIconTheme(): IFileIconTheme;
 
 	readonly onDidFileIconThemeChange: Event<IFileIconTheme>;
+
+	getProductIconTheme(): IProductIconTheme;
+
+	readonly onDidProductIconThemeChange: Event<IProductIconTheme>;
 
 }
 
@@ -210,13 +134,14 @@ export interface IThemingRegistry {
 	readonly onThemingParticipantAdded: Event<IThemingParticipant>;
 }
 
-class ThemingRegistry implements IThemingRegistry {
+class ThemingRegistry extends Disposable implements IThemingRegistry {
 	private themingParticipants: IThemingParticipant[] = [];
 	private readonly onThemingParticipantAddedEmitter: Emitter<IThemingParticipant>;
 
 	constructor() {
+		super();
 		this.themingParticipants = [];
-		this.onThemingParticipantAddedEmitter = new Emitter<IThemingParticipant>();
+		this.onThemingParticipantAddedEmitter = this._register(new Emitter<IThemingParticipant>());
 	}
 
 	public onColorThemeChange(participant: IThemingParticipant): IDisposable {
@@ -237,7 +162,7 @@ class ThemingRegistry implements IThemingRegistry {
 	}
 }
 
-let themingRegistry = new ThemingRegistry();
+const themingRegistry = new ThemingRegistry();
 platform.Registry.add(Extensions.ThemingContribution, themingRegistry);
 
 export function registerThemingParticipant(participant: IThemingParticipant): IDisposable {
@@ -267,7 +192,7 @@ export class Themable extends Disposable {
 		this.updateStyles();
 	}
 
-	protected updateStyles(): void {
+	updateStyles(): void {
 		// Subclasses to override
 	}
 
@@ -280,4 +205,35 @@ export class Themable extends Disposable {
 
 		return color ? color.toString() : null;
 	}
+}
+
+export interface IPartsSplash {
+	zoomLevel: number | undefined;
+	baseTheme: ThemeTypeSelector;
+	colorInfo: {
+		background: string;
+		foreground: string | undefined;
+		editorBackground: string | undefined;
+		titleBarBackground: string | undefined;
+		titleBarBorder: string | undefined;
+		activityBarBackground: string | undefined;
+		activityBarBorder: string | undefined;
+		sideBarBackground: string | undefined;
+		sideBarBorder: string | undefined;
+		statusBarBackground: string | undefined;
+		statusBarBorder: string | undefined;
+		statusBarNoFolderBackground: string | undefined;
+		windowBorder: string | undefined;
+	};
+	layoutInfo: {
+		sideBarSide: string;
+		editorPartMinWidth: number;
+		titleBarHeight: number;
+		activityBarWidth: number;
+		sideBarWidth: number;
+		auxiliaryBarWidth: number;
+		statusBarHeight: number;
+		windowBorder: boolean;
+		windowBorderRadius: string | undefined;
+	} | undefined;
 }

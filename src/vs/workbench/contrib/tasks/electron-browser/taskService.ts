@@ -3,62 +3,65 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as nls from 'vs/nls';
-import * as Objects from 'vs/base/common/objects';
-import * as semver from 'vs/base/common/semver/semver';
-import { IStringDictionary } from 'vs/base/common/collections';
-import { WorkbenchState, IWorkspaceFolder, IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
-import { ITaskSystem } from 'vs/workbench/contrib/tasks/common/taskSystem';
-import { ExecutionEngine, TaskRunSource } from 'vs/workbench/contrib/tasks/common/tasks';
-import * as TaskConfig from '../common/taskConfiguration';
-import { ProcessTaskSystem } from 'vs/workbench/contrib/tasks/node/processTaskSystem';
-import { ProcessRunnerDetector } from 'vs/workbench/contrib/tasks/node/processRunnerDetector';
-import { AbstractTaskService } from 'vs/workbench/contrib/tasks/browser/abstractTaskService';
-import { TaskFilter, ITaskService } from 'vs/workbench/contrib/tasks/common/taskService';
-import { registerSingleton } from 'vs/platform/instantiation/common/extensions';
-import { TerminalTaskSystem } from 'vs/workbench/contrib/tasks/browser/terminalTaskSystem';
-import { IConfirmationResult, IDialogService } from 'vs/platform/dialogs/common/dialogs';
-import { TerminateResponseCode } from 'vs/base/common/processes';
-import { IModelService } from 'vs/editor/common/services/modelService';
-import { ITextModelService } from 'vs/editor/common/services/resolverService';
-import { ICommandService } from 'vs/platform/commands/common/commands';
-import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
-import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
-import { IFileService } from 'vs/platform/files/common/files';
-import { ILogService } from 'vs/platform/log/common/log';
-import { IMarkerService } from 'vs/platform/markers/common/markers';
-import { INotificationService } from 'vs/platform/notification/common/notification';
-import { IOpenerService } from 'vs/platform/opener/common/opener';
-import { IProgressService } from 'vs/platform/progress/common/progress';
-import { IQuickInputService } from 'vs/platform/quickinput/common/quickInput';
-import { IStorageService } from 'vs/platform/storage/common/storage';
-import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
-import { IViewsService, IViewDescriptorService } from 'vs/workbench/common/views';
-import { IOutputService } from 'vs/workbench/contrib/output/common/output';
-import { ITerminalService, ITerminalInstanceService } from 'vs/workbench/contrib/terminal/browser/terminal';
-import { IConfigurationResolverService } from 'vs/workbench/services/configurationResolver/common/configurationResolver';
-import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
-import { IWorkbenchEnvironmentService } from 'vs/workbench/services/environment/common/environmentService';
-import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
-import { IHostService } from 'vs/workbench/services/host/browser/host';
-import { ILifecycleService } from 'vs/workbench/services/lifecycle/common/lifecycle';
-import { IPanelService } from 'vs/workbench/services/panel/common/panelService';
-import { IPathService } from 'vs/workbench/services/path/common/pathService';
-import { IPreferencesService } from 'vs/workbench/services/preferences/common/preferences';
-import { ITextFileService } from 'vs/workbench/services/textfile/common/textfiles';
+import * as nls from '../../../../nls.js';
+import * as semver from '../../../../base/common/semver/semver.js';
+import { IWorkspaceFolder, IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
+import { ITaskSystem } from '../common/taskSystem.js';
+import { ExecutionEngine } from '../common/tasks.js';
+import * as TaskConfig from '../common/taskConfiguration.js';
+import { AbstractTaskService } from '../browser/abstractTaskService.js';
+import { ITaskFilter, ITaskService } from '../common/taskService.js';
+import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
+import { TerminalTaskSystem } from '../browser/terminalTaskSystem.js';
+import { IConfirmationResult, IDialogService } from '../../../../platform/dialogs/common/dialogs.js';
+import { TerminateResponseCode } from '../../../../base/common/processes.js';
+import { IModelService } from '../../../../editor/common/services/model.js';
+import { ITextModelService } from '../../../../editor/common/services/resolverService.js';
+import { ICommandService } from '../../../../platform/commands/common/commands.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
+import { IFileService } from '../../../../platform/files/common/files.js';
+import { ILogService } from '../../../../platform/log/common/log.js';
+import { IMarkerService } from '../../../../platform/markers/common/markers.js';
+import { INotificationService } from '../../../../platform/notification/common/notification.js';
+import { IOpenerService } from '../../../../platform/opener/common/opener.js';
+import { IProgressService } from '../../../../platform/progress/common/progress.js';
+import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
+import { IStorageService } from '../../../../platform/storage/common/storage.js';
+import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry.js';
+import { IViewDescriptorService } from '../../../common/views.js';
+import { IViewsService } from '../../../services/views/common/viewsService.js';
+import { IOutputService } from '../../../services/output/common/output.js';
+import { ITerminalGroupService, ITerminalService } from '../../terminal/browser/terminal.js';
+import { IConfigurationResolverService } from '../../../services/configurationResolver/common/configurationResolver.js';
+import { IEditorService } from '../../../services/editor/common/editorService.js';
+import { IWorkbenchEnvironmentService } from '../../../services/environment/common/environmentService.js';
+import { IExtensionService } from '../../../services/extensions/common/extensions.js';
+import { ILifecycleService } from '../../../services/lifecycle/common/lifecycle.js';
+import { IPathService } from '../../../services/path/common/pathService.js';
+import { IPreferencesService } from '../../../services/preferences/common/preferences.js';
+import { ITextFileService } from '../../../services/textfile/common/textfiles.js';
+import { IWorkspaceTrustManagementService, IWorkspaceTrustRequestService } from '../../../../platform/workspace/common/workspaceTrust.js';
+import { ITerminalProfileResolverService } from '../../terminal/common/terminal.js';
+import { IPaneCompositePartService } from '../../../services/panecomposite/browser/panecomposite.js';
+import { IThemeService } from '../../../../platform/theme/common/themeService.js';
+import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+import { IRemoteAgentService } from '../../../services/remote/common/remoteAgentService.js';
+import { IAccessibilitySignalService } from '../../../../platform/accessibilitySignal/browser/accessibilitySignalService.js';
+import { IChatService } from '../../chat/common/chatService.js';
+import { IChatAgentService } from '../../chat/common/chatAgents.js';
 
-interface WorkspaceFolderConfigurationResult {
+interface IWorkspaceFolderConfigurationResult {
 	workspaceFolder: IWorkspaceFolder;
-	config: TaskConfig.ExternalTaskRunnerConfiguration | undefined;
+	config: TaskConfig.IExternalTaskRunnerConfiguration | undefined;
 	hasErrors: boolean;
 }
 
 export class TaskService extends AbstractTaskService {
-	private _configHasErrors: boolean = false;
 	constructor(@IConfigurationService configurationService: IConfigurationService,
 		@IMarkerService markerService: IMarkerService,
 		@IOutputService outputService: IOutputService,
-		@IPanelService panelService: IPanelService,
+		@IPaneCompositePartService paneCompositeService: IPaneCompositePartService,
 		@IViewsService viewsService: IViewsService,
 		@ICommandService commandService: ICommandService,
 		@IEditorService editorService: IEditorService,
@@ -72,24 +75,33 @@ export class TaskService extends AbstractTaskService {
 		@IQuickInputService quickInputService: IQuickInputService,
 		@IConfigurationResolverService configurationResolverService: IConfigurationResolverService,
 		@ITerminalService terminalService: ITerminalService,
+		@ITerminalGroupService terminalGroupService: ITerminalGroupService,
 		@IStorageService storageService: IStorageService,
 		@IProgressService progressService: IProgressService,
 		@IOpenerService openerService: IOpenerService,
-		@IHostService _hostService: IHostService,
 		@IDialogService dialogService: IDialogService,
 		@INotificationService notificationService: INotificationService,
 		@IContextKeyService contextKeyService: IContextKeyService,
 		@IWorkbenchEnvironmentService environmentService: IWorkbenchEnvironmentService,
-		@ITerminalInstanceService terminalInstanceService: ITerminalInstanceService,
+		@ITerminalProfileResolverService terminalProfileResolverService: ITerminalProfileResolverService,
 		@IPathService pathService: IPathService,
 		@ITextModelService textModelResolverService: ITextModelService,
 		@IPreferencesService preferencesService: IPreferencesService,
 		@IViewDescriptorService viewDescriptorService: IViewDescriptorService,
-		@ILogService logService: ILogService) {
+		@IWorkspaceTrustRequestService workspaceTrustRequestService: IWorkspaceTrustRequestService,
+		@IWorkspaceTrustManagementService workspaceTrustManagementService: IWorkspaceTrustManagementService,
+		@ILogService logService: ILogService,
+		@IThemeService themeService: IThemeService,
+		@IInstantiationService instantiationService: IInstantiationService,
+		@IRemoteAgentService remoteAgentService: IRemoteAgentService,
+		@IAccessibilitySignalService accessibilitySignalService: IAccessibilitySignalService,
+		@IChatService _chatService: IChatService,
+		@IChatAgentService _chatAgentService: IChatAgentService
+	) {
 		super(configurationService,
 			markerService,
 			outputService,
-			panelService,
+			paneCompositeService,
 			viewsService,
 			commandService,
 			editorService,
@@ -102,130 +114,65 @@ export class TaskService extends AbstractTaskService {
 			quickInputService,
 			configurationResolverService,
 			terminalService,
+			terminalGroupService,
 			storageService,
 			progressService,
 			openerService,
-			_hostService,
 			dialogService,
 			notificationService,
 			contextKeyService,
 			environmentService,
-			terminalInstanceService,
+			terminalProfileResolverService,
 			pathService,
 			textModelResolverService,
 			preferencesService,
 			viewDescriptorService,
-			logService);
-		this._register(lifecycleService.onBeforeShutdown(event => event.veto(this.beforeShutdown())));
+			workspaceTrustRequestService,
+			workspaceTrustManagementService,
+			logService,
+			themeService,
+			lifecycleService,
+			remoteAgentService,
+			instantiationService,
+			_chatService,
+			_chatAgentService
+		);
+		this._register(lifecycleService.onBeforeShutdown(event => event.veto(this.beforeShutdown(), 'veto.tasks')));
 	}
 
-	protected getTaskSystem(): ITaskSystem {
+	protected _getTaskSystem(): ITaskSystem {
 		if (this._taskSystem) {
 			return this._taskSystem;
 		}
-		if (this.executionEngine === ExecutionEngine.Terminal) {
-			this._taskSystem = this.createTerminalTaskSystem();
-		} else {
-			let system = new ProcessTaskSystem(
-				this.markerService, this.modelService, this.telemetryService, this.outputService,
-				this.configurationResolverService, TaskService.OutputChannelId,
-			);
-			system.hasErrors(this._configHasErrors);
-			this._taskSystem = system;
-		}
-		this._taskSystemListener = this._taskSystem!.onDidStateChange((event) => {
-			if (this._taskSystem) {
-				this._taskRunningState.set(this._taskSystem.isActiveSync());
-			}
-			this._onDidStateChange.fire(event);
-		});
-		return this._taskSystem!;
+		const taskSystem = this._createTerminalTaskSystem();
+		this._taskSystem = taskSystem;
+		this._taskSystemListeners =
+			[
+				this._taskSystem.onDidStateChange((event) => {
+					this._taskRunningState.set(this._taskSystem!.isActiveSync());
+					this._onDidStateChange.fire(event);
+				})
+			];
+		return this._taskSystem;
 	}
 
-	protected updateWorkspaceTasks(runSource: TaskRunSource = TaskRunSource.User): void {
-		this._workspaceTasksPromise = this.computeWorkspaceTasks(runSource).then(value => {
-			if (this.executionEngine === ExecutionEngine.Process && this._taskSystem instanceof ProcessTaskSystem) {
-				// We can only have a process engine if we have one folder.
-				value.forEach((value) => {
-					this._configHasErrors = value.hasErrors;
-					(this._taskSystem as ProcessTaskSystem).hasErrors(this._configHasErrors);
-				});
-			}
-			return value;
-		});
-	}
-
-	private hasDetectorSupport(config: TaskConfig.ExternalTaskRunnerConfiguration): boolean {
-		if (!config.command || this.contextService.getWorkbenchState() === WorkbenchState.EMPTY) {
-			return false;
-		}
-		return ProcessRunnerDetector.supports(TaskConfig.CommandString.value(config.command));
-	}
-
-	protected computeLegacyConfiguration(workspaceFolder: IWorkspaceFolder): Promise<WorkspaceFolderConfigurationResult> {
-		let { config, hasParseErrors } = this.getConfiguration(workspaceFolder);
+	protected _computeLegacyConfiguration(workspaceFolder: IWorkspaceFolder): Promise<IWorkspaceFolderConfigurationResult> {
+		const { config, hasParseErrors } = this._getConfiguration(workspaceFolder);
 		if (hasParseErrors) {
 			return Promise.resolve({ workspaceFolder: workspaceFolder, hasErrors: true, config: undefined });
 		}
 		if (config) {
-			if (this.hasDetectorSupport(config)) {
-				return new ProcessRunnerDetector(workspaceFolder, this.fileService, this.contextService, this.configurationResolverService, config).detect(true).then((value): WorkspaceFolderConfigurationResult => {
-					let hasErrors = this.printStderr(value.stderr);
-					let detectedConfig = value.config;
-					if (!detectedConfig) {
-						return { workspaceFolder, config, hasErrors };
-					}
-					let result: TaskConfig.ExternalTaskRunnerConfiguration = Objects.deepClone(config)!;
-					let configuredTasks: IStringDictionary<TaskConfig.CustomTask> = Object.create(null);
-					const resultTasks = result.tasks;
-					if (!resultTasks) {
-						if (detectedConfig.tasks) {
-							result.tasks = detectedConfig.tasks;
-						}
-					} else {
-						resultTasks.forEach(task => {
-							if (task.taskName) {
-								configuredTasks[task.taskName] = task;
-							}
-						});
-						if (detectedConfig.tasks) {
-							detectedConfig.tasks.forEach((task) => {
-								if (task.taskName && !configuredTasks[task.taskName]) {
-									resultTasks.push(task);
-								}
-							});
-						}
-					}
-					return { workspaceFolder, config: result, hasErrors };
-				});
-			} else {
-				return Promise.resolve({ workspaceFolder, config, hasErrors: false });
-			}
+			return Promise.resolve({ workspaceFolder, config, hasErrors: false });
 		} else {
-			return new ProcessRunnerDetector(workspaceFolder, this.fileService, this.contextService, this.configurationResolverService).detect(true).then((value) => {
-				let hasErrors = this.printStderr(value.stderr);
-				return { workspaceFolder, config: value.config!, hasErrors };
-			});
+			return Promise.resolve({ workspaceFolder: workspaceFolder, hasErrors: true, config: undefined });
 		}
 	}
 
-	protected versionAndEngineCompatible(filter?: TaskFilter): boolean {
-		let range = filter && filter.version ? filter.version : undefined;
-		let engine = this.executionEngine;
+	protected _versionAndEngineCompatible(filter?: ITaskFilter): boolean {
+		const range = filter && filter.version ? filter.version : undefined;
+		const engine = this.executionEngine;
 
 		return (range === undefined) || ((semver.satisfies('0.1.0', range) && engine === ExecutionEngine.Process) || (semver.satisfies('2.0.0', range) && engine === ExecutionEngine.Terminal));
-	}
-
-	private printStderr(stderr: string[]): boolean {
-		let result = false;
-		if (stderr && stderr.length > 0) {
-			stderr.forEach((line) => {
-				result = true;
-				this._outputChannel.append(line + '\n');
-			});
-			this.showOutput();
-		}
-		return result;
 	}
 
 	public beforeShutdown(): boolean | Promise<boolean> {
@@ -245,10 +192,9 @@ export class TaskService extends AbstractTaskService {
 		if (this._taskSystem.canAutoTerminate()) {
 			terminatePromise = Promise.resolve({ confirmed: true });
 		} else {
-			terminatePromise = this.dialogService.confirm({
+			terminatePromise = this._dialogService.confirm({
 				message: nls.localize('TaskSystem.runningTask', 'There is a task running. Do you want to terminate it?'),
-				primaryButton: nls.localize({ key: 'TaskSystem.terminateTask', comment: ['&& denotes a mnemonic'] }, "&&Terminate Task"),
-				type: 'question'
+				primaryButton: nls.localize({ key: 'TaskSystem.terminateTask', comment: ['&& denotes a mnemonic'] }, "&&Terminate Task")
 			});
 		}
 
@@ -257,7 +203,7 @@ export class TaskService extends AbstractTaskService {
 				return this._taskSystem!.terminateAll().then((responses) => {
 					let success = true;
 					let code: number | undefined = undefined;
-					for (let response of responses) {
+					for (const response of responses) {
 						success = success && response.success;
 						// We only have a code in the old output runner which only has one task
 						// So we can use the first code.
@@ -267,10 +213,10 @@ export class TaskService extends AbstractTaskService {
 					}
 					if (success) {
 						this._taskSystem = undefined;
-						this.disposeTaskSystemListeners();
+						this._disposeTaskSystemListeners();
 						return false; // no veto
 					} else if (code && code === TerminateResponseCode.ProcessNotFound) {
-						return this.dialogService.confirm({
+						return this._dialogService.confirm({
 							message: nls.localize('TaskSystem.noProcess', 'The launched task doesn\'t exist anymore. If the task spawned background processes exiting VS Code might result in orphaned processes. To avoid this start the last background process with a wait flag.'),
 							primaryButton: nls.localize({ key: 'TaskSystem.exitAnyways', comment: ['&& denotes a mnemonic'] }, "&&Exit Anyways"),
 							type: 'info'
@@ -287,4 +233,4 @@ export class TaskService extends AbstractTaskService {
 	}
 }
 
-registerSingleton(ITaskService, TaskService, true);
+registerSingleton(ITaskService, TaskService, InstantiationType.Delayed);

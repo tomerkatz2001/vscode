@@ -3,179 +3,90 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { workbenchInstantiationService as browserWorkbenchInstantiationService, ITestInstantiationService, TestLifecycleService, TestFilesConfigurationService, TestFileService, TestFileDialogService, TestPathService, TestEncodingOracle, TestProductService } from 'vs/workbench/test/browser/workbenchTestServices';
-import { Event } from 'vs/base/common/event';
-import { ISharedProcessService } from 'vs/platform/ipc/electron-browser/sharedProcessService';
-import { NativeWorkbenchEnvironmentService } from 'vs/workbench/services/environment/electron-browser/environmentService';
-import { NativeTextFileService, } from 'vs/workbench/services/textfile/electron-browser/nativeTextFileService';
-import { INativeHostService } from 'vs/platform/native/electron-sandbox/native';
-import { FileOperationError, IFileService } from 'vs/platform/files/common/files';
-import { IUntitledTextEditorService } from 'vs/workbench/services/untitled/common/untitledTextEditorService';
-import { ILifecycleService } from 'vs/workbench/services/lifecycle/common/lifecycle';
-import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
-import { IModelService } from 'vs/editor/common/services/modelService';
-import { INativeWorkbenchConfiguration, INativeWorkbenchEnvironmentService } from 'vs/workbench/services/environment/electron-sandbox/environmentService';
-import { IDialogService, IFileDialogService, INativeOpenDialogOptions } from 'vs/platform/dialogs/common/dialogs';
-import { ITextResourceConfigurationService } from 'vs/editor/common/services/textResourceConfigurationService';
-import { IProductService } from 'vs/platform/product/common/productService';
-import { IFilesConfigurationService } from 'vs/workbench/services/filesConfiguration/common/filesConfigurationService';
-import { ITextModelService } from 'vs/editor/common/services/resolverService';
-import { ICodeEditorService } from 'vs/editor/browser/services/codeEditorService';
-import { URI } from 'vs/base/common/uri';
-import { IReadTextFileOptions, ITextFileStreamContent, ITextFileService } from 'vs/workbench/services/textfile/common/textfiles';
-import { createTextBufferFactoryFromStream } from 'vs/editor/common/model/textModel';
-import { IOpenEmptyWindowOptions, IWindowOpenable, IOpenWindowOptions, IOpenedWindow } from 'vs/platform/windows/common/windows';
-import { parseArgs, OPTIONS } from 'vs/platform/environment/node/argv';
-import { LogLevel, ILogService } from 'vs/platform/log/common/log';
-import { IPathService } from 'vs/workbench/services/path/common/pathService';
-import { IWorkingCopyFileService } from 'vs/workbench/services/workingCopy/common/workingCopyFileService';
-import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
-import { ModelServiceImpl } from 'vs/editor/common/services/modelServiceImpl';
-import { IBackupFileService } from 'vs/workbench/services/backup/common/backup';
-import { NodeTestBackupFileService } from 'vs/workbench/services/backup/test/electron-browser/backupFileService.test';
-import { IWorkingCopyService } from 'vs/workbench/services/workingCopy/common/workingCopyService';
-import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
-import { TestContextService } from 'vs/workbench/test/common/workbenchTestServices';
-import { IUriIdentityService } from 'vs/workbench/services/uriIdentity/common/uriIdentity';
-import { MouseInputEvent } from 'vs/base/parts/sandbox/common/electronTypes';
-import { IModeService } from 'vs/editor/common/services/modeService';
-import { IOSProperties, IOSStatistics } from 'vs/platform/native/common/native';
-import { homedir, release } from 'os';
-
-export const TestWorkbenchConfiguration: INativeWorkbenchConfiguration = {
-	windowId: 0,
-	machineId: 'testMachineId',
-	sessionId: 'testSessionId',
-	logLevel: LogLevel.Error,
-	mainPid: 0,
-	partsSplashPath: '',
-	appRoot: '',
-	userEnv: {},
-	execPath: process.execPath,
-	perfEntries: [],
-	colorScheme: { dark: true, highContrast: false },
-	os: { release: release() },
-	...parseArgs(process.argv, OPTIONS)
-};
-
-export const TestEnvironmentService = new NativeWorkbenchEnvironmentService(TestWorkbenchConfiguration, TestProductService);
-
-export class TestTextFileService extends NativeTextFileService {
-	private resolveTextContentError!: FileOperationError | null;
-
-	constructor(
-		@IFileService protected fileService: IFileService,
-		@IUntitledTextEditorService untitledTextEditorService: IUntitledTextEditorService,
-		@ILifecycleService lifecycleService: ILifecycleService,
-		@IInstantiationService instantiationService: IInstantiationService,
-		@IModelService modelService: IModelService,
-		@INativeWorkbenchEnvironmentService environmentService: INativeWorkbenchEnvironmentService,
-		@IDialogService dialogService: IDialogService,
-		@IFileDialogService fileDialogService: IFileDialogService,
-		@ITextResourceConfigurationService textResourceConfigurationService: ITextResourceConfigurationService,
-		@IProductService productService: IProductService,
-		@IFilesConfigurationService filesConfigurationService: IFilesConfigurationService,
-		@ITextModelService textModelService: ITextModelService,
-		@ICodeEditorService codeEditorService: ICodeEditorService,
-		@IPathService pathService: IPathService,
-		@IWorkingCopyFileService workingCopyFileService: IWorkingCopyFileService,
-		@ILogService logService: ILogService,
-		@IUriIdentityService uriIdentityService: IUriIdentityService,
-		@IModeService modeService: IModeService,
-		@INativeHostService nativeHostService: INativeHostService
-	) {
-		super(
-			fileService,
-			untitledTextEditorService,
-			lifecycleService,
-			instantiationService,
-			modelService,
-			environmentService,
-			dialogService,
-			fileDialogService,
-			textResourceConfigurationService,
-			filesConfigurationService,
-			textModelService,
-			codeEditorService,
-			pathService,
-			workingCopyFileService,
-			uriIdentityService,
-			modeService,
-			nativeHostService,
-			logService
-		);
-	}
-
-	setResolveTextContentErrorOnce(error: FileOperationError): void {
-		this.resolveTextContentError = error;
-	}
-
-	async readStream(resource: URI, options?: IReadTextFileOptions): Promise<ITextFileStreamContent> {
-		if (this.resolveTextContentError) {
-			const error = this.resolveTextContentError;
-			this.resolveTextContentError = null;
-
-			throw error;
-		}
-
-		const content = await this.fileService.readFileStream(resource, options);
-		return {
-			resource: content.resource,
-			name: content.name,
-			mtime: content.mtime,
-			ctime: content.ctime,
-			etag: content.etag,
-			encoding: 'utf8',
-			value: await createTextBufferFactoryFromStream(content.value),
-			size: 10
-		};
-	}
-}
-
-export class TestNativeTextFileServiceWithEncodingOverrides extends NativeTextFileService {
-
-	private _testEncoding: TestEncodingOracle | undefined;
-	get encoding(): TestEncodingOracle {
-		if (!this._testEncoding) {
-			this._testEncoding = this._register(this.instantiationService.createInstance(TestEncodingOracle));
-		}
-
-		return this._testEncoding;
-	}
-}
+import { Event } from '../../../base/common/event.js';
+import { workbenchInstantiationService as browserWorkbenchInstantiationService, ITestInstantiationService, TestEncodingOracle, TestEnvironmentService, TestFileDialogService, TestFilesConfigurationService, TestFileService, TestLifecycleService, TestTextFileService } from '../browser/workbenchTestServices.js';
+import { ISharedProcessService } from '../../../platform/ipc/electron-browser/services.js';
+import { INativeHostService, INativeHostOptions, IOSProperties, IOSStatistics } from '../../../platform/native/common/native.js';
+import { VSBuffer, VSBufferReadable, VSBufferReadableStream } from '../../../base/common/buffer.js';
+import { DisposableStore, IDisposable } from '../../../base/common/lifecycle.js';
+import { URI } from '../../../base/common/uri.js';
+import { IFileDialogService, INativeOpenDialogOptions } from '../../../platform/dialogs/common/dialogs.js';
+import { IPartsSplash } from '../../../platform/theme/common/themeService.js';
+import { IOpenedMainWindow, IOpenEmptyWindowOptions, IWindowOpenable, IOpenWindowOptions, IColorScheme, IRectangle, IPoint } from '../../../platform/window/common/window.js';
+import { TestConfigurationService } from '../../../platform/configuration/test/common/testConfigurationService.js';
+import { IContextKeyService } from '../../../platform/contextkey/common/contextkey.js';
+import { IEnvironmentService, INativeEnvironmentService } from '../../../platform/environment/common/environment.js';
+import { IFileService } from '../../../platform/files/common/files.js';
+import { IInstantiationService } from '../../../platform/instantiation/common/instantiation.js';
+import { IEditorService } from '../../services/editor/common/editorService.js';
+import { IPathService } from '../../services/path/common/pathService.js';
+import { ITextEditorService } from '../../services/textfile/common/textEditorService.js';
+import { ITextFileService } from '../../services/textfile/common/textfiles.js';
+import { AbstractNativeExtensionTipsService } from '../../../platform/extensionManagement/common/extensionTipsService.js';
+import { IExtensionManagementService } from '../../../platform/extensionManagement/common/extensionManagement.js';
+import { IExtensionRecommendationNotificationService } from '../../../platform/extensionRecommendations/common/extensionRecommendations.js';
+import { IProductService } from '../../../platform/product/common/productService.js';
+import { IStorageService } from '../../../platform/storage/common/storage.js';
+import { ITelemetryService } from '../../../platform/telemetry/common/telemetry.js';
+import { IModelService } from '../../../editor/common/services/model.js';
+import { ModelService } from '../../../editor/common/services/modelService.js';
+import { IWorkspaceContextService } from '../../../platform/workspace/common/workspace.js';
+import { IFilesConfigurationService } from '../../services/filesConfiguration/common/filesConfigurationService.js';
+import { ILifecycleService } from '../../services/lifecycle/common/lifecycle.js';
+import { IWorkingCopyBackupService } from '../../services/workingCopy/common/workingCopyBackup.js';
+import { IWorkingCopyService } from '../../services/workingCopy/common/workingCopyService.js';
+import { TestContextService } from '../common/workbenchTestServices.js';
+import { NativeTextFileService } from '../../services/textfile/electron-browser/nativeTextFileService.js';
+import { insert } from '../../../base/common/arrays.js';
+import { Schemas } from '../../../base/common/network.js';
+import { FileService } from '../../../platform/files/common/fileService.js';
+import { InMemoryFileSystemProvider } from '../../../platform/files/common/inMemoryFilesystemProvider.js';
+import { NullLogService } from '../../../platform/log/common/log.js';
+import { FileUserDataProvider } from '../../../platform/userData/common/fileUserDataProvider.js';
+import { IWorkingCopyIdentifier } from '../../services/workingCopy/common/workingCopy.js';
+import { NativeWorkingCopyBackupService } from '../../services/workingCopy/electron-browser/workingCopyBackupService.js';
+import { CancellationToken } from '../../../base/common/cancellation.js';
+import { UriIdentityService } from '../../../platform/uriIdentity/common/uriIdentityService.js';
+import { UserDataProfilesService } from '../../../platform/userDataProfile/common/userDataProfile.js';
+import { AuthInfo, Credentials } from '../../../platform/request/common/request.js';
 
 export class TestSharedProcessService implements ISharedProcessService {
 
 	declare readonly _serviceBrand: undefined;
 
+	createRawConnection(): never { throw new Error('Not Implemented'); }
 	getChannel(channelName: string): any { return undefined; }
-
 	registerChannel(channelName: string, channel: any): void { }
-
-	async toggleSharedProcessWindow(): Promise<void> { }
-	async whenSharedProcessReady(): Promise<void> { }
+	notifyRestored(): void { }
 }
 
 export class TestNativeHostService implements INativeHostService {
-
 	declare readonly _serviceBrand: undefined;
 
 	readonly windowId = -1;
 
-	onDidOpenWindow: Event<number> = Event.None;
+	onDidOpenMainWindow: Event<number> = Event.None;
 	onDidMaximizeWindow: Event<number> = Event.None;
 	onDidUnmaximizeWindow: Event<number> = Event.None;
-	onDidFocusWindow: Event<number> = Event.None;
-	onDidBlurWindow: Event<number> = Event.None;
+	onDidFocusMainWindow: Event<number> = Event.None;
+	onDidBlurMainWindow: Event<number> = Event.None;
+	onDidFocusMainOrAuxiliaryWindow: Event<number> = Event.None;
+	onDidBlurMainOrAuxiliaryWindow: Event<number> = Event.None;
 	onDidResumeOS: Event<unknown> = Event.None;
 	onDidChangeColorScheme = Event.None;
 	onDidChangePassword = Event.None;
+	onDidTriggerWindowSystemContextMenu: Event<{ windowId: number; x: number; y: number }> = Event.None;
+	onDidChangeWindowFullScreen = Event.None;
+	onDidChangeWindowAlwaysOnTop = Event.None;
+	onDidChangeDisplay = Event.None;
 
 	windowCount = Promise.resolve(1);
 	getWindowCount(): Promise<number> { return this.windowCount; }
 
-	async getWindows(): Promise<IOpenedWindow[]> { return []; }
+	async getWindows(): Promise<IOpenedMainWindow[]> { return []; }
 	async getActiveWindowId(): Promise<number | undefined> { return undefined; }
+	async getActiveWindowPosition(): Promise<IRectangle | undefined> { return undefined; }
+	async getNativeWindowHandle(windowId: number): Promise<VSBuffer | undefined> { return undefined; }
 
 	openWindow(options?: IOpenEmptyWindowOptions): Promise<void>;
 	openWindow(toOpen: IWindowOpenable[], options?: IOpenWindowOptions): Promise<void>;
@@ -184,13 +95,21 @@ export class TestNativeHostService implements INativeHostService {
 	}
 
 	async toggleFullScreen(): Promise<void> { }
-	async handleTitleDoubleClick(): Promise<void> { }
 	async isMaximized(): Promise<boolean> { return true; }
+	async isFullScreen(): Promise<boolean> { return true; }
 	async maximizeWindow(): Promise<void> { }
 	async unmaximizeWindow(): Promise<void> { }
 	async minimizeWindow(): Promise<void> { }
+	async moveWindowTop(options?: INativeHostOptions): Promise<void> { }
+	async isWindowAlwaysOnTop(options?: INativeHostOptions): Promise<boolean> { return false; }
+	async toggleWindowAlwaysOnTop(options?: INativeHostOptions): Promise<void> { }
+	async setWindowAlwaysOnTop(alwaysOnTop: boolean, options?: INativeHostOptions): Promise<void> { }
+	getCursorScreenPoint(): Promise<{ readonly point: IPoint; readonly display: IRectangle }> { throw new Error('Method not implemented.'); }
+	async positionWindow(position: IRectangle, options?: INativeHostOptions): Promise<void> { }
+	async updateWindowControls(options: { height?: number; backgroundColor?: string; foregroundColor?: string }): Promise<void> { }
 	async setMinimumSize(width: number | undefined, height: number | undefined): Promise<void> { }
-	async focusWindow(options?: { windowId?: number | undefined; } | undefined): Promise<void> { }
+	async saveWindowSplash(value: IPartsSplash): Promise<void> { }
+	async focusWindow(options?: INativeHostOptions): Promise<void> { }
 	async showMessageBox(options: Electron.MessageBoxOptions): Promise<Electron.MessageBoxReturnValue> { throw new Error('Method not implemented.'); }
 	async showSaveDialog(options: Electron.SaveDialogOptions): Promise<Electron.SaveDialogReturnValue> { throw new Error('Method not implemented.'); }
 	async showOpenDialog(options: Electron.OpenDialogOptions): Promise<Electron.OpenDialogReturnValue> { throw new Error('Method not implemented.'); }
@@ -201,55 +120,89 @@ export class TestNativeHostService implements INativeHostService {
 	async showItemInFolder(path: string): Promise<void> { }
 	async setRepresentedFilename(path: string): Promise<void> { }
 	async isAdmin(): Promise<boolean> { return false; }
-	async writeElevated(source: URI, target: URI, options?: { overwriteReadonly?: boolean | undefined; }): Promise<void> { }
+	async writeElevated(source: URI, target: URI): Promise<void> { }
+	async isRunningUnderARM64Translation(): Promise<boolean> { return false; }
 	async getOSProperties(): Promise<IOSProperties> { return Object.create(null); }
 	async getOSStatistics(): Promise<IOSStatistics> { return Object.create(null); }
 	async getOSVirtualMachineHint(): Promise<number> { return 0; }
+	async getOSColorScheme(): Promise<IColorScheme> { return { dark: true, highContrast: false }; }
+	async hasWSLFeatureInstalled(): Promise<boolean> { return false; }
+	async getProcessId(): Promise<number> { throw new Error('Method not implemented.'); }
 	async killProcess(): Promise<void> { }
 	async setDocumentEdited(edited: boolean): Promise<void> { }
-	async openExternal(url: string): Promise<boolean> { return false; }
+	async openExternal(url: string, defaultApplication?: string): Promise<boolean> { return false; }
 	async updateTouchBar(): Promise<void> { }
-	async moveItemToTrash(): Promise<boolean> { return false; }
+	async moveItemToTrash(): Promise<void> { }
 	async newWindowTab(): Promise<void> { }
 	async showPreviousWindowTab(): Promise<void> { }
 	async showNextWindowTab(): Promise<void> { }
 	async moveWindowTabToNewWindow(): Promise<void> { }
 	async mergeAllWindowTabs(): Promise<void> { }
 	async toggleWindowTabsBar(): Promise<void> { }
+	async installShellCommand(): Promise<void> { }
+	async uninstallShellCommand(): Promise<void> { }
 	async notifyReady(): Promise<void> { }
-	async relaunch(options?: { addArgs?: string[] | undefined; removeArgs?: string[] | undefined; } | undefined): Promise<void> { }
+	async relaunch(options?: { addArgs?: string[] | undefined; removeArgs?: string[] | undefined } | undefined): Promise<void> { }
 	async reload(): Promise<void> { }
 	async closeWindow(): Promise<void> { }
-	async closeWindowById(): Promise<void> { }
 	async quit(): Promise<void> { }
 	async exit(code: number): Promise<void> { }
-	async openDevTools(options?: Electron.OpenDevToolsOptions | undefined): Promise<void> { }
+	async openDevTools(options?: Partial<Electron.OpenDevToolsOptions> & INativeHostOptions | undefined): Promise<void> { }
 	async toggleDevTools(): Promise<void> { }
+	async stopTracing(): Promise<void> { }
+	async openGPUInfoWindow(): Promise<void> { }
 	async resolveProxy(url: string): Promise<string | undefined> { return undefined; }
+	async lookupAuthorization(authInfo: AuthInfo): Promise<Credentials | undefined> { return undefined; }
+	async lookupKerberosAuthorization(url: string): Promise<string | undefined> { return undefined; }
+	async loadCertificates(): Promise<string[]> { return []; }
+	async isPortFree() { return Promise.resolve(true); }
+	async findFreePort(startPort: number, giveUpAfter: number, timeout: number, stride?: number): Promise<number> { return -1; }
 	async readClipboardText(type?: 'selection' | 'clipboard' | undefined): Promise<string> { return ''; }
 	async writeClipboardText(text: string, type?: 'selection' | 'clipboard' | undefined): Promise<void> { }
 	async readClipboardFindText(): Promise<string> { return ''; }
 	async writeClipboardFindText(text: string): Promise<void> { }
-	async writeClipboardBuffer(format: string, buffer: Uint8Array, type?: 'selection' | 'clipboard' | undefined): Promise<void> { }
-	async readClipboardBuffer(format: string): Promise<Uint8Array> { return Uint8Array.from([]); }
+	async writeClipboardBuffer(format: string, buffer: VSBuffer, type?: 'selection' | 'clipboard' | undefined): Promise<void> { }
+	async triggerPaste(options?: INativeHostOptions): Promise<void> { }
+	async readImage(): Promise<Uint8Array> { return Uint8Array.from([]); }
+	async readClipboardBuffer(format: string): Promise<VSBuffer> { return VSBuffer.wrap(Uint8Array.from([])); }
 	async hasClipboard(format: string, type?: 'selection' | 'clipboard' | undefined): Promise<boolean> { return false; }
-	async sendInputEvent(event: MouseInputEvent): Promise<void> { }
 	async windowsGetStringRegKey(hive: 'HKEY_CURRENT_USER' | 'HKEY_LOCAL_MACHINE' | 'HKEY_CLASSES_ROOT' | 'HKEY_USERS' | 'HKEY_CURRENT_CONFIG', path: string, name: string): Promise<string | undefined> { return undefined; }
-	async getPassword(service: string, account: string): Promise<string | null> { return null; }
-	async setPassword(service: string, account: string, password: string): Promise<void> { }
-	async deletePassword(service: string, account: string): Promise<boolean> { return false; }
-	async findPassword(service: string): Promise<string | null> { return null; }
-	async findCredentials(service: string): Promise<{ account: string; password: string; }[]> { return []; }
+	async profileRenderer(): Promise<any> { throw new Error(); }
+	async getScreenshot(rect?: IRectangle): Promise<VSBuffer | undefined> { return undefined; }
 }
 
-export function workbenchInstantiationService(): ITestInstantiationService {
+export class TestExtensionTipsService extends AbstractNativeExtensionTipsService {
+
+	constructor(
+		@INativeEnvironmentService environmentService: INativeEnvironmentService,
+		@ITelemetryService telemetryService: ITelemetryService,
+		@IExtensionManagementService extensionManagementService: IExtensionManagementService,
+		@IStorageService storageService: IStorageService,
+		@INativeHostService nativeHostService: INativeHostService,
+		@IExtensionRecommendationNotificationService extensionRecommendationNotificationService: IExtensionRecommendationNotificationService,
+		@IFileService fileService: IFileService,
+		@IProductService productService: IProductService,
+	) {
+		super(environmentService.userHome, nativeHostService, telemetryService, extensionManagementService, storageService, extensionRecommendationNotificationService, fileService, productService);
+	}
+}
+
+export function workbenchInstantiationService(overrides?: {
+	environmentService?: (instantiationService: IInstantiationService) => IEnvironmentService;
+	fileService?: (instantiationService: IInstantiationService) => IFileService;
+	configurationService?: (instantiationService: IInstantiationService) => TestConfigurationService;
+	textFileService?: (instantiationService: IInstantiationService) => ITextFileService;
+	pathService?: (instantiationService: IInstantiationService) => IPathService;
+	editorService?: (instantiationService: IInstantiationService) => IEditorService;
+	contextKeyService?: (instantiationService: IInstantiationService) => IContextKeyService;
+	textEditorService?: (instantiationService: IInstantiationService) => ITextEditorService;
+}, disposables = new DisposableStore()): ITestInstantiationService {
 	const instantiationService = browserWorkbenchInstantiationService({
-		textFileService: insta => <ITextFileService>insta.createInstance(TestTextFileService),
-		pathService: insta => <IPathService>insta.createInstance(TestNativePathService)
-	});
+		workingCopyBackupService: () => disposables.add(new TestNativeWorkingCopyBackupService()),
+		...overrides
+	}, disposables);
 
 	instantiationService.stub(INativeHostService, new TestNativeHostService());
-	instantiationService.stub(INativeWorkbenchEnvironmentService, TestEnvironmentService);
 
 	return instantiationService;
 }
@@ -260,22 +213,111 @@ export class TestServiceAccessor {
 		@ITextFileService public textFileService: TestTextFileService,
 		@IFilesConfigurationService public filesConfigurationService: TestFilesConfigurationService,
 		@IWorkspaceContextService public contextService: TestContextService,
-		@IModelService public modelService: ModelServiceImpl,
+		@IModelService public modelService: ModelService,
 		@IFileService public fileService: TestFileService,
 		@INativeHostService public nativeHostService: TestNativeHostService,
 		@IFileDialogService public fileDialogService: TestFileDialogService,
-		@IBackupFileService public backupFileService: NodeTestBackupFileService,
+		@IWorkingCopyBackupService public workingCopyBackupService: TestNativeWorkingCopyBackupService,
 		@IWorkingCopyService public workingCopyService: IWorkingCopyService,
 		@IEditorService public editorService: IEditorService
 	) {
 	}
 }
 
-export class TestNativePathService extends TestPathService {
+export class TestNativeTextFileServiceWithEncodingOverrides extends NativeTextFileService {
 
-	declare readonly _serviceBrand: undefined;
+	private _testEncoding: TestEncodingOracle | undefined;
+	override get encoding(): TestEncodingOracle {
+		if (!this._testEncoding) {
+			this._testEncoding = this._register(this.instantiationService.createInstance(TestEncodingOracle));
+		}
+
+		return this._testEncoding;
+	}
+}
+
+export class TestNativeWorkingCopyBackupService extends NativeWorkingCopyBackupService implements IDisposable {
+
+	private backupResourceJoiners: Function[];
+	private discardBackupJoiners: Function[];
+	discardedBackups: IWorkingCopyIdentifier[];
+	discardedAllBackups: boolean;
+	private pendingBackupsArr: Promise<void>[];
 
 	constructor() {
-		super(URI.file(homedir()));
+		const environmentService = TestEnvironmentService;
+		const logService = new NullLogService();
+		const fileService = new FileService(logService);
+		const lifecycleService = new TestLifecycleService();
+		super(environmentService as any, fileService, logService, lifecycleService);
+
+		const inMemoryFileSystemProvider = this._register(new InMemoryFileSystemProvider());
+		this._register(fileService.registerProvider(Schemas.inMemory, inMemoryFileSystemProvider));
+		const uriIdentityService = this._register(new UriIdentityService(fileService));
+		const userDataProfilesService = this._register(new UserDataProfilesService(environmentService, fileService, uriIdentityService, logService));
+		this._register(fileService.registerProvider(Schemas.vscodeUserData, this._register(new FileUserDataProvider(Schemas.file, inMemoryFileSystemProvider, Schemas.vscodeUserData, userDataProfilesService, uriIdentityService, logService))));
+
+		this.backupResourceJoiners = [];
+		this.discardBackupJoiners = [];
+		this.discardedBackups = [];
+		this.pendingBackupsArr = [];
+		this.discardedAllBackups = false;
+
+		this._register(fileService);
+		this._register(lifecycleService);
+	}
+
+	testGetFileService(): IFileService {
+		return this.fileService;
+	}
+
+	async waitForAllBackups(): Promise<void> {
+		await Promise.all(this.pendingBackupsArr);
+	}
+
+	joinBackupResource(): Promise<void> {
+		return new Promise(resolve => this.backupResourceJoiners.push(resolve));
+	}
+
+	override async backup(identifier: IWorkingCopyIdentifier, content?: VSBufferReadableStream | VSBufferReadable, versionId?: number, meta?: any, token?: CancellationToken): Promise<void> {
+		const p = super.backup(identifier, content, versionId, meta, token);
+		const removeFromPendingBackups = insert(this.pendingBackupsArr, p.then(undefined, undefined));
+
+		try {
+			await p;
+		} finally {
+			removeFromPendingBackups();
+		}
+
+		while (this.backupResourceJoiners.length) {
+			this.backupResourceJoiners.pop()!();
+		}
+	}
+
+	joinDiscardBackup(): Promise<void> {
+		return new Promise(resolve => this.discardBackupJoiners.push(resolve));
+	}
+
+	override async discardBackup(identifier: IWorkingCopyIdentifier): Promise<void> {
+		await super.discardBackup(identifier);
+		this.discardedBackups.push(identifier);
+
+		while (this.discardBackupJoiners.length) {
+			this.discardBackupJoiners.pop()!();
+		}
+	}
+
+	override async discardBackups(filter?: { except: IWorkingCopyIdentifier[] }): Promise<void> {
+		this.discardedAllBackups = true;
+
+		return super.discardBackups(filter);
+	}
+
+	async getBackupContents(identifier: IWorkingCopyIdentifier): Promise<string> {
+		const backupResource = this.toBackupResource(identifier);
+
+		const fileContents = await this.fileService.readFile(backupResource);
+
+		return fileContents.value.toString();
 	}
 }

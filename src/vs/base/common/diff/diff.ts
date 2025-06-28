@@ -3,9 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { DiffChange } from 'vs/base/common/diff/diffChange';
-import { stringHash } from 'vs/base/common/hash';
-import { Constants } from 'vs/base/common/uint';
+import { DiffChange } from './diffChange.js';
+import { stringHash } from '../hash.js';
+import { Constants } from '../uint.js';
 
 export class StringDiffSequence implements ISequence {
 
@@ -27,6 +27,7 @@ export function stringDiff(original: string, modified: string, pretty: boolean):
 
 export interface ISequence {
 	getElements(): Int32Array | number[] | string[];
+	getStrictElement?(index: number): string;
 }
 
 export interface IDiffChange {
@@ -68,7 +69,7 @@ export interface IDiffResult {
 // The code below has been ported from a C# implementation in VS
 //
 
-export class Debug {
+class Debug {
 
 	public static Assert(condition: boolean, message: string): void {
 		if (!condition) {
@@ -77,7 +78,7 @@ export class Debug {
 	}
 }
 
-export class MyArray {
+class MyArray {
 	/**
 	 * Copies a range of elements from an Array starting at the specified source index and pastes
 	 * them to another Array starting at the specified destination index. The length and the indexes
@@ -93,7 +94,7 @@ export class MyArray {
 	 * length:
 	 *		A 64-bit integer that represents the number of elements to copy.
 	 */
-	public static Copy(sourceArray: any[], sourceIndex: number, destinationArray: any[], destinationIndex: number, length: number) {
+	public static Copy(sourceArray: unknown[], sourceIndex: number, destinationArray: unknown[], destinationIndex: number, length: number) {
 		for (let i = 0; i < length; i++) {
 			destinationArray[destinationIndex + i] = sourceArray[sourceIndex + i];
 		}
@@ -125,7 +126,7 @@ const enum LocalConstants {
  * A utility class which helps to create the set of DiffChanges from
  * a difference operation. This class accepts original DiffElements and
  * modified DiffElements that are involved in a particular change. The
- * MarktNextChange() method can be called to mark the separation between
+ * MarkNextChange() method can be called to mark the separation between
  * distinct changes. At the end, the Changes property can be called to retrieve
  * the constructed changes.
  */
@@ -231,6 +232,8 @@ export class LcsDiff {
 
 	private readonly ContinueProcessingPredicate: IContinueProcessingPredicate | null;
 
+	private readonly _originalSequence: ISequence;
+	private readonly _modifiedSequence: ISequence;
 	private readonly _hasStrings: boolean;
 	private readonly _originalStringElements: string[];
 	private readonly _originalElementsOrHash: Int32Array;
@@ -245,6 +248,9 @@ export class LcsDiff {
 	 */
 	constructor(originalSequence: ISequence, modifiedSequence: ISequence, continueProcessingPredicate: IContinueProcessingPredicate | null = null) {
 		this.ContinueProcessingPredicate = continueProcessingPredicate;
+
+		this._originalSequence = originalSequence;
+		this._modifiedSequence = modifiedSequence;
 
 		const [originalStringElements, originalElementsOrHash, originalHasStrings] = LcsDiff._getElements(originalSequence);
 		const [modifiedStringElements, modifiedElementsOrHash, modifiedHasStrings] = LcsDiff._getElements(modifiedSequence);
@@ -286,6 +292,22 @@ export class LcsDiff {
 			return false;
 		}
 		return (this._hasStrings ? this._originalStringElements[originalIndex] === this._modifiedStringElements[newIndex] : true);
+	}
+
+	private ElementsAreStrictEqual(originalIndex: number, newIndex: number): boolean {
+		if (!this.ElementsAreEqual(originalIndex, newIndex)) {
+			return false;
+		}
+		const originalElement = LcsDiff._getStrictElement(this._originalSequence, originalIndex);
+		const modifiedElement = LcsDiff._getStrictElement(this._modifiedSequence, newIndex);
+		return (originalElement === modifiedElement);
+	}
+
+	private static _getStrictElement(sequence: ISequence, index: number): string | null {
+		if (typeof sequence.getStrictElement === 'function') {
+			return sequence.getStrictElement(index);
+		}
+		return null;
 	}
 
 	private OriginalElementsAreEqual(index1: number, index2: number): boolean {
@@ -401,7 +423,7 @@ export class LcsDiff {
 			if (!quitEarlyArr[0]) {
 				rightChanges = this.ComputeDiffRecursive(midOriginal + 1, originalEnd, midModified + 1, modifiedEnd, quitEarlyArr);
 			} else {
-				// We did't have time to finish the first half, so we don't have time to compute this half.
+				// We didn't have time to finish the first half, so we don't have time to compute this half.
 				// Consider the entire rest of the sequence different.
 				rightChanges = [
 					new DiffChange(midOriginal + 1, originalEnd - (midOriginal + 1) + 1, midModified + 1, modifiedEnd - (midModified + 1) + 1)
@@ -704,7 +726,7 @@ export class LcsDiff {
 				} else {
 					// We didn't actually remember enough of the history.
 
-					//Since we are quiting the diff early, we need to shift back the originalStart and modified start
+					//Since we are quitting the diff early, we need to shift back the originalStart and modified start
 					//back into the boundary limits since we decremented their value above beyond the boundary limit.
 					originalStart++;
 					modifiedStart++;
@@ -813,15 +835,23 @@ export class LcsDiff {
 			const checkOriginal = change.originalLength > 0;
 			const checkModified = change.modifiedLength > 0;
 
-			while (change.originalStart + change.originalLength < originalStop &&
-				change.modifiedStart + change.modifiedLength < modifiedStop &&
-				(!checkOriginal || this.OriginalElementsAreEqual(change.originalStart, change.originalStart + change.originalLength)) &&
-				(!checkModified || this.ModifiedElementsAreEqual(change.modifiedStart, change.modifiedStart + change.modifiedLength))) {
+			while (
+				change.originalStart + change.originalLength < originalStop
+				&& change.modifiedStart + change.modifiedLength < modifiedStop
+				&& (!checkOriginal || this.OriginalElementsAreEqual(change.originalStart, change.originalStart + change.originalLength))
+				&& (!checkModified || this.ModifiedElementsAreEqual(change.modifiedStart, change.modifiedStart + change.modifiedLength))
+			) {
+				const startStrictEqual = this.ElementsAreStrictEqual(change.originalStart, change.modifiedStart);
+				const endStrictEqual = this.ElementsAreStrictEqual(change.originalStart + change.originalLength, change.modifiedStart + change.modifiedLength);
+				if (endStrictEqual && !startStrictEqual) {
+					// moving the change down would create an equal change, but the elements are not strict equal
+					break;
+				}
 				change.originalStart++;
 				change.modifiedStart++;
 			}
 
-			let mergedChangeArr: Array<DiffChange | null> = [null];
+			const mergedChangeArr: Array<DiffChange | null> = [null];
 			if (i < changes.length - 1 && this.ChangesOverlap(changes[i], changes[i + 1], mergedChangeArr)) {
 				changes[i] = mergedChangeArr[0]!;
 				changes.splice(i + 1, 1);
@@ -838,12 +868,8 @@ export class LcsDiff {
 			let modifiedStop = 0;
 			if (i > 0) {
 				const prevChange = changes[i - 1];
-				if (prevChange.originalLength > 0) {
-					originalStop = prevChange.originalStart + prevChange.originalLength;
-				}
-				if (prevChange.modifiedLength > 0) {
-					modifiedStop = prevChange.modifiedStart + prevChange.modifiedLength;
-				}
+				originalStop = prevChange.originalStart + prevChange.originalLength;
+				modifiedStop = prevChange.modifiedStart + prevChange.modifiedLength;
 			}
 
 			const checkOriginal = change.originalLength > 0;
@@ -868,7 +894,11 @@ export class LcsDiff {
 					break;
 				}
 
-				const score = this._boundaryScore(originalStart, change.originalLength, modifiedStart, change.modifiedLength);
+				const touchingPreviousChange = (originalStart === originalStop && modifiedStart === modifiedStop);
+				const score = (
+					(touchingPreviousChange ? 5 : 0)
+					+ this._boundaryScore(originalStart, change.originalLength, modifiedStart, change.modifiedLength)
+				);
 
 				if (score > bestScore) {
 					bestScore = score;
@@ -878,6 +908,14 @@ export class LcsDiff {
 
 			change.originalStart -= bestDelta;
 			change.modifiedStart -= bestDelta;
+
+			const mergedChangeArr: Array<DiffChange | null> = [null];
+			if (i > 0 && this.ChangesOverlap(changes[i - 1], changes[i], mergedChangeArr)) {
+				changes[i - 1] = mergedChangeArr[0]!;
+				changes.splice(i, 1);
+				i++;
+				continue;
+			}
 		}
 
 		// There could be multiple longest common substrings.
@@ -1009,7 +1047,7 @@ export class LcsDiff {
 	 * @returns The concatenated list
 	 */
 	private ConcatenateChanges(left: DiffChange[], right: DiffChange[]): DiffChange[] {
-		let mergedChangeArr: DiffChange[] = [];
+		const mergedChangeArr: DiffChange[] = [];
 
 		if (left.length === 0 || right.length === 0) {
 			return (right.length > 0) ? right : left;
@@ -1098,4 +1136,180 @@ export class LcsDiff {
 			return (diffEven === upperBoundEven) ? numDiagonals - 1 : numDiagonals - 2;
 		}
 	}
+}
+
+
+/**
+ * Precomputed equality array for character codes.
+ */
+const precomputedEqualityArray = new Uint32Array(0x10000);
+
+/**
+ * Computes the Levenshtein distance for strings of length <= 32.
+ * @param firstString - The first string.
+ * @param secondString - The second string.
+ * @returns The Levenshtein distance.
+ */
+const computeLevenshteinDistanceForShortStrings = (firstString: string, secondString: string): number => {
+	const firstStringLength = firstString.length;
+	const secondStringLength = secondString.length;
+	const lastBitMask = 1 << (firstStringLength - 1);
+	let positiveVector = -1;
+	let negativeVector = 0;
+	let distance = firstStringLength;
+	let index = firstStringLength;
+
+	// Initialize precomputedEqualityArray for firstString
+	while (index--) {
+		precomputedEqualityArray[firstString.charCodeAt(index)] |= 1 << index;
+	}
+
+	// Process each character of secondString
+	for (index = 0; index < secondStringLength; index++) {
+		let equalityMask = precomputedEqualityArray[secondString.charCodeAt(index)];
+		const combinedVector = equalityMask | negativeVector;
+		equalityMask |= ((equalityMask & positiveVector) + positiveVector) ^ positiveVector;
+		negativeVector |= ~(equalityMask | positiveVector);
+		positiveVector &= equalityMask;
+		if (negativeVector & lastBitMask) {
+			distance++;
+		}
+		if (positiveVector & lastBitMask) {
+			distance--;
+		}
+		negativeVector = (negativeVector << 1) | 1;
+		positiveVector = (positiveVector << 1) | ~(combinedVector | negativeVector);
+		negativeVector &= combinedVector;
+	}
+
+	// Reset precomputedEqualityArray
+	index = firstStringLength;
+	while (index--) {
+		precomputedEqualityArray[firstString.charCodeAt(index)] = 0;
+	}
+
+	return distance;
+};
+
+/**
+ * Computes the Levenshtein distance for strings of length > 32.
+ * @param firstString - The first string.
+ * @param secondString - The second string.
+ * @returns The Levenshtein distance.
+ */
+function computeLevenshteinDistanceForLongStrings(firstString: string, secondString: string): number {
+	const firstStringLength = firstString.length;
+	const secondStringLength = secondString.length;
+	const horizontalBitArray = [];
+	const verticalBitArray = [];
+	const horizontalSize = Math.ceil(firstStringLength / 32);
+	const verticalSize = Math.ceil(secondStringLength / 32);
+
+	// Initialize horizontal and vertical bit arrays
+	for (let i = 0; i < horizontalSize; i++) {
+		horizontalBitArray[i] = -1;
+		verticalBitArray[i] = 0;
+	}
+
+	let verticalIndex = 0;
+	for (; verticalIndex < verticalSize - 1; verticalIndex++) {
+		let negativeVector = 0;
+		let positiveVector = -1;
+		const start = verticalIndex * 32;
+		const verticalLength = Math.min(32, secondStringLength) + start;
+
+		// Initialize precomputedEqualityArray for secondString
+		for (let k = start; k < verticalLength; k++) {
+			precomputedEqualityArray[secondString.charCodeAt(k)] |= 1 << k;
+		}
+
+		// Process each character of firstString
+		for (let i = 0; i < firstStringLength; i++) {
+			const equalityMask = precomputedEqualityArray[firstString.charCodeAt(i)];
+			const previousBit = (horizontalBitArray[(i / 32) | 0] >>> i) & 1;
+			const matchBit = (verticalBitArray[(i / 32) | 0] >>> i) & 1;
+			const combinedVector = equalityMask | negativeVector;
+			const combinedHorizontalVector = ((((equalityMask | matchBit) & positiveVector) + positiveVector) ^ positiveVector) | equalityMask | matchBit;
+			let positiveHorizontalVector = negativeVector | ~(combinedHorizontalVector | positiveVector);
+			let negativeHorizontalVector = positiveVector & combinedHorizontalVector;
+			if ((positiveHorizontalVector >>> 31) ^ previousBit) {
+				horizontalBitArray[(i / 32) | 0] ^= 1 << i;
+			}
+			if ((negativeHorizontalVector >>> 31) ^ matchBit) {
+				verticalBitArray[(i / 32) | 0] ^= 1 << i;
+			}
+			positiveHorizontalVector = (positiveHorizontalVector << 1) | previousBit;
+			negativeHorizontalVector = (negativeHorizontalVector << 1) | matchBit;
+			positiveVector = negativeHorizontalVector | ~(combinedVector | positiveHorizontalVector);
+			negativeVector = positiveHorizontalVector & combinedVector;
+		}
+
+		// Reset precomputedEqualityArray
+		for (let k = start; k < verticalLength; k++) {
+			precomputedEqualityArray[secondString.charCodeAt(k)] = 0;
+		}
+	}
+
+	let negativeVector = 0;
+	let positiveVector = -1;
+	const start = verticalIndex * 32;
+	const verticalLength = Math.min(32, secondStringLength - start) + start;
+
+	// Initialize precomputedEqualityArray for secondString
+	for (let k = start; k < verticalLength; k++) {
+		precomputedEqualityArray[secondString.charCodeAt(k)] |= 1 << k;
+	}
+
+	let distance = secondStringLength;
+
+	// Process each character of firstString
+	for (let i = 0; i < firstStringLength; i++) {
+		const equalityMask = precomputedEqualityArray[firstString.charCodeAt(i)];
+		const previousBit = (horizontalBitArray[(i / 32) | 0] >>> i) & 1;
+		const matchBit = (verticalBitArray[(i / 32) | 0] >>> i) & 1;
+		const combinedVector = equalityMask | negativeVector;
+		const combinedHorizontalVector = ((((equalityMask | matchBit) & positiveVector) + positiveVector) ^ positiveVector) | equalityMask | matchBit;
+		let positiveHorizontalVector = negativeVector | ~(combinedHorizontalVector | positiveVector);
+		let negativeHorizontalVector = positiveVector & combinedHorizontalVector;
+		distance += (positiveHorizontalVector >>> (secondStringLength - 1)) & 1;
+		distance -= (negativeHorizontalVector >>> (secondStringLength - 1)) & 1;
+		if ((positiveHorizontalVector >>> 31) ^ previousBit) {
+			horizontalBitArray[(i / 32) | 0] ^= 1 << i;
+		}
+		if ((negativeHorizontalVector >>> 31) ^ matchBit) {
+			verticalBitArray[(i / 32) | 0] ^= 1 << i;
+		}
+		positiveHorizontalVector = (positiveHorizontalVector << 1) | previousBit;
+		negativeHorizontalVector = (negativeHorizontalVector << 1) | matchBit;
+		positiveVector = negativeHorizontalVector | ~(combinedVector | positiveHorizontalVector);
+		negativeVector = positiveHorizontalVector & combinedVector;
+	}
+
+	// Reset precomputedEqualityArray
+	for (let k = start; k < verticalLength; k++) {
+		precomputedEqualityArray[secondString.charCodeAt(k)] = 0;
+	}
+
+	return distance;
+}
+
+/**
+ * Computes the Levenshtein distance between two strings.
+ * @param firstString - The first string.
+ * @param secondString - The second string.
+ * @returns The Levenshtein distance.
+ */
+export function computeLevenshteinDistance(firstString: string, secondString: string): number {
+	if (firstString.length < secondString.length) {
+		const temp = secondString;
+		secondString = firstString;
+		firstString = temp;
+	}
+	if (secondString.length === 0) {
+		return firstString.length;
+	}
+	if (firstString.length <= 32) {
+		return computeLevenshteinDistanceForShortStrings(firstString, secondString);
+	}
+	return computeLevenshteinDistanceForLongStrings(firstString, secondString);
 }

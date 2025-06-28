@@ -3,30 +3,23 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Disposable, MutableDisposable, IDisposable } from 'vs/base/common/lifecycle';
-import { IMarkerService } from 'vs/platform/markers/common/markers';
-import { IActivityService, NumberBadge } from 'vs/workbench/services/activity/common/activity';
-import { localize } from 'vs/nls';
-import Constants from './constants';
-import { IWorkbenchContribution } from 'vs/workbench/common/contributions';
+import { MarkersFilters } from './markersViewActions.js';
+import { IView } from '../../../common/views.js';
+import { MarkerElement, ResourceMarkers } from './markersModel.js';
+import { MarkersViewMode } from '../common/markers.js';
 
-export class ActivityUpdater extends Disposable implements IWorkbenchContribution {
+export interface IMarkersView extends IView {
 
-	private readonly activity = this._register(new MutableDisposable<IDisposable>());
+	readonly filters: MarkersFilters;
+	focusFilter(): void;
+	clearFilterText(): void;
+	getFilterStats(): { total: number; filtered: number };
 
-	constructor(
-		@IActivityService private readonly activityService: IActivityService,
-		@IMarkerService private readonly markerService: IMarkerService
-	) {
-		super();
-		this._register(this.markerService.onMarkerChanged(() => this.updateBadge()));
-		this.updateBadge();
-	}
+	getFocusElement(): MarkerElement | undefined;
+	getFocusedSelectedElements(): MarkerElement[] | null;
+	getAllResourceMarkers(): ResourceMarkers[];
 
-	private updateBadge(): void {
-		const { errors, warnings, infos } = this.markerService.getStatistics();
-		const total = errors + warnings + infos;
-		const message = localize('totalProblems', 'Total {0} Problems', total);
-		this.activity.value = this.activityService.showViewActivity(Constants.MARKERS_VIEW_ID, { badge: new NumberBadge(total, () => message) });
-	}
+	collapseAll(): void;
+	setMultiline(multiline: boolean): void;
+	setViewMode(viewMode: MarkersViewMode): void;
 }

@@ -1,3 +1,8 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
 // @ts-check
 
 const mappings = [
@@ -22,6 +27,7 @@ const mappings = [
 	['html', 'text.html.basic'],
 	['ini', 'source.ini'],
 	['java', 'source.java'],
+	['jl', 'source.julia'],
 	['js', 'source.js'],
 	['json', 'source.json.comments'],
 	['jsx', 'source.js.jsx'],

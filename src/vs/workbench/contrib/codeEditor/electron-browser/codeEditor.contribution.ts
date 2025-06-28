@@ -3,4 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import './startDebugTextMate';
+import './displayChangeRemeasureFonts.js';
+import './inputClipboardActions.js';
+import './selectionClipboard.js';
+import './sleepResumeRepaintMinimap.js';
+import './startDebugTextMate.js';

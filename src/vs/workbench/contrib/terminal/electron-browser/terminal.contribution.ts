@@ -3,25 +3,25 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { IWorkbenchContributionsRegistry, Extensions as WorkbenchExtensions } from 'vs/workbench/common/contributions';
-import { registerSingleton } from 'vs/platform/instantiation/common/extensions';
-import { ITerminalInstanceService } from 'vs/workbench/contrib/terminal/browser/terminal';
-import { TerminalInstanceService } from 'vs/workbench/contrib/terminal/electron-browser/terminalInstanceService';
-import { getSystemShell } from 'vs/workbench/contrib/terminal/node/terminal';
-import { TerminalNativeContribution } from 'vs/workbench/contrib/terminal/electron-browser/terminalNativeContribution';
-import { Registry } from 'vs/platform/registry/common/platform';
-import { IConfigurationRegistry, Extensions } from 'vs/platform/configuration/common/configurationRegistry';
-import { getTerminalShellConfiguration } from 'vs/workbench/contrib/terminal/common/terminalConfiguration';
-import { LifecyclePhase } from 'vs/workbench/services/lifecycle/common/lifecycle';
-
-// This file contains additional desktop-only contributions on top of those in browser/
+import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
+import { registerMainProcessRemoteService } from '../../../../platform/ipc/electron-browser/services.js';
+import { Registry } from '../../../../platform/registry/common/platform.js';
+import { ILocalPtyService, TerminalIpcChannels } from '../../../../platform/terminal/common/terminal.js';
+import { IWorkbenchContributionsRegistry, WorkbenchPhase, Extensions as WorkbenchExtensions, registerWorkbenchContribution2 } from '../../../common/contributions.js';
+import { ITerminalProfileResolverService } from '../common/terminal.js';
+import { TerminalNativeContribution } from './terminalNativeContribution.js';
+import { ElectronTerminalProfileResolverService } from './terminalProfileResolverService.js';
+import { LifecyclePhase } from '../../../services/lifecycle/common/lifecycle.js';
+import { LocalTerminalBackendContribution } from './localTerminalBackend.js';
 
 // Register services
-registerSingleton(ITerminalInstanceService, TerminalInstanceService, true);
+registerMainProcessRemoteService(ILocalPtyService, TerminalIpcChannels.LocalPty);
+registerSingleton(ITerminalProfileResolverService, ElectronTerminalProfileResolverService, InstantiationType.Delayed);
 
+// Register workbench contributions
 const workbenchRegistry = Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench);
-workbenchRegistry.registerWorkbenchContribution(TerminalNativeContribution, LifecyclePhase.Ready);
 
-// Register configurations
-const configurationRegistry = Registry.as<IConfigurationRegistry>(Extensions.Configuration);
-configurationRegistry.registerConfiguration(getTerminalShellConfiguration(getSystemShell));
+// This contribution needs to be active during the Startup phase to be available when a remote resolver tries to open a local
+// terminal while connecting to the remote.
+registerWorkbenchContribution2(LocalTerminalBackendContribution.ID, LocalTerminalBackendContribution, WorkbenchPhase.BlockStartup);
+workbenchRegistry.registerWorkbenchContribution(TerminalNativeContribution, LifecyclePhase.Restored);

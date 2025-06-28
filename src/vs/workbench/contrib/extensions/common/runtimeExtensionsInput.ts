@@ -3,13 +3,27 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as nls from 'vs/nls';
-import { URI } from 'vs/base/common/uri';
-import { EditorInput } from 'vs/workbench/common/editor';
+import * as nls from '../../../../nls.js';
+import { URI } from '../../../../base/common/uri.js';
+import { EditorInputCapabilities, IUntypedEditorInput } from '../../../common/editor.js';
+import { EditorInput } from '../../../common/editor/editorInput.js';
+import { ThemeIcon } from '../../../../base/common/themables.js';
+import { Codicon } from '../../../../base/common/codicons.js';
+import { registerIcon } from '../../../../platform/theme/common/iconRegistry.js';
+
+const RuntimeExtensionsEditorIcon = registerIcon('runtime-extensions-editor-label-icon', Codicon.extensions, nls.localize('runtimeExtensionEditorLabelIcon', 'Icon of the runtime extensions editor label.'));
 
 export class RuntimeExtensionsInput extends EditorInput {
 
 	static readonly ID = 'workbench.runtimeExtensions.input';
+
+	override get typeId(): string {
+		return RuntimeExtensionsInput.ID;
+	}
+
+	override get capabilities(): EditorInputCapabilities {
+		return EditorInputCapabilities.Readonly | EditorInputCapabilities.Singleton;
+	}
 
 	static _instance: RuntimeExtensionsInput;
 	static get instance() {
@@ -25,19 +39,18 @@ export class RuntimeExtensionsInput extends EditorInput {
 		path: 'default'
 	});
 
-	getTypeId(): string {
-		return RuntimeExtensionsInput.ID;
-	}
-
-	getName(): string {
+	override getName(): string {
 		return nls.localize('extensionsInputName', "Running Extensions");
 	}
 
-	supportsSplitEditor(): boolean {
-		return false;
+	override getIcon(): ThemeIcon {
+		return RuntimeExtensionsEditorIcon;
 	}
 
-	matches(other: unknown): boolean {
+	override matches(other: EditorInput | IUntypedEditorInput): boolean {
+		if (super.matches(other)) {
+			return true;
+		}
 		return other instanceof RuntimeExtensionsInput;
 	}
 }

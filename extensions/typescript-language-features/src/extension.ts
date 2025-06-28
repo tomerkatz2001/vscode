@@ -3,29 +3,51 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as rimraf from 'rimraf';
+import VsCodeTelemetryReporter from '@vscode/extension-telemetry';
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { Api, getExtensionApi } from './api';
+import { CommandManager } from './commands/commandManager';
+import { DisableTsgoCommand } from './commands/useTsgo';
 import { registerBaseCommands } from './commands/index';
-import { LanguageConfigurationManager } from './languageFeatures/languageConfiguration';
+import { ElectronServiceConfigurationProvider } from './configuration/configuration.electron';
+import { ExperimentationTelemetryReporter, IExperimentationTelemetryReporter } from './experimentTelemetryReporter';
+import { ExperimentationService } from './experimentationService';
 import { createLazyClientHost, lazilyActivateClient } from './lazyClientHost';
+import { Logger } from './logging/logger';
 import { nodeRequestCancellerFactory } from './tsServer/cancellation.electron';
 import { NodeLogDirectoryProvider } from './tsServer/logDirectoryProvider.electron';
-import { ChildServerProcess } from './tsServer/serverProcess.electron';
+import { PluginManager } from './tsServer/plugins';
+import { ElectronServiceProcessFactory } from './tsServer/serverProcess.electron';
 import { DiskTypeScriptVersionProvider } from './tsServer/versionProvider.electron';
-import { CommandManager } from './commands/commandManager';
-import { onCaseInsenitiveFileSystem } from './utils/fileSystem.electron';
-import { PluginManager } from './utils/plugins';
+import { ActiveJsTsEditorTracker } from './ui/activeJsTsEditorTracker';
+import { onCaseInsensitiveFileSystem } from './utils/fs.electron';
+import { Lazy } from './utils/lazy';
+import { getPackageInfo } from './utils/packageInfo';
 import * as temp from './utils/temp.electron';
 
 export function activate(
 	context: vscode.ExtensionContext
 ): Api {
-	const pluginManager = new PluginManager();
-	context.subscriptions.push(pluginManager);
-
 	const commandManager = new CommandManager();
 	context.subscriptions.push(commandManager);
+
+	// Disable extension if using the experimental TypeScript Go extension
+	const config = vscode.workspace.getConfiguration('typescript');
+	const useTsgo = config.get<boolean>('experimental.useTsgo', false);
+
+	if (useTsgo) {
+		commandManager.register(new DisableTsgoCommand());
+		// Return a no-op API when disabled
+		return {
+			getAPI() {
+				return undefined;
+			}
+		};
+	}
+
+	const pluginManager = new PluginManager();
+	context.subscriptions.push(pluginManager);
 
 	const onCompletionAccepted = new vscode.EventEmitter<vscode.CompletionItem>();
 	context.subscriptions.push(onCompletionAccepted);
@@ -33,34 +55,54 @@ export function activate(
 	const logDirectoryProvider = new NodeLogDirectoryProvider(context);
 	const versionProvider = new DiskTypeScriptVersionProvider();
 
-	context.subscriptions.push(new LanguageConfigurationManager());
+	const activeJsTsEditorTracker = new ActiveJsTsEditorTracker();
+	context.subscriptions.push(activeJsTsEditorTracker);
 
-	const lazyClientHost = createLazyClientHost(context, onCaseInsenitiveFileSystem(), {
+	let experimentTelemetryReporter: IExperimentationTelemetryReporter | undefined;
+	const packageInfo = getPackageInfo(context);
+	if (packageInfo) {
+		const { name: id, version, aiKey } = packageInfo;
+		const vscTelemetryReporter = new VsCodeTelemetryReporter(aiKey);
+		experimentTelemetryReporter = new ExperimentationTelemetryReporter(vscTelemetryReporter);
+		context.subscriptions.push(experimentTelemetryReporter);
+
+		// Currently we have no experiments, but creating the service adds the appropriate
+		// shared properties to the ExperimentationTelemetryReporter we just created.
+		new ExperimentationService(experimentTelemetryReporter, id, version, context.globalState);
+	}
+
+	const logger = new Logger();
+
+	const lazyClientHost = createLazyClientHost(context, onCaseInsensitiveFileSystem(), {
 		pluginManager,
 		commandManager,
 		logDirectoryProvider,
 		cancellerFactory: nodeRequestCancellerFactory,
 		versionProvider,
-		processFactory: ChildServerProcess,
+		processFactory: new ElectronServiceProcessFactory(),
+		activeJsTsEditorTracker,
+		serviceConfigurationProvider: new ElectronServiceConfigurationProvider(),
+		experimentTelemetryReporter,
+		logger,
 	}, item => {
 		onCompletionAccepted.fire(item);
 	});
 
-	registerBaseCommands(commandManager, lazyClientHost, pluginManager);
+	registerBaseCommands(commandManager, lazyClientHost, pluginManager, activeJsTsEditorTracker);
 
 	import('./task/taskProvider').then(module => {
-		context.subscriptions.push(module.register(lazyClientHost.map(x => x.serviceClient)));
+		context.subscriptions.push(module.register(new Lazy(() => lazyClientHost.value.serviceClient)));
 	});
 
 	import('./languageFeatures/tsconfig').then(module => {
 		context.subscriptions.push(module.register());
 	});
 
-	context.subscriptions.push(lazilyActivateClient(lazyClientHost, pluginManager));
+	context.subscriptions.push(lazilyActivateClient(lazyClientHost, pluginManager, activeJsTsEditorTracker));
 
 	return getExtensionApi(onCompletionAccepted.event, pluginManager);
 }
 
 export function deactivate() {
-	rimraf.sync(temp.getInstanceTempDir());
+	fs.rmSync(temp.instanceTempDir.value, { recursive: true, force: true });
 }

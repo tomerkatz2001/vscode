@@ -3,18 +3,16 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import 'vs/css!./media/notificationsActions';
-import { INotificationViewItem } from 'vs/workbench/common/notifications';
-import { localize } from 'vs/nls';
-import { Action, IAction, ActionRunner, WorkbenchActionExecutedEvent, WorkbenchActionExecutedClassification } from 'vs/base/common/actions';
-import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
-import { INotificationService } from 'vs/platform/notification/common/notification';
-import { CLEAR_NOTIFICATION, EXPAND_NOTIFICATION, COLLAPSE_NOTIFICATION, CLEAR_ALL_NOTIFICATIONS, HIDE_NOTIFICATIONS_CENTER } from 'vs/workbench/browser/parts/notifications/notificationsCommands';
-import { ICommandService } from 'vs/platform/commands/common/commands';
-import { IClipboardService } from 'vs/platform/clipboard/common/clipboardService';
-import { Codicon } from 'vs/base/common/codicons';
-import { registerIcon } from 'vs/platform/theme/common/iconRegistry';
-import { ThemeIcon } from 'vs/platform/theme/common/themeService';
+import './media/notificationsActions.css';
+import { INotificationViewItem } from '../../../common/notifications.js';
+import { localize } from '../../../../nls.js';
+import { Action } from '../../../../base/common/actions.js';
+import { CLEAR_NOTIFICATION, EXPAND_NOTIFICATION, COLLAPSE_NOTIFICATION, CLEAR_ALL_NOTIFICATIONS, HIDE_NOTIFICATIONS_CENTER, TOGGLE_DO_NOT_DISTURB_MODE, TOGGLE_DO_NOT_DISTURB_MODE_BY_SOURCE } from './notificationsCommands.js';
+import { ICommandService } from '../../../../platform/commands/common/commands.js';
+import { IClipboardService } from '../../../../platform/clipboard/common/clipboardService.js';
+import { Codicon } from '../../../../base/common/codicons.js';
+import { registerIcon } from '../../../../platform/theme/common/iconRegistry.js';
+import { ThemeIcon } from '../../../../base/common/themables.js';
 
 const clearIcon = registerIcon('notifications-clear', Codicon.close, localize('clearIcon', 'Icon for the clear action in notifications.'));
 const clearAllIcon = registerIcon('notifications-clear-all', Codicon.clearAll, localize('clearAllIcon', 'Icon for the clear all action in notifications.'));
@@ -22,6 +20,7 @@ const hideIcon = registerIcon('notifications-hide', Codicon.chevronDown, localiz
 const expandIcon = registerIcon('notifications-expand', Codicon.chevronUp, localize('expandIcon', 'Icon for the expand action in notifications.'));
 const collapseIcon = registerIcon('notifications-collapse', Codicon.chevronDown, localize('collapseIcon', 'Icon for the collapse action in notifications.'));
 const configureIcon = registerIcon('notifications-configure', Codicon.gear, localize('configureIcon', 'Icon for the configure action in notifications.'));
+const doNotDisturbIcon = registerIcon('notifications-do-not-disturb', Codicon.bellSlash, localize('doNotDisturbIcon', 'Icon for the mute all action in notifications.'));
 
 export class ClearNotificationAction extends Action {
 
@@ -36,7 +35,7 @@ export class ClearNotificationAction extends Action {
 		super(id, label, ThemeIcon.asClassName(clearIcon));
 	}
 
-	async run(notification: INotificationViewItem): Promise<void> {
+	override async run(notification: INotificationViewItem): Promise<void> {
 		this.commandService.executeCommand(CLEAR_NOTIFICATION, notification);
 	}
 }
@@ -54,8 +53,57 @@ export class ClearAllNotificationsAction extends Action {
 		super(id, label, ThemeIcon.asClassName(clearAllIcon));
 	}
 
-	async run(): Promise<void> {
+	override async run(): Promise<void> {
 		this.commandService.executeCommand(CLEAR_ALL_NOTIFICATIONS);
+	}
+}
+
+export class ToggleDoNotDisturbAction extends Action {
+
+	static readonly ID = TOGGLE_DO_NOT_DISTURB_MODE;
+	static readonly LABEL = localize('toggleDoNotDisturbMode', "Toggle Do Not Disturb Mode");
+
+	constructor(
+		id: string,
+		label: string,
+		@ICommandService private readonly commandService: ICommandService
+	) {
+		super(id, label, ThemeIcon.asClassName(doNotDisturbIcon));
+	}
+
+	override async run(): Promise<void> {
+		this.commandService.executeCommand(TOGGLE_DO_NOT_DISTURB_MODE);
+	}
+}
+
+export class ToggleDoNotDisturbBySourceAction extends Action {
+
+	static readonly ID = TOGGLE_DO_NOT_DISTURB_MODE_BY_SOURCE;
+	static readonly LABEL = localize('toggleDoNotDisturbModeBySource', "Toggle Do Not Disturb Mode By Source...");
+
+	constructor(
+		id: string,
+		label: string,
+		@ICommandService private readonly commandService: ICommandService
+	) {
+		super(id, label);
+	}
+
+	override async run(): Promise<void> {
+		this.commandService.executeCommand(TOGGLE_DO_NOT_DISTURB_MODE_BY_SOURCE);
+	}
+}
+
+export class ConfigureDoNotDisturbAction extends Action {
+
+	static readonly ID = 'workbench.action.configureDoNotDisturbMode';
+	static readonly LABEL = localize('configureDoNotDisturbMode', "Configure Do Not Disturb...");
+
+	constructor(
+		id: string,
+		label: string
+	) {
+		super(id, label, ThemeIcon.asClassName(doNotDisturbIcon));
 	}
 }
 
@@ -72,7 +120,7 @@ export class HideNotificationsCenterAction extends Action {
 		super(id, label, ThemeIcon.asClassName(hideIcon));
 	}
 
-	async run(): Promise<void> {
+	override async run(): Promise<void> {
 		this.commandService.executeCommand(HIDE_NOTIFICATIONS_CENTER);
 	}
 }
@@ -90,7 +138,7 @@ export class ExpandNotificationAction extends Action {
 		super(id, label, ThemeIcon.asClassName(expandIcon));
 	}
 
-	async run(notification: INotificationViewItem): Promise<void> {
+	override async run(notification: INotificationViewItem): Promise<void> {
 		this.commandService.executeCommand(EXPAND_NOTIFICATION, notification);
 	}
 }
@@ -108,7 +156,7 @@ export class CollapseNotificationAction extends Action {
 		super(id, label, ThemeIcon.asClassName(collapseIcon));
 	}
 
-	async run(notification: INotificationViewItem): Promise<void> {
+	override async run(notification: INotificationViewItem): Promise<void> {
 		this.commandService.executeCommand(COLLAPSE_NOTIFICATION, notification);
 	}
 }
@@ -116,12 +164,12 @@ export class CollapseNotificationAction extends Action {
 export class ConfigureNotificationAction extends Action {
 
 	static readonly ID = 'workbench.action.configureNotification';
-	static readonly LABEL = localize('configureNotification', "Configure Notification");
+	static readonly LABEL = localize('configureNotification', "More Actions...");
 
 	constructor(
 		id: string,
 		label: string,
-		public readonly configurationActions: ReadonlyArray<IAction>
+		readonly notification: INotificationViewItem
 	) {
 		super(id, label, ThemeIcon.asClassName(configureIcon));
 	}
@@ -140,28 +188,7 @@ export class CopyNotificationMessageAction extends Action {
 		super(id, label);
 	}
 
-	run(notification: INotificationViewItem): Promise<void> {
+	override run(notification: INotificationViewItem): Promise<void> {
 		return this.clipboardService.writeText(notification.message.raw);
-	}
-}
-
-export class NotificationActionRunner extends ActionRunner {
-
-	constructor(
-		@ITelemetryService private readonly telemetryService: ITelemetryService,
-		@INotificationService private readonly notificationService: INotificationService
-	) {
-		super();
-	}
-
-	protected async runAction(action: IAction, context: INotificationViewItem): Promise<void> {
-		this.telemetryService.publicLog2<WorkbenchActionExecutedEvent, WorkbenchActionExecutedClassification>('workbenchActionExecuted', { id: action.id, from: 'message' });
-
-		// Run and make sure to notify on any error again
-		try {
-			await super.runAction(action, context);
-		} catch (error) {
-			this.notificationService.error(error);
-		}
 	}
 }
