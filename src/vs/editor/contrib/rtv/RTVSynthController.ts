@@ -1,17 +1,37 @@
 import { Range as RangeClass } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
-import { getUtils, TableElement } from 'vs/editor/contrib/rtv/RTVUtils';
-import { Utils, RunResult, SynthResult, SynthProblem, IRTVLogger, IRTVController, ViewMode, SynthProcess } from './RTVInterfaces';
+import {
+	displayError,
+	firstNonCommentLine,
+	getUtils,
+	isLoopy,
+	replaceAll,
+	TableElement
+} from 'vs/editor/contrib/rtv/RTVUtils';
+import {
+	Utils,
+	RunResult,
+	SynthResult,
+	SynthProblem,
+	IRTVLogger,
+	IRTVController,
+	ViewMode,
+	SynthProcess,
+	ReSynthProcess
+} from './RTVInterfaces';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { RTVDisplayBox } from 'vs/editor/contrib/rtv/RTVDisplay';
-import { RTVSynthView } from 'vs/editor/contrib/rtv/RTVSynthView';
+import {ErrorHoverManager, RTVSynthView} from 'vs/editor/contrib/rtv/RTVSynthView';
 import { RTVSynthModel } from 'vs/editor/contrib/rtv/RTVSynthModel';
+import {CommentsManager, ParsedComment} from "vs/editor/contrib/rtv/comments/index";
+
 
 enum EditorState {
 	Synthesizing,
 	Failed,
 	HasProgram,
+	resynthesizing,
 }
 
 class EditorStateManager {
@@ -32,10 +52,24 @@ class EditorStateManager {
 		return this._state;
 	}
 
+	/**
+	 * adds delta to the line number of the current state
+	 * @param delta
+	 */
+	moveLinenoBy(delta: number) {
+		this.lineno += delta;
+	}
+
 	synthesizing() {
 		if (this._state === EditorState.Synthesizing) {return;}
 		this._state = EditorState.Synthesizing;
 		this.insertFragment(this.SYNTHESIZING_INDICATOR);
+	}
+
+	resynthesizing(strartLine: number, endLine: number) {
+		if(this._state === EditorState.resynthesizing) {return;}
+		this._state = EditorState.resynthesizing;
+		CommentsManager.removeCommentsAndCode(this.controller, this.editor, strartLine, endLine,this.SYNTHESIZING_INDICATOR);
 	}
 
 	failed() {
@@ -46,6 +80,7 @@ class EditorStateManager {
 
 	program(program: string) {
 		this._state = EditorState.HasProgram;
+		program = replaceAll(program, "\t","    "); // in the editor tab is 4 spaces. idk how to read the tab size :(.
 		this.insertFragment(program);
 	}
 
@@ -55,7 +90,6 @@ class EditorStateManager {
 		// if (fragment.startsWith('rv = ')) {
 		// 	fragment = fragment.replace('rv = ', 'return ');
 		// }
-
 		let model = this.controller.getModelForce();
 		let cursorPos = this.editor.getPosition();
 		let startCol: number;
@@ -103,16 +137,19 @@ export class RTVSynthController {
 	lineno?: number = undefined;
 	utils: Utils;
 	process: SynthProcess;
+	resynthProcess: ReSynthProcess;
 	editorState?: EditorStateManager = undefined;
 
 	constructor(
 		private readonly editor: ICodeEditor,
 		private readonly RTVController: IRTVController,
-		@IThemeService readonly _themeService: IThemeService
+		@IThemeService readonly _themeService: IThemeService,
+		private readonly  commentsManager: CommentsManager
 	) {
 		this.utils = getUtils();
 		this.logger = this.utils.logger(editor);
 		this.process = this.utils.synthesizer();
+		this.resynthProcess = this.utils.resynthesizer();
 		this.enabled = false;
 
 		// In case the user click's out of the boxes.
@@ -152,7 +189,6 @@ export class RTVSynthController {
 	public isEnabled() : boolean {
 		return this.enabled;
 	}
-
 	onBoxContentChanged = (rows: TableElement[][], init: boolean = false) => {
 		this._synthView!.updateBoxContent(rows, init);
 	}
@@ -235,11 +271,20 @@ export class RTVSynthController {
 		return validInput;
 	}
 
-
+	private  moveLinenoBy(linesDelta: number) {
+		this.editorState!.moveLinenoBy(linesDelta);
+		this._synthModel!.moveLineoBy(linesDelta);
+	}
 	// -----------------------------------------------------------------------------------
 	// Interface
 	// -----------------------------------------------------------------------------------
+	public async getSpecificationAsJson(socpeIdx: number){
+		var s = await this.commentsManager.getScopeSpecification(socpeIdx);
+		var s2 = await this.commentsManager.getExamples();
 
+		return `{"scopeTree": ${s}, "scopes": ${s2}}`;
+
+	}
 	public async startSynthesis(lineno: number) {
 		this.enabled = true;
 
@@ -264,7 +309,7 @@ export class RTVSynthController {
 
 		const varnames = this.extractVarnames(lineno);
 
-		if (l_operand === '' || r_operand === '' || !r_operand.endsWith('??') || !varnames || varnames.length !== 1) {
+		if (l_operand === '' || r_operand === '' || !r_operand.endsWith('??') || !varnames) {
 			this.stopSynthesis();
 			return;
 		}
@@ -396,6 +441,104 @@ export class RTVSynthController {
 		}
 	}
 
+	public async startResynthesis(lineno: number) {
+		this.enabled = true;
+		//get the values from the comment
+		const model = this.editor.getModel()!;
+		const scopeIdx = CommentsManager.getScopeIdx(lineno, model.getLinesContent())
+		let scopSpec = await this.commentsManager.getScopeSpecification(scopeIdx);
+		if(this.commentsManager.blockContainsConflict(scopeIdx)){ // if conflict is present no synth
+			let errorManager = new ErrorHoverManager(this.editor);
+			let tmpBox:RTVDisplayBox = this.RTVController.getBox(lineno) as RTVDisplayBox
+			tmpBox.updateLayout(0);
+			let currPos = this.RTVController.getCursorPos()!;
+			errorManager.add(tmpBox.getElement(), "Warning! Can't synthesize this scope: " +
+				"this scope or some\nof its nested scopes contain conflicting examples.\n" +
+				"Resolve them and try again.", 10, 2000, false, currPos.column*8+280, currPos.lineNumber*40 +55);
+			return
+		}
+		// console.log(scopSpec);
+		// let sceps =  this.commentsManager.getExamples();
+		// console.log(sceps);
+
+		var parsedComment:ParsedComment = await this.commentsManager.getParsedComment(lineno - 1);
+
+		var linesBeforeResynth = this.RTVController.getModelForce().getLinesContent();
+		let commentIdx = CommentsManager.getScopeIdx(lineno-1, linesBeforeResynth)
+		if(commentIdx < 0){ // no resynth of func
+			return
+		}
+
+		const blockEnd = this.commentsManager.getBlockSize(lineno) + lineno;
+
+		this.editorState = new EditorStateManager(parsedComment.outputVarNames.join(", "), lineno, this.editor, this.RTVController);
+		this.editorState.resynthesizing(lineno, blockEnd); // replace the old text with the varNames
+		this._synthModel = new RTVSynthModel(parsedComment.outputVarNames, lineno, new Set(parsedComment.inVarNames));
+		this._synthModel.boxEnvs = parsedComment.getEnvsToDisplay();
+		this._synthModel.prevEnvs = parsedComment.getPreEnvsToResynth()!;
+		this._synthModel.includedTimes = new Set<number>(this._synthModel.boxEnvs.map(env => env["time"] as unknown as number));
+		this._synthModel.bindBoxContentChanged(()=>{});
+		this.RTVController.disable()
+
+		if(isLoopy()){
+			scopSpec.ignoreInnerSpecs();
+		}
+
+		try {
+			const rs: SynthResult | undefined = await this.resynthProcess.reSynthesize(scopSpec)
+
+			if (!rs) {
+				// The request was cancelled!
+				this.RTVController.enable()
+				return;
+			}
+
+			this.logger.synthResult(rs);
+
+
+			if (rs.success) {
+				//let box : RTVDisplayBox = this.RTVController.getBox(this.lineno!) as RTVDisplayBox;
+				//let linesDelta= this.commentsManager.insertExamples(this._synthModel!);
+
+				this.editorState!.program(rs.program!);
+				this.RTVController.enable();
+				this.moveLinenoBy(firstNonCommentLine(rs.program!.split("\n")));
+				await this.RTVController.updateBoxes();
+				await this.updateBoxContent(true);
+
+
+				return;
+			} else {
+				displayError("re-synthesis failed", this.editor)
+				this.editorState!.failed();
+				this.RTVController.enable();
+				let range = new RangeClass(1, 1, linesBeforeResynth.length, 1000);
+				linesBeforeResynth = linesBeforeResynth.map(l=>l.replace("!!", ""))
+				this.editor.executeEdits(this.RTVController.getId(), [
+					{ range: range, text: linesBeforeResynth.join("\n") },
+				]);
+				if (rs.program) {
+					this._synthView!.addError(rs.program, undefined, 500);
+				}
+
+			}
+		} catch (err) {
+			// If the synth promise is rejected
+			console.error('Synth problem rejected.');
+			displayError("re-synthesis failed", this.editor)
+			this.RTVController.enable();
+			if (err) {
+				console.error(err);
+				this.editorState!.failed();
+				let range = new RangeClass(1, 1, linesBeforeResynth.length, 1000);
+				linesBeforeResynth = linesBeforeResynth.map(l=>l.replace("!!", ""))
+				this.editor.executeEdits(this.RTVController.getId(), [
+					{ range: range, text: linesBeforeResynth.join("\n") },
+				]);
+			}
+		}
+
+	}
 	// -----------------------------------------------------------------------------------
 	// UI requests handlers
 	// -----------------------------------------------------------------------------------
@@ -440,14 +583,17 @@ export class RTVSynthController {
 			this.logger.synthResult(rs);
 
 			if (rs.success) {
-				this.editorState!.program(rs.result!);
+				//let box : RTVDisplayBox = this.RTVController.getBox(this.lineno!) as RTVDisplayBox;
+				let linesDelta= this.commentsManager.insertExamples(this._synthModel!);
+				this.moveLinenoBy(linesDelta);
+				this.editorState!.program(rs.program!);
 				await this.updateBoxContent(true);
 
 				return true;
 			} else {
 				this.editorState!.failed();
-				if (rs.result) {
-					this._synthView!.addError(rs.result, undefined, 500);
+				if (rs.program) {
+					this._synthView!.addError(rs.program, undefined, 500);
 				}
 			}
 		} catch (err) {

@@ -7,6 +7,7 @@ import sys
 import types
 
 from core import *
+from parse import *
 
 
 # from PIL import Image
@@ -416,6 +417,263 @@ def remove_frame_data(data):
 			if "frame" in env:
 				del env["frame"]
 
+def findBlockEnd(i, lines):
+	starts = 0
+	ends = 0
+	for lineno, line in enumerate(lines[i:]):
+		if line.strip().find("End of") != -1:
+			ends += 1
+		if line.strip().find("Start of") != -1:
+			starts += 1
+		if starts == ends:
+			return lineno + i
+	return -1
+
+def getBlockId(i, lines):
+	starts = 0
+	for lineno, line in enumerate(lines[:i+1]):
+		if line.strip().find("Start of") != -1:
+			starts += 1
+	if findBlockEnd(i, lines) == -1: # no end to this block:
+	    return -starts
+	return starts
+
+
+def getFunctionEnd(function_line, lines):
+    function_indent = re.match(r'^\s*', lines[function_line - 1]).group(0) if re.match(r'^\s*', lines[function_line - 1]) else ''
+
+    last_line = function_line
+    inFunction_flag = False
+    i = function_line
+    while i < len(lines):
+        line = lines[i]
+        last_line = i
+
+        line_indent = re.match(r'^\s*', line).group(0) if re.match(r'^\s*', line) else ''
+
+        if len(line_indent) <= len(function_indent) and inFunction_flag:
+            break
+        if "def" in line: # all the comments are done
+                    inFunction_flag = True
+
+        i += 1
+
+    return last_line
+
+def computeSynthBlocks(lines):
+	'''
+		compute the synthesized blocks the user has created.
+		It returns both the examples of each block and the code lines of each block
+		@param lines: the code lines of the user's program
+		@return: parsed_comments : map from block_id to parsed_comments
+		comments_line : the lineno each block_id starts from
+		code_blocks : the code that was generated in block_id
+
+	'''
+
+	comments_line={}
+	code_blocks ={}
+	prev_line=""
+	for lineno, line in enumerate(lines):
+		if line.strip().startswith("#! Start"):
+			block_id = getBlockId(lineno, lines)
+			if block_id > 0: # noraml scope
+			    end_lineno = findBlockEnd(lineno, lines)
+			else: #function scope
+			   end_lineno = getFunctionEnd(lineno, lines)
+			comments_line[block_id]={"start": lineno + 1, "end": end_lineno + 1} # lineno starts at 0
+			code_blocks[block_id] = lines[lineno : end_lineno]
+
+
+
+	parsed_comments = {}
+	for block_id in code_blocks:
+		min_indent = min([len(line) - len(line.lstrip()) if line.strip() != "" else 1000000 for line in code_blocks[block_id]])
+		code_blocks[block_id] = [line[min_indent:] for line in code_blocks[block_id]]
+		parsed_comments[block_id] = parseComment("".join(code_blocks[block_id]))
+		parsed_comments[block_id]["scope id"] = block_id
+		parsed_comments[block_id]["code start"] = getFirstNonEmptyLine(code_blocks[block_id])
+
+	return  parsed_comments, code_blocks, comments_line
+
+def getFirstNonEmptyLine(block_code):
+	last_comment_lineno = len(block_code)-1
+	for i, line in enumerate(block_code):
+		if line.find("#!") == -1: # we start the code
+			last_comment_lineno = i -1
+			break
+
+	for i, line in enumerate(block_code[last_comment_lineno+1:]):
+		if line.strip() != "":
+			return i + last_comment_lineno
+
+	assert(False)
+
+
+
+class UnitTest:
+	def __init__(self, lines, inputs, expected):
+		self.lines = lines
+		self.inputs = {name.replace("_in",""): val for name, val in inputs.items()}
+		self.expected = expected
+
+	def run(self):
+		'''
+			runs the unit test and returns the result of the test and the exception if any as a tuple
+		'''
+		debugger = bdb.Bdb()
+		problems={}
+		try:
+		    debugger.run("".join(self.lines), locals=self.inputs, globals = self.inputs)
+		except Exception as e:
+			return False ,"Exception Thrown: " + str(e)
+		for var in self.expected:
+			if not var in debugger.botframe.f_locals['locals']:
+				return  False, f"In this current test `{var}` is not defined at the end of the scope"
+			if var in debugger.botframe.f_locals['locals'] and self.expected[var] != debugger.botframe.f_locals['locals'][var]:
+			    problems[var] = ( str(self.expected[var]), str(debugger.botframe.f_locals['locals'][var]))
+		if len(problems) == 0:
+		    return True, ""
+
+		error_string = "\n".join([f"`{var}` is expected to be `{problems[var][0]}` but it is `{problems[var][1]}`" for var in problems.keys()])
+		return False, error_string
+
+
+def compute_tests_results(code_blocks, parsed_comments, comments_line, run_time_data):
+	'''
+		compute the unit tests results
+	'''
+	tests = build_tests(code_blocks, parsed_comments, comments_line, run_time_data)
+
+	return runTests(tests)
+
+def build_tests(code_blocks, parsed_comments, comments_line, run_time_data):
+	tests = {}
+	print("building tests...")
+	print(f'{parsed_comments=}')
+	for block_id in parsed_comments:
+
+		comment_size = parsed_comments[block_id]["code start"] #includes new lines
+		liveEnvs = run_time_data[comments_line[block_id]["start"]+comment_size]
+		for comment_idx in range(len(parsed_comments[block_id]["envs"])):
+			inputs = parsed_comments[block_id]["envs"][comment_idx]
+			expected = parsed_comments[block_id]["out"][comment_idx]
+			targetEnv = {key.replace("_in", ""):value for (key,value) in inputs.items()}
+			if not isLiveEnv(targetEnv, liveEnvs, list(expected.keys())):
+			    if block_id < 0:
+			        code_blocks[block_id].append(addFunctionCall(code_blocks[block_id]))
+			    tests[(block_id, comment_idx)] = UnitTest(code_blocks[block_id], inputs, expected)
+
+	return tests
+
+def addFunctionCall(lines):
+    for line in lines:
+        if "def" in line:
+            function_pattern = r"def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)\s*:"
+
+            match = re.match(function_pattern, line)
+            if match:
+                function_name = match.group(1)
+                parameters = match.group(2)
+                parameter_list = [param.strip() for param in parameters.split(',')]
+                parameter_string = ', '.join(parameter_list)
+
+                function_call = f"rv = {function_name}({parameter_string})\n"
+                return function_call
+            else:
+                return ""
+
+#check if env1 -> env2.
+def implies(env1, env2):
+	vars_1 = set(env1.keys())
+	vars_2 = set(env2.keys())
+# 	print(f"{vars_1=}, {vars_2=}")
+# 	print(f"{vars_2.issubset(vars_1)=}")
+	if not vars_2.issubset(vars_1):
+		return False
+	for var in vars_2:
+		if env1[var] != env2[var]:
+			return False
+	return True
+
+#check if scope1 is nedted inside of scope2: scope2{scope1{}}
+def isNested(scope1, scope2):
+	return scope1["start"] >= scope2["start"] and scope1["end"] <= scope2["end"]
+
+def agreeOnValues(env1, env2):
+	vars_1 = set(env1.keys())
+	vars_2 = set(env2.keys())
+	for var in vars_1 & vars_2:
+		if env1[var] != env2[var]:
+			return False
+	return True
+
+def removeConflictsDups(conflicts):
+    seen = set()
+    result_list = []
+
+    for tup in conflicts:
+        sorted_tup = tuple(sorted(tup))  # Sort the elements within each tuple
+        if sorted_tup not in seen:
+            result_list.append(tup)
+            seen.add(sorted_tup)
+    return result_list
+def checkConflicts(parsed_comments, comments_line):
+	conflicts = []
+	print("checkConflicts...")
+	scopes = list(comments_line.keys())
+	print(scopes)
+	for scopeIdx1 in scopes:
+		for scopeIdx2 in scopes:
+			print(comments_line[scopeIdx1])
+			if isNested(comments_line[scopeIdx1], comments_line[scopeIdx2]):
+				for i in range(len(parsed_comments[scopeIdx1]['envs'])):
+					for j in range(len(parsed_comments[scopeIdx2]['envs'])):
+						#print(f"{scopeIdx1=}, {scopeIdx2=}, {i=}, {j=}")
+						inputs_1 = parsed_comments[scopeIdx1]['envs'][i]
+						outs_1 = parsed_comments[scopeIdx1]['out'][i]
+						inputs_2 = parsed_comments[scopeIdx2]['envs'][j]
+						outs_2 = parsed_comments[scopeIdx2]['out'][j]
+						print(f"{implies(inputs_1, inputs_2)=}, {inputs_1=}, {inputs_2=} ")
+						print(f"{agreeOnValues(outs_1, outs_2)=}, {outs_1=}, {outs_2=}")
+						if implies(inputs_1, inputs_2) and not agreeOnValues(outs_1, outs_2):
+							conflicts += [((scopeIdx1, i), (scopeIdx2, j))]
+							print(f"example {i} from scope {scopeIdx1} is in conflict with example {j} from scope {scopeIdx2} ")
+
+	return removeConflictsDups(conflicts)
+
+def runTests(tests):
+	'''
+		runs the unit tests and returns the results of the tests
+	'''
+
+	results = {}
+	for test in tests:
+		print("runnig test", test)
+		results[test] = tests[test].run()
+		print(f'{results[test]}')
+	return results
+
+def isLiveEnv(targetEnv, LiveEnvsList, ignoredVars=[]):
+		return False
+		ignoredVars+=['time', "lineno", "#", "$", "prev_lineno", "next_lineno"]
+		for liveEnv in LiveEnvsList:
+			isSame = True
+			for varName in targetEnv.keys():
+				if varName not in ignoredVars:
+					if varName not in liveEnv.keys():
+						isSame = False
+						break
+					if targetEnv[varName] != tryEval(liveEnv[varName]):
+						isSame = False
+						break
+			if isSame:
+				return True
+		return False
+
+
+
+
 def main(file, values_file = None):
 	lines = load_code_lines(file)
 	values = []
@@ -435,8 +693,25 @@ def main(file, values_file = None):
 		if (exception != None):
 			return_code = 2
 
+
 	with open(file + ".out", "w") as out:
 		out.write(json.dumps((return_code, writes, run_time_data)))
+	comments_line= {}
+	try:
+		parsed_comments, code_blocks, comments_line = computeSynthBlocks(lines)
+		results = compute_tests_results(code_blocks, parsed_comments, comments_line, run_time_data)
+		conflicts = checkConflicts(parsed_comments, comments_line)
+		print(f'{results=}')
+		print(f'{conflicts=}')
+	except Exception as e:
+		print("error")
+		print(e)
+		results = {}
+		conflicts=[]
+	with open(file + ".test", "w") as out:
+		out.write(json.dumps(({str(k): v for k, v in results.items()}, comments_line)))
+	with open(file+ ".conflicts", "w") as out:
+		out.write(json.dumps({i: conflicts[i] for i in range(len(conflicts))}))
 
 	if exception != None:
 		raise exception

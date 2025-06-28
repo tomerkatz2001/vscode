@@ -1,16 +1,17 @@
-import { TableElement, isHtmlEscape } from 'vs/editor/contrib/rtv/RTVUtils';
+import {TableElement, isHtmlEscape, CursorPos, example} from 'vs/editor/contrib/rtv/RTVUtils';
 
-class CursorPos {
-	constructor (
-		public node?: HTMLElement,
-		public startPos?: number,
-		public endPos?: number,
-		public collapsed?: boolean,
-		public row: number = 0
-	) {}
-}
+
 
 export class RTVSynthModel {
+	set includedTimes(value: Set<number>) {
+		this._includedTimes = value;
+	}
+	set boxEnvs(value:{[k: string]: [v: any]}[]) {
+		this._boxEnvs = value;
+	}
+	set prevEnvs(value: Map<number, any>) {
+		this._prevEnvs = value;
+	}
 
 	private _allEnvs: any[] = [];
 	private _prevEnvs?: Map<number, any>;
@@ -38,6 +39,14 @@ export class RTVSynthModel {
 
 	get boxEnvs(): {[k: string]: [v: any]}[] {
 		return this._boxEnvs;
+	}
+
+	getLineno() {
+		return this._lineNumber;
+	}
+
+	public moveLineoBy(delta: number) {
+		this._lineNumber += delta;
 	}
 
 	get includedTimes(): Set<number> {
@@ -86,14 +95,17 @@ export class RTVSynthModel {
 			this._allEnvs = this._allEnvs.concat(runResults[2][line]);
 		}
 
-		this._prevEnvs = new Map<number, any>();
+		this._prevEnvs = RTVSynthModel.createPreEnvs(this._allEnvs);
+	}
+	public static createPreEnvs(allEnvs: any[]){
+		let prevEnvs = new Map<number, any>();
 
-		for (const startEnv of this._allEnvs) {
+		for (const startEnv of allEnvs) {
 			const start = startEnv['time'];
 			let minDelta = 1024 * 1024;
 			let minEnv = undefined;
 
-			for (const env of this._allEnvs) {
+			for (const env of allEnvs) {
 				const time = env['time'];
 				if (time) {
 					const delta = start - time;
@@ -109,11 +121,11 @@ export class RTVSynthModel {
 			}
 
 			if (minEnv) {
-				this._prevEnvs.set(start, minEnv);
+				prevEnvs.set(start, minEnv);
 			}
 		}
+		return prevEnvs;
 	}
-
 	/**
 	 * Updates `boxEnvs' and builds `rows`
 	 * @param newEnvs
@@ -274,6 +286,63 @@ export class RTVSynthModel {
 		return values;
 	}
 
+	/**
+	 * returns all the values in this environment that are inputs to the synth's example
+	 * @param env environment to get values from
+	 * @private
+	 */
+	private getInputsValues(env: any): {[k:string]: string}{
+		let input: {[k: string] : string} = {};
+		for (let varName of this._boxVars!) {
+			let dontShowVars = ['$', 'rv', "#"];
+			if(dontShowVars.includes(varName)) {
+				continue;
+			}
+			else if(this._outputVars.includes(varName)) {
+				let envTime = env['time'] as unknown as number;
+				let pastEnv = this._prevEnvs!.get(envTime);
+				if (pastEnv && pastEnv[varName]) {
+					input[varName] = pastEnv[varName] as unknown as string;
+				}
+			}
+			else{
+				if(Object.keys(env).includes(varName)) {
+					input[varName] = env[varName] as unknown as string;
+				}
+			}
+		}
+		return input;
+	}
+
+	/**
+	 * returns all the values in this environment that are outputs to the synth's example
+	 * @param env environment to get values from
+	 * @private
+	 */
+	private getOutputValues(env: any): {[k:string]: string}{
+		let output: {[k: string] : string} = {};
+		for (let varName of this._outputVars!) {
+			output[varName] = env[varName] as unknown as string;
+		}
+		return output;
+	}
+
+	/** return the list of examples that are currently displayed. each example is formatted like this:
+	//{input: {var1: val1, var2: val2}, output: {var3: val3, var4: val4}}
+	 */
+	public getExamples() : example[] {
+		// @ts-ignore
+		let examples: [{inputs: {[k: string] : string}, outputs: {[k: string] : string}}] = [];
+		for (let env of this._boxEnvs!) {
+			if (this._includedTimes.has(env['time'] as unknown as number)) {
+				let input = this.getInputsValues(env);
+				let output = this.getOutputValues(env);
+				examples.push({inputs: input, outputs: output});
+			}
+		}
+		return examples;
+	}
+
 
 	/**
 	 * Helpfer function that computes `boxEnvs`
@@ -385,8 +454,9 @@ export class RTVSynthModel {
 
 	// checks if the cell content is different from its env value
 	public cellContentChanged(idx: number, varname: string, content: string): boolean {
-		let env = this._boxEnvs[idx];
-		return env[varname] !== content;
+		return true; // if the user wants to keep the same value.
+		// let env = this._boxEnvs[idx];
+		// return env[varname] !== content;
 	}
 
 	// record cursor position and the current row (also stored in CursorPos)

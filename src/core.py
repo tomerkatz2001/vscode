@@ -30,7 +30,7 @@ def remove_comments_and_docstrings(source):
 			last_col = 0
 		if start_col > last_col:
 			out += " " * (start_col - last_col)
-		if token_type == tokenize.COMMENT:
+		if token_type == tokenize.COMMENT and not token_string.startswith('#!'):
 			if prev_toktype == tokenize.INDENT or prev_toktype == tokenize.NEWLINE:
 				out += ''
 		elif token_type == tokenize.STRING:

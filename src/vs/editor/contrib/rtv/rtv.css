@@ -7,3 +7,79 @@
 	color: #505050;
 	/*color: #D0D0D0;*/
 }
+
+.monaco-editor .RTV-failed-class {
+	text-decoration: underline;
+	color: red;
+	text-decoration-style: wavy;
+}
+
+.monaco-editor .RTV-passed-class{
+	text-decoration: underline;
+	color: green;
+	text-decoration-style: wavy;
+}
+.monaco-editor .RTV-conflict-class {
+	text-decoration: underline;
+	color: darkorange;
+	text-decoration-style: wavy;
+}
+
+.monaco-editor .custom-indent-guide {
+	margin-left: -10px;
+	border-left:1px solid white;
+	background: #1E1E1E;
+	width: 4px !important
+}
+.monaco-editor .custom-indent-guide-top {
+	margin-left: -10px;
+	margin-top: 3px;
+	border-left:1px solid white;
+	border-top:1px solid white;
+	background: #1E1E1E;
+	width: 4px !important
+}
+.monaco-editor .custom-indent-guide-bottom {
+	margin-left: -10px;
+	margin-bottom: 3px;
+	border-left:1px solid white;
+	border-bottom:1px solid white;
+	background: #1E1E1E;
+	width: 4px !important
+}
+
+.monaco-editor .custom-indent-guide-col0 {
+	margin-left: 15px;
+	border-left:1px solid white;
+
+}
+.monaco-editor .custom-indent-guide-col0-top {
+	margin-left: 15px;
+	margin-top: 3px;
+	border-left:1px solid white;
+	border-top:1px solid white;
+}
+.monaco-editor .custom-indent-guide-col0-bottom {
+	margin-left: 15px;
+	margin-bottom: 3px;
+	border-left:1px solid white;
+	border-bottom:1px solid white;
+}
+
+.monaco-editor .custom-indent-guide-col-1 {
+	margin-left: 20px;
+	border-left:1px solid white;
+
+}
+.monaco-editor .custom-indent-guide-col-1-top {
+	margin-left: 20px;
+	margin-top: 3px;
+	border-left:1px solid white;
+	border-top:1px solid white;
+}
+.monaco-editor .custom-indent-guide-col-1-bottom {
+	margin-left: 20px;
+	margin-bottom: 3px;
+	border-left:1px solid white;
+	border-bottom:1px solid white;
+}

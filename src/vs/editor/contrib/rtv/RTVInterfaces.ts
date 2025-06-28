@@ -1,8 +1,15 @@
 import { IEditorContribution } from 'vs/editor/common/editorCommon';
-import { ITextModel } from 'vs/editor/common/model';
+import {IModelDecorationOptions, ITextModel} from 'vs/editor/common/model';
 import { Event } from 'vs/base/common/event';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
+import {IRange} from "vs/editor/common/core/range";
+import {ParsedComment} from "vs/editor/contrib/rtv/comments/index";
+import {IModeService} from "vs/editor/common/services/modeService";
+import {IOpenerService} from "vs/platform/opener/common/opener";
+import {RTVSpecification} from "vs/editor/contrib/rtv/RTVSpecification";
+import {Position} from "vs/editor/common/core/position";
+
 
 export interface IRTVDisplayBox {
 	/**
@@ -30,7 +37,10 @@ export interface IRTVDisplayBox {
 	 * Return the HTML <TD> element at the given row and column.
 	 */
 	getCell(varname: string, idx: number): HTMLTableCellElement | null;
-
+	/**
+	 * Return the box's related lineno.
+	*/
+	getLineno():number;
 	/**
 	 * Updates the box's values, destroys the existing
 	 * HTML table and recreates it from the new data.
@@ -61,12 +71,15 @@ export class BoxUpdateEvent {
 export interface IRTVController extends IEditorContribution {
 	// Utility functions for accessing the editor or PB content
 	getBox(lineno: number): IRTVDisplayBox;
+	getCursorPos(): Position|null;
 	getLineContent(lineno: number): string;
 	getProgram(): string;
 	getModelForce(): ITextModel;
 	envs: { [k: string]: any[]; };
 	pythonProcess?: RunProcess;
 	onUpdateEvent: Event<BoxUpdateEvent>;
+	addDecoration(range: IRange, options: IModelDecorationOptions): string;
+	removeDecoration(id: string):void;
 
 	// Functions for running the program
 	updateBoxes(e?: IModelContentChangedEvent, outputVars?: string[], prevEnvs?: Map<number, any>): Promise<any>;
@@ -77,6 +90,8 @@ export interface IRTVController extends IEditorContribution {
 		prevEnvs?: Map<number, any>): Promise<any>;
 	runProgram(): Promise<any>;
 	getId(): string;
+	getModeService(): IModeService;
+	getOpenerService(): IOpenerService;
 	byRowOrCol: RowColMode;
 
 	// Disabling the controller
@@ -88,6 +103,8 @@ export interface IRTVController extends IEditorContribution {
 	viewMode: ViewMode;
 	changeViewMode(m: ViewMode): void;
 	resetChangedLinesWhenOutOfDate(): void;
+
+
 }
 
 /**
@@ -118,6 +135,14 @@ export interface IRTVLogger {
 	synthStdout(msg: string): void;
 	synthStderr(msg: string): void;
 	synthProcessEnd(): void;
+
+	// Comments
+	insertComments(lineno: number, comments: string): void;
+	newTestResults(testResults: string): void;
+
+
+	//resynthesis
+	resynthesisAsked(lineno: number): void;
 }
 
 export abstract class ARTVLogger implements IRTVLogger {
@@ -212,6 +237,24 @@ export abstract class ARTVLogger implements IRTVLogger {
 	synthProcessEnd(): void {
 		this.log('synth.process.end');
 	}
+
+	//----------------------------------------------------------------------
+	// Comments
+	//----------------------------------------------------------------------
+	insertComments(lineno: number, comments: string) {
+		this.log('comments.insert', `${lineno},${comments}`);
+	}
+
+	newTestResults(testResults: string) {
+		this.log('comments.testResults', testResults);
+	}
+
+	//----------------------------------------------------------------------
+	// Resynthesis
+	//----------------------------------------------------------------------
+	resynthesisAsked(lineno: number) {
+		this.log('resynthesis.asked', lineno.toString());
+	}
 }
 
 export interface Utils {
@@ -219,8 +262,10 @@ export interface Utils {
 	logger(editor: ICodeEditor): IRTVLogger;
 	runProgram(program: string, cwd?: string, values?: any): RunProcess;
 	runImgSummary(program: string, line: number, varname: string): RunProcess;
+	runCommentsParser(program: string): ParseProcess;
 	validate(input: string): Promise<string | undefined>;
 	synthesizer(): SynthProcess;
+	resynthesizer(): ReSynthProcess;
 }
 
 /**
@@ -233,6 +278,8 @@ export class RunResult {
 		public readonly stderr: string,
 		public readonly exitCode: number | null,
 		public readonly result: string | undefined,
+		public readonly testResults : string | undefined,
+		public readonly conflictsResults: string | undefined
 	) {}
 }
 
@@ -240,7 +287,7 @@ export class SynthResult {
 	constructor(
 		public id: number,
 		public success: boolean,
-		public result?: string
+		public program?: string
 	) {}
 }
 
@@ -254,6 +301,10 @@ export class SynthProblem {
 	) {}
 }
 
+
+
+
+
 /**
  * A "Process" interface that lets us share the API
  * between the local and remote versions of RTVDisplay.
@@ -262,6 +313,14 @@ export interface RunProcess extends PromiseLike<RunResult> {
 	kill(): boolean;
 }
 
+export interface ParseProcess extends PromiseLike<ParsedComment> {
+	kill(): boolean;
+}
+export interface ReSynthProcess {
+	reSynthesize(problem: RTVSpecification): Promise<SynthResult | undefined>;
+	stop(): boolean;
+	connected(): boolean;
+}
 export interface SynthProcess {
 	synthesize(problem: SynthProblem): Promise<SynthResult | undefined>;
 	stop(): boolean;

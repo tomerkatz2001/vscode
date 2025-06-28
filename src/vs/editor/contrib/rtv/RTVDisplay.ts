@@ -1,8 +1,3 @@
-/* import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
- */
-
 import 'vs/css!./rtv';
 import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
@@ -47,6 +42,7 @@ import { Button } from 'vs/base/browser/ui/button/button';
 import { attachButtonStyler } from 'vs/platform/theme/common/styler';
 // import { RTVSynth } from './RTVSynth';
 import { RTVSynthController } from 'vs/editor/contrib/rtv/RTVSynthController';
+import {CommentsManager, RTVTestResults, SYNTHESIZED_COMMENT_START} from 'vs/editor/contrib/rtv/comments/index';
 import { Emitter, Event } from 'vs/base/common/event';
 import * as path from 'path';
 
@@ -100,7 +96,7 @@ function regExpMatchEntireString(s: string, regExp: string) {
 	return res !== null && res.index === 0 && res[0] === s;
 }
 
-class DeltaVarSet {
+export class DeltaVarSet {
 	private _plus: Set<string>;
 	private _minus: Set<string>;
 	constructor(other?: DeltaVarSet) {
@@ -349,7 +345,7 @@ class RTVOutputDisplayBox {
 					// Found line number, it usually looks as follows:
 					//   Traceback (most recent call last):
 					//   ...
-  					//   File "XYZ", line 7, in <func name>
+					//   gitFile "XYZ", line 7, in <func name>
 					//   NameError: name 'lll' is not defined.
 					// We make the error line red and remove everything except
 					// the last two lines (note that the last line in
@@ -700,9 +696,6 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 
 	private isEmptyLine(): boolean {
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
-		if (this.lineNumber > 28) {
-			console.log(lineContent);
-		}
 		return lineContent.trim().length === 0;
 	}
 
@@ -710,6 +703,11 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 		// hides boxes from top-level comment lines
 		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
 		return lineContent.trim().startsWith('#');
+	}
+
+	private isSpecificationLine(): boolean {
+		let lineContent = this._controller.getLineContent(this.lineNumber).trim();
+		return (lineContent.trim() === '#!');
 	}
 
 	private isConditionalLine(): boolean {
@@ -861,6 +859,9 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 		return document.getElementById(this.getCellId(varname, idx)) as HTMLTableCellElement;
 	}
 
+	public getLineno(): number {
+		return this.lineNumber;
+	}
 
 	private updateTableByRows(renderer: MarkdownRenderer, rows: TableElement[][]) {
 		for (let colIdx = 0; colIdx < rows[0].length; colIdx++) {
@@ -938,7 +939,6 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 	}
 
 
-
 	public indentAtLine(lineno: number): number {
 		return indent(this._controller.getLineContent(lineno));
 	}
@@ -957,6 +957,126 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 		}
 	}
 
+	public setTextInBox(s:string){
+		this._allEnvs = [];
+		this._hasContent = true;
+		this._box.textContent = s;
+		this._box.style.paddingLeft = '8px';
+		this._box.style.paddingRight = '8px';
+		this._box.style.paddingBottom = '0px';
+		this._box.style.paddingTop = '0px';
+	}
+
+	public setTableInBox(vars:Set<string>, outVarNames:string[], envs:any[], updateInPlace?:boolean, prevEnvs?: Map<number, any>) {
+		// Generate header
+		let rows: TableElement[][] = [];
+		let header: TableElement[] = [];
+		vars.forEach((v: string) => {
+			let name = '**' + v + '**';
+			if (outVarNames.includes(v)) {
+				name = '```html\n<strong>' + v + '</strong><sub>in</sub>```'
+			} else {
+				name = '**' + v + '**'
+			}
+			header.push(new TableElement(name, 'header', 'header', 0, ''));
+		});
+		outVarNames.forEach((ov: string, i: number) => {
+			header.push(new TableElement('```html\n<strong>' + ov + '</strong><sub>out</sub>```', 'header', 'header', 0, '', undefined, i === 0));
+		});
+
+		rows.push(header);
+
+		// Generate all rows
+		for (let i = 0; i < envs.length; i++) {
+			let env = envs[i];
+			let loopID = env['$'];
+			let iter = env['#'];
+			let row: TableElement[] = [];
+			vars.forEach((v: string) => {
+				let v_str: string;
+				let varName = v;
+				let varEnv = env;
+
+				if (outVarNames.includes(v)) {
+					varName += '_in';
+					if (prevEnvs && prevEnvs.has(env['time'])) {
+						varEnv = prevEnvs.get(env['time']);
+					}
+				}
+
+				if (varEnv[v] === undefined) {
+					v_str = '';
+				} else if (isHtmlEscape(varEnv[v])) {
+					v_str = varEnv[v];
+				} else {
+					v_str = '```python\n' + varEnv[v] + '\n```';
+				}
+
+				row.push(new TableElement(v_str, loopID, iter, this.lineNumber, varName, varEnv));
+			});
+			outVarNames.forEach((v: string, i: number) => {
+				let v_str: string;
+				if (env[v] === undefined) {
+					v_str = '';
+				} else if (isHtmlEscape(env[v])) {
+					v_str = env[v];
+				} else {
+					v_str = '```python\n' + env[v] + '\n```';
+				}
+				row.push(new TableElement(v_str, loopID, iter, this.lineNumber, v, env, i === 0));
+			});
+			rows.push(row);
+		}
+
+		// Set border
+		if (this._controller.boxBorder) {
+			this._box.style.border = '';
+		} else {
+			this._box.style.border = '0';
+		}
+
+		const renderer = new MarkdownRenderer(
+			{'editor': this._editor},
+			this._modeService,
+			this._openerService);
+
+		if (updateInPlace && this.hasContent()) {
+			this._cellDictionary = {};
+			if (this._controller.byRowOrCol === RowColMode.ByRow) {
+				this.updateTableByRows(renderer, rows);
+			} else {
+				this.updateTableByCols(renderer, rows);
+			}
+		} else {
+			// Remove the contents
+			this._box.textContent = '';
+
+			// Create html table from rows
+			let table = document.createElement('table');
+			table.style.borderSpacing = '0px';
+
+			// TODO Delete me: We do this for the whole box now.
+			// table.style.paddingLeft = '13px';
+			// table.style.paddingRight = '13px';
+
+			this._cellDictionary = {};
+			if (this._controller.byRowOrCol === RowColMode.ByRow) {
+				this.populateTableByRows(table, renderer, rows);
+			} else {
+				this.populateTableByCols(table, renderer, rows);
+			}
+			this._box.appendChild(table);
+
+			this.addStalenessIndicator();
+
+			//this.addConfigButton();
+			if (this._controller.mouseShortcuts) {
+				this.addPlusButton();
+			}
+		}
+		this._hasContent = true;
+	}
+
 	public computeEnvs(allEnvs?: any[]) {
 
 		let count = 0;
@@ -968,7 +1088,9 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 			this.setContentFalse();
 			return true;
 		}
-
+		if (this.isSpecificationLine()){
+			return true;
+		}
 		if (!this._controller.showBoxAtEmptyLine && (this.isEmptyLine() || this.isCommentLine())) {
 			this.setContentFalse();
 			return true;
@@ -1140,114 +1262,7 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 			this.setContentFalse();
 			return;
 		}
-
-		// Generate header
-		let rows: TableElement[][] = [];
-		let header: TableElement[] = [];
-		vars.forEach((v: string) => {
-			let name = '**' + v + '**';
-			if (outVarNames.includes(v)) {
-				name = '```html\n<strong>' + v + '</strong><sub>in</sub>```'
-			} else {
-				name = '**' + v + '**'
-			}
-			header.push(new TableElement(name, 'header', 'header', 0, ''));
-		});
-		outVarNames.forEach((ov: string, i: number) => {
-			header.push(new TableElement('```html\n<strong>' + ov + '</strong><sub>out</sub>```', 'header', 'header', 0, '', undefined, i === 0));
-		});
-
-		rows.push(header);
-
-		// Generate all rows
-		for (let i = 0; i < envs.length; i++) {
-			let env = envs[i];
-			let loopID = env['$'];
-			let iter = env['#'];
-			let row: TableElement[] = [];
-			vars.forEach((v: string) => {
-				let v_str: string;
-				let varName = v;
-				let varEnv = env;
-
-				if (outVarNames.includes(v)) {
-					varName += '_in';
-					if (prevEnvs && prevEnvs.has(env['time'])) {
-						varEnv = prevEnvs.get(env['time']);
-					}
-				}
-
-				if (varEnv[v] === undefined) {
-					v_str = '';
-				} else if (isHtmlEscape(varEnv[v])) {
-					v_str = varEnv[v];
-				} else {
-					v_str = '```python\n' + varEnv[v] + '\n```';
-				}
-
-				row.push(new TableElement(v_str, loopID, iter, this.lineNumber, varName, varEnv));
-			});
-			outVarNames.forEach((v: string, i: number) => {
-				let v_str: string;
-				if (env[v] === undefined) {
-					v_str = '';
-				} else if (isHtmlEscape(env[v])) {
-					v_str = env[v];
-				} else {
-					v_str = '```python\n' + env[v] + '\n```';
-				}
-				row.push(new TableElement(v_str, loopID, iter, this.lineNumber, v, env, i === 0));
-			});
-			rows.push(row);
-		}
-
-		// Set border
-		if (this._controller.boxBorder) {
-			this._box.style.border = '';
-		} else {
-			this._box.style.border = '0';
-		}
-
-		const renderer = new MarkdownRenderer(
-			{ 'editor': this._editor },
-			this._modeService,
-			this._openerService);
-
-		if (updateInPlace && this.hasContent()) {
-			this._cellDictionary = {};
-			if (this._controller.byRowOrCol === RowColMode.ByRow) {
-				this.updateTableByRows(renderer, rows);
-			} else {
-				this.updateTableByCols(renderer, rows);
-			}
-		} else {
-			// Remove the contents
-			this._box.textContent = '';
-
-			// Create html table from rows
-			let table = document.createElement('table');
-			table.style.borderSpacing = '0px';
-
-			// TODO Delete me: We do this for the whole box now.
-			// table.style.paddingLeft = '13px';
-			// table.style.paddingRight = '13px';
-
-			this._cellDictionary = {};
-			if (this._controller.byRowOrCol === RowColMode.ByRow) {
-				this.populateTableByRows(table, renderer, rows);
-			} else {
-				this.populateTableByCols(table, renderer, rows);
-			}
-			this._box.appendChild(table);
-
-			this.addStalenessIndicator();
-
-			//this.addConfigButton();
-			if (this._controller.mouseShortcuts) {
-				this.addPlusButton();
-			}
-		}
-
+		this.setTableInBox(vars, outVarNames, envs, updateInPlace, prevEnvs)
 	}
 
 	private addStalenessIndicator() {
@@ -1508,7 +1523,7 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 			boxTop = boxTop - (pixelPosAtLine.height / 2);
 		}
 		//let left = this._controller.maxPixelCol+50;
-		let left = this._controller.maxPixelCol + 130;
+		let left = this._controller.maxPixelColAt(this.lineNumber) + 130;
 		let zoom_adjusted_left = left - ((1 - this._zoom) * (this._box.offsetWidth / 2));
 		let zoom_adjusted_top = boxTop - ((1 - this._zoom) * (this._box.offsetHeight / 2));
 		this._box.style.top = zoom_adjusted_top.toString() + 'px';
@@ -1523,7 +1538,7 @@ export class RTVDisplayBox implements IRTVDisplayBox {
 		let midPointTop = pixelPosAtLine.top + (pixelPosAtLine.height / 2);
 
 		//this._line.move(this._controller.maxPixelCol-50, midPointTop, left, top);
-		this._line.move(this._controller.maxPixelCol + 30, midPointTop, left, top);
+		this._line.move(this._controller.maxPixelColAt(this.lineNumber) + 30, midPointTop, left, top);
 
 	}
 
@@ -1708,6 +1723,8 @@ export class RTVController implements IRTVController {
 	private _synthesis: RTVSynthController;
 	private enabled: boolean = true;
 
+	public commentsManager: CommentsManager;
+
 	get onUpdateEvent(): Event<BoxUpdateEvent> {
 		return this._eventEmitter.event;
 	}
@@ -1735,9 +1752,14 @@ export class RTVController implements IRTVController {
 		this._editor.onMouseWheel((e) => { this.onMouseWheel(e); });
 		this._editor.onKeyUp((e) => { this.onKeyUp(e); });
 		this._editor.onKeyDown((e) => { this.onKeyDown(e); });
-		//this._modelService.onModelModeChanged((e) => { console.log('BBBB');  });
-
-		this._synthesis = new RTVSynthController(_editor, this, this._themeService);
+		this._editor.updateOptions({
+			lineNumbersMinChars: 2, // Set the minimum number of characters used for line numbers
+			glyphMargin: true, // Show the glyph margin (the empty space to the left of line numbers)
+			fixedOverflowWidgets: true, // Prevent content from being rendered on the line numbers and glyph margin
+		});
+		//this._modelService.onModelModeChanged((e) => { console.log('BBBB');  })
+		this.commentsManager = new CommentsManager(this, this._editor);
+		this._synthesis = new RTVSynthController(_editor, this, this._themeService, this.commentsManager);
 		this.logger = this.utils.logger(this._editor);
 
 		this.updateMaxPixelCol();
@@ -1759,6 +1781,19 @@ export class RTVController implements IRTVController {
 	public getId(): string {
 		return RTVController.ID;
 	}
+
+	public getModeService(): IModeService{
+		return this._modeService;
+	}
+
+	public getOpenerService(): IOpenerService{
+		return this._openerService;
+	}
+
+	public getThemeService(): IThemeService{
+		return this._themeService;
+	}
+
 
 	public enable() {
 		this.enabled = true;
@@ -1787,6 +1822,9 @@ export class RTVController implements IRTVController {
 		this._config.updateValue(boxAlignsToTopOfLineKey, v);
 	}
 
+	public getCursorPos():Position|null{
+		return this._editor.getPosition()
+	}
 	get boxBorder(): boolean {
 		return this._config.getValue(boxBorderKey);
 	}
@@ -1889,6 +1927,28 @@ export class RTVController implements IRTVController {
 
 	get maxPixelCol() {
 		return this._maxPixelCol;
+	}
+	public maxPixelColAt(lineno:number, delta:number = 5):number{
+		let model = this._editor.getModel();
+		if (model === null) {
+			return 0 ;
+		}
+		let max = 0;
+		let lineCount = model.getLineCount();
+		let startSearch = Math.max(1, lineno - delta);
+		let endSearch = Math.min(lineCount, lineno + delta )
+		for (let line = startSearch; line <=endSearch ; line++) {
+			let s = model.getLineContent(line);
+			if (s.length > 0 && s[0] === '#' && !s.includes("#!")) {
+				continue;
+			}
+			let col = model.getLineMaxColumn(line);
+			let pixelPos = this._editor.getScrolledVisiblePosition(new Position(line, col));
+			if (pixelPos !== null && pixelPos.left > max) {
+				max = pixelPos.left;
+			}
+		}
+		return max;
 	}
 
 	get loopFocusController(): LoopFocusController | null {
@@ -2009,7 +2069,7 @@ export class RTVController implements IRTVController {
 		let lineCount = model.getLineCount();
 		for (let line = 1; line <= lineCount; line++) {
 			let s = model.getLineContent(line);
-			if (s.length > 0 && s[0] === '#') {
+			if (s.length > 0 && s[0] === '#' && !s.includes("#!")) {
 				continue;
 			}
 			let col = model.getLineMaxColumn(line);
@@ -2276,6 +2336,17 @@ export class RTVController implements IRTVController {
 									});
 								return;
 						}
+						else if(lineContent.endsWith('!!')
+							&& (lineContent.includes(SYNTHESIZED_COMMENT_START))) {
+							this.logger.resynthesisAsked(i);
+							this._synthesis.startResynthesis(i)
+								.catch((e) => {
+									console.error('ReSynthesis failed with exception:');
+									console.error(e);
+									this._synthesis.stopSynthesis();
+								});
+							return;
+						}
 					}
 				}
 			}
@@ -2346,6 +2417,10 @@ export class RTVController implements IRTVController {
 		});
 	}
 
+	public renderLayout(){
+		this.updateMaxPixelCol();
+		this.updateLayout();
+	}
 
 	private updateContent(outputVars?: string[], prevEnvs?: Map<number, any>, updateInPlace?: boolean) {
 		this.padBoxArray();
@@ -2729,6 +2804,28 @@ export class RTVController implements IRTVController {
 		}
 
 		this.pythonProcess = undefined;
+
+		if (runResults.testResults) {
+			this.logger.newTestResults(runResults.testResults);
+			let testResults: RTVTestResults = new RTVTestResults(runResults.testResults);
+			if(runResults.conflictsResults){
+				const parsed= JSON.parse(runResults.conflictsResults);
+				let conflicts:number[][][] = Object.values(parsed);
+				conflicts.forEach((conflict)=>{
+					let firstComment = conflict[0];
+					let secondComment = conflict[1];
+					let commentsLocations = testResults.commentsLocation;
+					let firstLineno = commentsLocations[firstComment[0]].start + firstComment[1] +1// block_line + commentId + 1 //for head and 0 indexing
+					let secondLineno = commentsLocations[secondComment[0]].start + secondComment[1]+1
+					testResults.markAsConflict(firstComment[0], firstComment[1], firstLineno, secondComment[0], secondComment[1], secondLineno);
+				})
+
+			}
+			await this.commentsManager.updateComments(testResults);
+		}
+		else {
+			this.logger.newTestResults("No tests found");
+		}
 
 		return [outputMsg, errorMsg, JSON.parse(result!)];
 	}
@@ -3307,6 +3404,9 @@ export class RTVController implements IRTVController {
 	}
 
 	private onKeyDown(e: IKeyboardEvent) {
+		if(this._editor.getSelection()?.isEmpty() === false && e.ctrlKey && e.keyCode == KeyCode.KEY_3){
+			this.commentsManager.wrapWithExamples(this._editor.getSelection()!);
+		}
 		if (e.keyCode === KeyCode.Escape) {
 			if (this._editor.getSelection()?.isEmpty() === true) {
 				this.changeViewMode(this.viewMode);
