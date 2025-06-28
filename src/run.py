@@ -528,12 +528,14 @@ class UnitTest:
 		except Exception as e:
 			return False ,"Exception Thrown: " + str(e)
 		for var in self.expected:
+			if not var in debugger.botframe.f_locals['locals']:
+				return  False, f"In this current test `{var}` is not defined at the end of the scope"
 			if var in debugger.botframe.f_locals['locals'] and self.expected[var] != debugger.botframe.f_locals['locals'][var]:
 			    problems[var] = ( str(self.expected[var]), str(debugger.botframe.f_locals['locals'][var]))
 		if len(problems) == 0:
 		    return True, ""
 
-		error_string = "\n".join([f"{var} is expected to be {problems[var][0]} but it is {problems[var][1]}" for var in problems.keys()])
+		error_string = "\n".join([f"`{var}` is expected to be `{problems[var][0]}` but it is `{problems[var][1]}`" for var in problems.keys()])
 		return False, error_string
 
 

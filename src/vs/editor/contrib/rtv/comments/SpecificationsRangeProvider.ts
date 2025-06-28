@@ -22,11 +22,16 @@ export class SpecificationsRangeProvider implements FoldingRangeProvider{
 		let endLines = [];
 		let inRegion = false;
 		for(let lineno= 1 ; lineno<=model.getLineCount(); lineno++ ){
-			if(model.getLineContent(lineno).includes(SYNTHESIZED_COMMENT_START)){
+			let line = model.getLineContent(lineno)
+			if(line.includes(SYNTHESIZED_COMMENT_START) && !inRegion){
+				startLines.push(lineno);
+				inRegion = true;
+			}else if(line.includes(SYNTHESIZED_COMMENT_START) && inRegion){
+				endLines.push(lineno - 1);
 				startLines.push(lineno);
 				inRegion = true;
 			}
-			else if(!model.getLineContent(lineno).includes("#!") && inRegion){
+			else if(!line.includes("#!")  && inRegion ){
 				endLines.push(lineno - 1);
 				inRegion = false;
 			}

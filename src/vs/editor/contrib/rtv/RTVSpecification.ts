@@ -125,7 +125,7 @@ export class RTVSpecification{
 	public async gatherComments(code: string) {
 		this.clear()
 		const lines = code.split('\n');
-		let scopeIds: number[] = [-1];
+		let scopeIds: number[] = [-2]; // -2 represents the root
 		let branches: BranchType[] = [BranchType.NoBranch];
 		let branchesIndent: number[] = [0];
 		const pythonScopeIntents:number = 4;
@@ -133,9 +133,9 @@ export class RTVSpecification{
 
 		for (let i = 0; i < lines.length; i++) {
 			const line = lines[i]
-			let lineIndent = line.length - line.trim().length;
+			let lineIndent = line.length - line.trimLeft().length;
 
-			if (lineIndent < branchesIndent[branchesIndent.length - 1]) { // end of scope
+			if (lineIndent < branchesIndent[branchesIndent.length - 1] && line.trim()!= "") { // end of scope
 				branches.pop();
 				branchesIndent.pop();
 			}
@@ -170,7 +170,8 @@ export class RTVSpecification{
 				// in if branch
 				branches.push(BranchType.T);
 				branchesIndent.push(lineIndent + pythonScopeIntents);
-			} else if (line.trim().startsWith('else')) {
+			}
+			else if (line.trim().startsWith('else')) {
 
 				branches.push(BranchType.F);
 				branchesIndent.push(lineIndent + pythonScopeIntents);

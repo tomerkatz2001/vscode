@@ -6,21 +6,26 @@ import {ICodeEditor} from "vs/editor/browser/editorBrowser";
 /**
  * Class that holds and has the responsibility of the underline of the comment block
  */
+
+
 export class DecorationManager{
 	commentId: number; // The id of the "start synth" comment this  instance relates.
 	lineno : number = 0; // the lineno of the comment. needs to change on every change!
 	scopeSize: number = 0; //number of lines from the start of the block to the end of it. including the code.
-	decorations: {[index: number]: UnderlineDecoration} = {}; //map of all the current decorations {env idx -> UnderlineDecoration}
+	decorations: {[index: number]: UnderlineDecoration} = {}; //map of all the current decorations {env idx -> UnderlineDecoration} -1 key saved for the prefix line.
 	indentGuides:string[] = [];
 	deltaCol: number = 0;
 	decorationsTypes: {[index: number]: DecorationType} = {}= {}
-	constructor(private readonly controller: IRTVController, private readonly editor: ICodeEditor, commentId: number, lineno: number, scopeSize:number, deltaCol:number = 0){
+	isFolded: boolean // flag if the block is folded
+	constructor(private readonly controller: IRTVController, private readonly editor: ICodeEditor, commentId: number, lineno: number, scopeSize:number, isFolded: boolean, deltaCol:number = 0){
 		this.commentId = commentId;
 		this.lineno = lineno;
 		this.scopeSize = scopeSize;
+		this.isFolded = isFolded;
 		this.deltaCol = deltaCol;
 		if(commentId > 0) // no guide for functions
 			this.addCustomIndentGuides();
+
 	}
 
 	public addDecoration(envIdx:number, type: DecorationType, onHoverText?: string){
@@ -30,6 +35,34 @@ export class DecorationManager{
 		let range = new Range(lineno,model.getLineFirstNonWhitespaceColumn(lineno), lineno, model.getLineLastNonWhitespaceColumn(lineno));
 		this.decorations[envIdx] = new UnderlineDecoration(this.controller, range , type, onHoverText); // insert new
 		this.decorationsTypes[envIdx] = type;
+	}
+
+	public fold(){
+		if(this.isFolded) return
+		this.isFolded = true;
+		let lineno = this.lineno;
+		let model  = this.controller.getModelForce();
+		let range = new Range(lineno,model.getLineFirstNonWhitespaceColumn(lineno), lineno, model.getLineLastNonWhitespaceColumn(lineno));
+		let containFailedTests = Object.values(this.decorationsTypes).findIndex(x => x == DecorationType.failedTest) != -1;
+		let type = containFailedTests ? DecorationType.failedTest : DecorationType.passTest
+		let onHover = containFailedTests ? "Some tests failed. Unfold the block to see which": "All tests pass";
+		this.decorations[-1] = new UnderlineDecoration(this.controller, range , type, onHover); // insert new
+		this.decorationsTypes[-1] = type;
+	}
+
+	public  unfold(){
+		if(!this.isFolded) return
+		this.isFolded = false;
+		this.decorations[-1].remove();
+		delete this.decorations[-1]
+		delete this.decorationsTypes[-1]
+	}
+
+	public render(){
+		if(this.isFolded){// we want to color new blocks
+			this.isFolded = false;
+			this.fold()
+		}
 	}
 
 	private removeDecoration(envIdx: number){

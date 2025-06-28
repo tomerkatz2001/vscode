@@ -189,6 +189,12 @@ export class RTVInputBox extends RTVSynthView{
 						e.preventDefault();
 
 						if (e.shiftKey) {
+							let utils = getUtils();
+							let error = await utils.validate(cell.textContent!.trim());
+							if (error) {
+								this.addError(error, cell, 500);
+								return false;
+							}
 							await this.requestToggleIfChanged!(+idx, varname, cell);
 							this.onEnterPressed!();
 						}
@@ -280,10 +286,13 @@ export class RTVInputBox extends RTVSynthView{
 		console.log(`env[${varname}] = ${content}`);
 	}
 	private async toggleElement(idx: number, varname: string, cell: HTMLElement, force?: boolean, updateSynthBox: boolean = true): Promise<boolean> {
+		if(cell.textContent!.trim() == ''){
+			return  true;
+		}
 		let utils = getUtils();
 		let error = await utils.validate(cell.textContent!.trim());
 		if (error) {
-			//this.addError(error, cell, 500);
+			this.addError(error, cell, 500);
 			return false;
 		}
 		this.updateBoxState(varname, cell.innerText.trim());
@@ -328,6 +337,7 @@ export class RTVInputBox extends RTVSynthView{
 		}
 	}
 	public bindOnEnterPresses(handler: ()=> void){
+
 		this.onEnterPressed = handler;
 	}
 }

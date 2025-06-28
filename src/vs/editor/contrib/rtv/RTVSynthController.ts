@@ -1,7 +1,14 @@
 import { Range as RangeClass } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
-import {getUtils, replaceAll, TableElement} from 'vs/editor/contrib/rtv/RTVUtils';
+import {
+	displayError,
+	firstNonCommentLine,
+	getUtils,
+	isLoopy,
+	replaceAll,
+	TableElement
+} from 'vs/editor/contrib/rtv/RTVUtils';
 import {
 	Utils,
 	RunResult,
@@ -19,7 +26,6 @@ import {ErrorHoverManager, RTVSynthView} from 'vs/editor/contrib/rtv/RTVSynthVie
 import { RTVSynthModel } from 'vs/editor/contrib/rtv/RTVSynthModel';
 import {CommentsManager, ParsedComment} from "vs/editor/contrib/rtv/comments/index";
 
-let SCOOPY = true;
 
 enum EditorState {
 	Synthesizing,
@@ -470,13 +476,14 @@ export class RTVSynthController {
 		this._synthModel = new RTVSynthModel(parsedComment.outputVarNames, lineno, new Set(parsedComment.inVarNames));
 		this._synthModel.boxEnvs = parsedComment.getEnvsToDisplay();
 		this._synthModel.prevEnvs = parsedComment.getPreEnvsToResynth()!;
-		this._synthModel.includedTimes = new Set([-1]);
+		this._synthModel.includedTimes = new Set<number>(this._synthModel.boxEnvs.map(env => env["time"] as unknown as number));
 		this._synthModel.bindBoxContentChanged(()=>{});
 		this.RTVController.disable()
 
-		if(!SCOOPY){
+		if(isLoopy()){
 			scopSpec.ignoreInnerSpecs();
 		}
+
 		try {
 			const rs: SynthResult | undefined = await this.resynthProcess.reSynthesize(scopSpec)
 
@@ -488,21 +495,21 @@ export class RTVSynthController {
 
 			this.logger.synthResult(rs);
 
+
 			if (rs.success) {
 				//let box : RTVDisplayBox = this.RTVController.getBox(this.lineno!) as RTVDisplayBox;
-				let linesDelta= this.commentsManager.insertExamples(this._synthModel!);
-				this.moveLinenoBy(linesDelta);
+				//let linesDelta= this.commentsManager.insertExamples(this._synthModel!);
+
 				this.editorState!.program(rs.program!);
 				this.RTVController.enable();
+				this.moveLinenoBy(firstNonCommentLine(rs.program!.split("\n")));
 				await this.RTVController.updateBoxes();
 				await this.updateBoxContent(true);
 
 
 				return;
 			} else {
-				let errorManager = new ErrorHoverManager(this.editor);
-				let tmpBox = this.RTVController.getBox(lineno)
-				errorManager.add(tmpBox.getElement(), "re-synthesis failed", 5, 1000, true )
+				displayError("re-synthesis failed", this.editor)
 				this.editorState!.failed();
 				this.RTVController.enable();
 				let range = new RangeClass(1, 1, linesBeforeResynth.length, 1000);
@@ -518,9 +525,7 @@ export class RTVSynthController {
 		} catch (err) {
 			// If the synth promise is rejected
 			console.error('Synth problem rejected.');
-			let errorManager = new ErrorHoverManager(this.editor);
-			let tmpBox = this.RTVController.getBox(lineno)
-			errorManager.add(tmpBox.getElement(), "re-synthesis failed", 5, 1000, true)
+			displayError("re-synthesis failed", this.editor)
 			this.RTVController.enable();
 			if (err) {
 				console.error(err);

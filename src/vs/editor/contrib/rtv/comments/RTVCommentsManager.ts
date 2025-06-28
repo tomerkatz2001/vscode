@@ -1,7 +1,15 @@
 // eslint-disable-next-line code-import-patterns
 import {IRTVController, IRTVLogger, ViewMode,} from "../RTVInterfaces";
 import {Range as RangeClass, Range} from 'vs/editor/common/core/range';
-import {example, getFunctionCode, getUtils, makeEmptyTable, TableElement} from 'vs/editor/contrib/rtv/RTVUtils';
+import {
+	displayError,
+	example,
+	firstNonCommentLine,
+	getFunctionCode, getLineIndent,
+	getUtils,
+	makeEmptyTable,
+	TableElement
+} from 'vs/editor/contrib/rtv/RTVUtils';
 import {ICodeEditor} from "vs/editor/browser/editorBrowser";
 import {Selection} from "vs/editor/common/core/selection";
 import {RTVSynthModel} from "vs/editor/contrib/rtv/RTVSynthModel";
@@ -16,6 +24,7 @@ import {ParsedComment} from "./RTVComment";
 import {createVisitor, parse} from 'python-ast';
 import {TfpdefContext} from "python-ast/dist/parser/Python3Parser";
 import {FoldingController} from "vs/editor/contrib/folding/folding";
+import {FoldingModelChangeEvent} from "vs/editor/contrib/folding/foldingModel";
 
 
 export  const  SYNTHESIZED_COMMENT_START = `#! Start of specification scope:`;
@@ -32,9 +41,10 @@ export class CommentsManager {
 		return this._specifications;
 	}
 	private logger: IRTVLogger;
-	private comments: { [index: number]: DecorationManager } = {}; // map from synthID and comment idx to the decorations ids
+	private comments: { [index: number]: DecorationManager } = {}; // map from comment idx to the decorations ids
 	private _specifications: RTVSpecification;
 	private inputBox: RTVInputBox|undefined = undefined; // used to get user's input for more examples.
+	private _folded: { [index: number]: boolean } = {}
 	constructor(private readonly controller: RTVController, private readonly editor: ICodeEditor) {
 		this.logger = getUtils().logger(editor);
 		this._specifications = new RTVSpecification();
@@ -42,13 +52,31 @@ export class CommentsManager {
 		const registerOnDidChangeFolding = ()=> {
 			const foldingController: FoldingController = FoldingController.get(editor);
 			foldingController.getFoldingModel()?.then(foldingModel => {
-				foldingModel!.onDidChange(() => {
+				foldingModel!.onDidChange((e) => {
+					this.onFold(e);
 					setTimeout(()=>this.controller.renderLayout(), 200); // after the folding happens.
 				});
 			});
 		};
 		this.editor.onDidChangeModel((e)=> registerOnDidChangeFolding());
-		this.editor.onDidChangeModelContent((e) => { this.onDidChangeModelContent(e); });	}
+		this.editor.onDidChangeModelContent((e) => { this.onDidChangeModelContent(e); });
+	}
+
+	private onFold(e: FoldingModelChangeEvent){
+		if(e.collapseStateChanged){
+			let commentStartLineno = e.collapseStateChanged[0].startLineNumber
+			let scopeIdx = this.getScopeIdx(commentStartLineno);
+			let decorationManager = this.comments[scopeIdx];
+			if(e.collapseStateChanged[0].isCollapsed){
+				decorationManager.fold();
+				this._folded[scopeIdx] = true;
+			}
+			else{
+				decorationManager.unfold();
+				this._folded[scopeIdx] = false;
+			}
+		}
+	}
 
 	/**
 	 * Given a lineno of a #! comment, returns the block index it belongs to.
@@ -108,7 +136,7 @@ export class CommentsManager {
 	private convertExampleToString(example: example, idx:number){
 		let leftSide = `#! ${idx}) `;
 		Object.keys(example.inputs).forEach((inputVar) => {
-			leftSide += `${inputVar} = ${example.inputs[inputVar]}, `; // add the input vars
+			leftSide += `${inputVar.replace("_in", "")} = ${example.inputs[inputVar]}, `; // add the input vars
 		});
 		leftSide = leftSide.substring(0, leftSide.length - 2); //remove the last ', '
 
@@ -159,25 +187,22 @@ export class CommentsManager {
 		for (let line in (runResults[2] as { [k: string]: any[]; })) {
 			allEnvs = allEnvs.concat(runResults[2][line]);
 		}
-		const prevEnvs = RTVSynthModel.createPreEnvs(allEnvs)
 
-		let lineEnvs = allEnvs.filter(env=> env["lineno"] == firstLineno-1);
-
+		let firstCodeLine = firstNonCommentLine(this.editor.getModel()!.getLinesContent().slice(firstLineno, lastLineno)) + firstLineno;
+		let lineEnvs = allEnvs.filter(env=> env["lineno"] == firstCodeLine);
+		if(lineEnvs.length == 0){
+			displayError("Failed wrapping with examples. Try adding an empty line before the selection.", this.editor);
+			return
+		}
 		let time = lineEnvs[0]["time"];
 		let liveVars = Object.keys(lineEnvs[0]).filter(v=>!reserved_names.includes(v))
 		if(!time) {
 			time = lineEnvs[1]["time"]; // maybe in the second TODO:fix it
 			liveVars = Object.keys(lineEnvs[1]).filter(v => !reserved_names.includes(v))
 		}
-		let prevVars:string[] = [];
-		if(time){
-			let prevEnv = prevEnvs.get(time);
-			if (prevEnv){
-				prevVars = Object.keys(prevEnv);
-			}
-		}
-		prevVars.push('c') //TODO: the for loop element
-		let inputVars = Array.from(liveVars).filter(v => prevVars.includes(v) && !reserved_names.includes(v)); // keep all vars that also in preEnv
+
+
+		let inputVars = Array.from(liveVars).filter(v => !reserved_names.includes(v));
 		let outputVars = this.getAllAssignedVars(firstLineno, lastLineno);
 		let insertScope = ()=>{
 			let userExample = this.inputBox?.getBoxAsExample()!
@@ -186,9 +211,7 @@ export class CommentsManager {
 			this.onExit(firstLineno);
 		}
 		if(this.controller)
-		this.setUpInputBox(inputVars, outputVars,firstLineno,insertScope);
-		console.log(liveVars);
-		console.log(outputVars);
+			this.setUpInputBox(inputVars, outputVars,firstLineno,insertScope);
 
 
 	}
@@ -224,26 +247,33 @@ export class CommentsManager {
 			startCol = cursorPos.column;
 			endCol = cursorPos.column;
 		} else {
-			startCol = 1//model.getLineFirstNonWhitespaceColumn(lineno);
+			startCol = 1// model.getLineFirstNonWhitespaceColumn(lineno);
 			for(let i= lineno; i<=endLineno;i++){
 				endCol = Math.max(model.getLineMaxColumn(i), endCol);
 			}
 
 		}
-		let firstLineIndet = model.getLineFirstNonWhitespaceColumn(lineno);
-		examples = examples.split("\n").map((s)=> {if (s!=""){return  " ".repeat(firstLineIndet-1) +s} else return "" }).join("\n");
+		let firstLineIndent = getLineIndent(model.getLinesContent()[lineno-1])
+		examples = examples.split("\n").map((example)=>
+			{
+				if (example!="")
+					return   firstLineIndent + example
+				else
+					return ""
+			}
+		).join("\n");
 		let range = new RangeClass(lineno, startCol, endLineno, endCol);
 		let oldText = model.getValueInRange(range);
-		let prolog = " ".repeat(firstLineIndet-1) + SYNTHESIZED_COMMENT_START +  "\n";
-		let epilogue = "\n" + " ".repeat(firstLineIndet-1) + SYNTHESIZED_COMMENT_END + "\n";
+		let prolog = firstLineIndent + SYNTHESIZED_COMMENT_START +  "\n";
+		let epilogue = "\n" + firstLineIndent + SYNTHESIZED_COMMENT_END + "\n";
 		let newText;
 		if (withProlog)
 			newText = prolog + examples + oldText + epilogue;
 		else
 			newText = examples;
 
-		let indent = (model.getOptions()!.insertSpaces) ? ' ' : '\t';
-		newText = newText.split('\n').join('\n' + indent.repeat(startCol - 1));
+		//let indent = (model.getOptions()!.insertSpaces) ? ' ' : '\t';
+		//newText = newText.split('\n').join('\n' + indent.repeat(startCol - 1));
 
 		this.editor.pushUndoStop();
 		let startLine = withProlog ? lineno + newText.split('\n').length - 2 : lineno;
@@ -271,7 +301,7 @@ export class CommentsManager {
 	 */
 	static removeCommentsAndCode(controller: IRTVController, editor: ICodeEditor, lineno: number, endLineno: number, replacedText: string=""){
 		let model = controller.getModelForce();
-		editor.pushUndoStop(); //TODO: fix the bug of ctrl+z
+
 		let startCol = model.getLineFirstNonWhitespaceColumn(lineno);
 		let endCol = startCol;
 		for (let i = lineno; i < endLineno; i++) {
@@ -287,11 +317,26 @@ export class CommentsManager {
 			lineno,
 			startCol //+ replacedText.length
 		);
+		let oldLines = model.getLinesContent().slice(lineno-1, endLineno);
+		oldLines[0] = oldLines[0].trim()// remove the first tab since we insert in the right indent
+		let oldText = oldLines.join("\n");
+		editor.pushUndoStop();
+		editor.executeEdits(
+			controller.getId(),
+			[{ range: range, text: oldText.replace("!!", "") }],
+			[selection]
+		);
+		editor.pushUndoStop(); // pushing a state where no !! is present
+
+		editor.pushUndoStop();
 		editor.executeEdits(
 			controller.getId(),
 			[{ range: range, text: replacedText }],
 			[selection]
 		);
+
+
+		editor.popUndoStop(); // make sure you can't return to the  ... state ?
 		return startCol;
 	}
 
@@ -353,7 +398,8 @@ export class CommentsManager {
 			const results = testResults.getResultsForBlock(blockId);
 			let parsedComment = this._specifications.comments[blockId];
 
-			this.comments[blockId] = new DecorationManager(this.controller, this.editor, blockId, blocksLines[blockId].start!, this.getBlockSize(parsedComment.lineno), currentMargin);
+			let isFolded:boolean = this._folded[blockId] ?? false;
+			this.comments[blockId] = new DecorationManager(this.controller, this.editor, blockId, blocksLines[blockId].start!, this.getBlockSize(parsedComment.lineno), isFolded, currentMargin);
 			results.forEach((result, index) => {
 				let type = DecorationType.passTest;
 				if(result[0] === false){
@@ -364,6 +410,7 @@ export class CommentsManager {
 				}
 				this.comments[blockId].addDecoration(index, type, result[1]);
 			});
+			this.comments[blockId].render();
 		}
 		);
 	}
@@ -420,6 +467,7 @@ export class CommentsManager {
 
 	}
 	private async onDidChangeModelContent(e: IModelContentChangedEvent){
+		this.alignCommands();
 		let cursorPos = this.editor.getPosition();
 		if (cursorPos === null) {
 			return;
@@ -437,6 +485,27 @@ export class CommentsManager {
 
 	//------------------------------------------------ helping functions-------------------------------------
 
+	private alignCommands(){
+		let model = this.controller.getModelForce();
+		let code = model.getLinesContent();
+		let changed = false;
+		for (var i=1 ; i < code.length; i++){
+			if(code[i].trim().startsWith("#!") && !code[i-1].includes(SYNTHESIZED_COMMENT_END)){
+				if (code[i-1].trimLeft().startsWith("#!")){
+					let prevLineIndent = getLineIndent(code[i-1])
+					let currentLineIindent = getLineIndent(code[i])
+					if (currentLineIindent != prevLineIndent) {
+						code[i] = prevLineIndent + code[i].trimLeft();
+						changed = true;
+					}
+				}
+			}
+		}
+		if (changed) {
+			let codeRange = model.getFullModelRange();
+			this.controller.executeEdits([{range: codeRange, text: code.join("\n")}]);
+		}
+	}
 
 	private makeTableEditable(rows: TableElement[][]){
 		const renderer = new MarkdownRenderer(

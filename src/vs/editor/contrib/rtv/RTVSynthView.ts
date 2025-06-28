@@ -20,7 +20,7 @@ export class ErrorHoverManager {
 		this.errorHover = undefined;
 	}
 
-	public add(element: HTMLElement, msg: string, timeout: number = 0, fadeout: number = 1000, onLeft = false, left:number|undefined = undefined, top:number|undefined=undefined) {
+	public add(element: HTMLElement, msg: string, timeout: number = 0, fadeout: number = 1000, onLeft: boolean = false,  left:number|undefined = undefined, top:number|undefined=undefined, hugeText: boolean = false) {
 		this.addHoverTimer.run(timeout, async () => {
 			if (this.errorHover) {
 				this.errorHover.remove();
@@ -48,6 +48,9 @@ export class ErrorHoverManager {
 
 			const div = document.createElement('div');
 			const p = document.createElement('p');
+			if(hugeText) {
+				p.style.fontSize = "20px";
+			}
 			p.innerText = msg;
 
 			div.appendChild(p);
@@ -473,7 +476,7 @@ export class RTVSynthView {
 							});
 						} else {
 							// without Shift: accept and exit
-							this.exitSynthHandler!(true);
+							//this.exitSynthHandler!(true);
 						}
 						break;
 

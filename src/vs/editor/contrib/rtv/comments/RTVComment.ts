@@ -96,16 +96,18 @@ export class ParsedComment{
 		let preEnv:any = {};
 		let envs = [];
 		for(let [i, env] of enumerate(this.envs)){
+			const outVarNames = Object.keys(this.out[i]);
 			let tmp = JSON.parse(JSON.stringify(env));
 			for(let varName in tmp){
-				if(varName.endsWith("_in")){
-					preEnv[varName.replace("_in", "")] = env[varName]
-					delete tmp[varName];
+				if(outVarNames.includes(varName)){
+					preEnv[varName] = env[varName]
+					env[`${varName}_in`] = env[varName]
+					delete  env[varName]
 				}
 			}
 			if(!tmp["#"]){
 				tmp["#"] = "";
-				tmp['time'] = -i;
+				tmp['time'] = i+1000;
 			}
 			else{
 				tmp['time'] = parseInt(tmp["#"]);
@@ -116,7 +118,7 @@ export class ParsedComment{
 
 			// make each elemnt in the list a string
 			envs.push({...tmp, ... this.out[i]});
-			this.rawCommentExamples.push({... env, ...this.out[i], "time": -1})
+			this.rawCommentExamples.push({... env, ...this.out[i], "time": tmp["time"]})
 			if(preEnv){
 				preEnvs.set(parseInt(tmp["time"]), {...preEnv, ...tmp});
 				preEnv = {};

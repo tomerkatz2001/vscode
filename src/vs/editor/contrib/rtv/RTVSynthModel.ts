@@ -302,7 +302,7 @@ export class RTVSynthModel {
 				let envTime = env['time'] as unknown as number;
 				let pastEnv = this._prevEnvs!.get(envTime);
 				if (pastEnv && pastEnv[varName]) {
-					input[varName + "_in"] = pastEnv[varName] as unknown as string;
+					input[varName] = pastEnv[varName] as unknown as string;
 				}
 			}
 			else{
