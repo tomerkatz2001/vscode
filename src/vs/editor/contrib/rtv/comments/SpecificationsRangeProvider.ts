@@ -1,45 +1,54 @@
 // eslint-disable-next-line code-import-patterns
-import {ITextModel} from "vs/editor/common/model";
-import {CancellationToken} from "vs/base/common/cancellation";
-import {SYNTHESIZED_COMMENT_START} from "./RTVCommentsManager";
 import {
-	FoldingContext,
 	FoldingRange,
 	FoldingRangeKind,
 	FoldingRangeProvider,
-	ProviderResult
-} from "vs/editor/common/modes";
+	FoldingContext,
+	CancellationToken,
+	ProviderResult,
+	TextDocument,
+} from 'vscode';
+import { SYNTHESIZED_COMMENT_START } from './RTVCommentsConsts.js';
 
-export class SpecificationsRangeProvider implements FoldingRangeProvider{
-	readonly id = "specification";
 
-	provideFoldingRanges(model: ITextModel, context: FoldingContext, token: CancellationToken): ProviderResult<FoldingRange[]>{
-		return this.computeRanges(model);
+
+export class SpecificationsRangeProvider implements FoldingRangeProvider {
+	provideFoldingRanges(
+		document: TextDocument,
+		context: FoldingContext,
+		token: CancellationToken
+	): ProviderResult<FoldingRange[]> {
+		return this.computeRanges(document);
 	}
 
-	private computeRanges(model: ITextModel): FoldingRange[]{
-		let startLines = [];
-		let endLines = [];
+	private computeRanges(document: TextDocument): FoldingRange[] {
+		const startLines: number[] = [];
+		const endLines: number[] = [];
 		let inRegion = false;
-		for(let lineno= 1 ; lineno<=model.getLineCount(); lineno++ ){
-			let line = model.getLineContent(lineno)
-			if(line.includes(SYNTHESIZED_COMMENT_START) && !inRegion){
-				startLines.push(lineno);
+
+		for (let i = 0; i < document.lineCount; i++) {
+			const line = document.lineAt(i).text;
+
+			if (line.includes(SYNTHESIZED_COMMENT_START) && !inRegion) {
+				startLines.push(i);
 				inRegion = true;
-			}else if(line.includes(SYNTHESIZED_COMMENT_START) && inRegion){
-				endLines.push(lineno - 1);
-				startLines.push(lineno);
+			} else if (line.includes(SYNTHESIZED_COMMENT_START) && inRegion) {
+				endLines.push(i - 1);
+				startLines.push(i);
 				inRegion = true;
-			}
-			else if(!line.includes("#!")  && inRegion ){
-				endLines.push(lineno - 1);
+			} else if (!line.includes('#!') && inRegion) {
+				endLines.push(i - 1);
 				inRegion = false;
 			}
 		}
-		let ranges:FoldingRange[] = [];
-		for(let k =0; k<startLines.length; k++){
-			ranges.push({start: startLines[k], end: endLines[k], kind: new FoldingRangeKind("specifications")});
+
+		const ranges: FoldingRange[] = [];
+		for (let k = 0; k < startLines.length; k++) {
+			ranges.push(
+				new FoldingRange(startLines[k], endLines[k], FoldingRangeKind.Comment)
+			);
 		}
+
 		return ranges;
 	}
 }

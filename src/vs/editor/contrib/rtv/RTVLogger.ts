@@ -1,9 +1,9 @@
 /* eslint-disable code-import-patterns */
 import * as fs from 'fs';
 import * as os from 'os';
-import * as path from 'path';
-import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
-import { ARTVLogger } from 'vs/editor/contrib/rtv/RTVInterfaces';
+//import * as path from 'path';
+import { ARTVLogger } from './RTVInterfaces.js';
+import { ICodeEditor } from '../../browser/editorBrowser.js';
 
 /*
  * Things to log:
@@ -27,10 +27,10 @@ export class RTVLogger extends ARTVLogger {
 		let dir = process.env['LOG_DIR'];
 
 		if (!dir) {
-			dir = os.tmpdir() + path.sep;
+			dir = os.tmpdir() //+ path.sep;
 		} else {
-			if (!dir.endsWith(path.sep)) {
-				dir += path.sep;
+			if (!dir.endsWith("s")) {//path.sep)) {
+				dir += "s"//path.sep;
 			}
 
 			if (!fs.existsSync(dir)) {
@@ -52,7 +52,7 @@ export class RTVLogger extends ARTVLogger {
 			}
 		}
 
-		this.logDir = dir! + path.sep;
+		this.logDir = dir! //+ path.sep;
 		fs.mkdirSync(this.logDir);
 		this.logFile = 'snippy_plus.log';
 	}

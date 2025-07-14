@@ -1,2 +1,3 @@
-export {ParsedComment} from "./RTVComment";
-export {CommentsManager, RTVTestResults, SYNTHESIZED_COMMENT_START, SYNTHESIZED_COMMENT_END} from "./RTVCommentsManager"
+export { ParsedComment } from "./RTVComment.js";
+export { CommentsManager, RTVTestResults } from "./RTVCommentsManager.js"
+export { SYNTHESIZED_COMMENT_START, SYNTHESIZED_COMMENT_END } from "./RTVCommentsConsts.js";

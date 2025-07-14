@@ -119,7 +119,7 @@ export class AdapterManager extends Disposable implements IAdapterManager {
 					}
 					if (rawAdapter.enableBreakpointsFor && rawAdapter.enableBreakpointsFor.languageIds) {
 						rawAdapter.enableBreakpointsFor.languageIds.forEach(modeId => {
-							this.breakpointModeIdsSet.add(modeId);
+							// this.breakpointModeIdsSet.add(modeId);
 						});
 					}
 

@@ -1,14 +1,16 @@
-import { IEditorContribution } from 'vs/editor/common/editorCommon';
-import {IModelDecorationOptions, ITextModel} from 'vs/editor/common/model';
-import { Event } from 'vs/base/common/event';
-import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
-import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
-import {IRange} from "vs/editor/common/core/range";
-import {ParsedComment} from "vs/editor/contrib/rtv/comments/index";
-import {IModeService} from "vs/editor/common/services/modeService";
-import {IOpenerService} from "vs/platform/opener/common/opener";
-import {RTVSpecification} from "vs/editor/contrib/rtv/RTVSpecification";
-import {Position} from "vs/editor/common/core/position";
+import { IEditorContribution } from '../../common/editorCommon.js';
+import { IModelDecorationOptions, ITextModel } from '../../common/model.js';
+import { ICodeEditor } from '../../browser/editorBrowser.js';
+import { RTVSpecification } from './RTVSpecification.js';
+import { ILanguageService } from '../../common/languages/language.js';
+import { IModelContentChangedEvent } from '../../common/textModelEvents.js';
+import { IRange } from "../../common/core/range.js";
+
+import { ParsedComment } from './comments/RTVComment.js';
+import { IOpenerService } from '../../../platform/opener/common/opener.js';
+import { Position } from '../../common/core/position.js';
+import { Event } from 'vs/base/common/event.js';
+
 
 
 export interface IRTVDisplayBox {
@@ -40,7 +42,7 @@ export interface IRTVDisplayBox {
 	/**
 	 * Return the box's related lineno.
 	*/
-	getLineno():number;
+	getLineno(): number;
 	/**
 	 * Updates the box's values, destroys the existing
 	 * HTML table and recreates it from the new data.
@@ -65,21 +67,22 @@ export class BoxUpdateEvent {
 		public isStart: boolean,
 		public isCancel: boolean,
 		public isFinish: boolean,
-	) {}
+	) { }
 }
 
 export interface IRTVController extends IEditorContribution {
 	// Utility functions for accessing the editor or PB content
 	getBox(lineno: number): IRTVDisplayBox;
-	getCursorPos(): Position|null;
+	getCursorPos(): Position | null;
 	getLineContent(lineno: number): string;
 	getProgram(): string;
 	getModelForce(): ITextModel;
 	envs: { [k: string]: any[]; };
 	pythonProcess?: RunProcess;
+
 	onUpdateEvent: Event<BoxUpdateEvent>;
 	addDecoration(range: IRange, options: IModelDecorationOptions): string;
-	removeDecoration(id: string):void;
+	removeDecoration(id: string): void;
 
 	// Functions for running the program
 	updateBoxes(e?: IModelContentChangedEvent, outputVars?: string[], prevEnvs?: Map<number, any>): Promise<any>;
@@ -90,7 +93,7 @@ export interface IRTVController extends IEditorContribution {
 		prevEnvs?: Map<number, any>): Promise<any>;
 	runProgram(): Promise<any>;
 	getId(): string;
-	getModeService(): IModeService;
+	getLanguageService(): ILanguageService;
 	getOpenerService(): IOpenerService;
 	byRowOrCol: RowColMode;
 
@@ -146,7 +149,7 @@ export interface IRTVLogger {
 }
 
 export abstract class ARTVLogger implements IRTVLogger {
-	constructor(protected readonly editor: ICodeEditor) {}
+	constructor(protected readonly editor: ICodeEditor) { }
 	protected abstract log(code: string, msg?: string): number;
 	protected abstract write(file: string, content: string): void;
 
@@ -181,7 +184,7 @@ export abstract class ARTVLogger implements IRTVLogger {
 	// ---------------------------------------------------------------
 
 	public imgSummaryStart(lineno: number, variable: string) {
-		this.log('img.start',`${lineno},${variable}`);
+		this.log('img.start', `${lineno},${variable}`);
 	}
 
 	public imgSummaryEnd() {
@@ -278,9 +281,9 @@ export class RunResult {
 		public readonly stderr: string,
 		public readonly exitCode: number | null,
 		public readonly result: string | undefined,
-		public readonly testResults : string | undefined,
+		public readonly testResults: string | undefined,
 		public readonly conflictsResults: string | undefined
-	) {}
+	) { }
 }
 
 export class SynthResult {
@@ -288,17 +291,17 @@ export class SynthResult {
 		public id: number,
 		public success: boolean,
 		public program?: string
-	) {}
+	) { }
 }
 
 export class SynthProblem {
 	public id: number = -1;
 	constructor(
 		public varNames: string[],
-		public previousEnvs: {[t: string]: any},
+		public previousEnvs: { [t: string]: any },
 		public envs: any[],
 		public optEnvs: any[] = []
-	) {}
+	) { }
 }
 
 

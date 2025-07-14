@@ -1,4 +1,4 @@
-import {TableElement, isHtmlEscape, CursorPos, example} from 'vs/editor/contrib/rtv/RTVUtils';
+import { TableElement, isHtmlEscape, CursorPos, example } from './RTVUtils.js';
 
 
 
@@ -6,7 +6,7 @@ export class RTVSynthModel {
 	set includedTimes(value: Set<number>) {
 		this._includedTimes = value;
 	}
-	set boxEnvs(value:{[k: string]: [v: any]}[]) {
+	set boxEnvs(value: { [k: string]: [v: any] }[]) {
 		this._boxEnvs = value;
 	}
 	set prevEnvs(value: Map<number, any>) {
@@ -15,7 +15,7 @@ export class RTVSynthModel {
 
 	private _allEnvs: any[] = [];
 	private _prevEnvs?: Map<number, any>;
-	private _boxEnvs: {[k: string]: any}[] = [];
+	private _boxEnvs: { [k: string]: any }[] = [];
 	private _boxVars: Set<string> = new Set<string>();
 	private _lineNumber: number;
 	private _rowsValid: boolean[] = [];
@@ -37,7 +37,7 @@ export class RTVSynthModel {
 		this._cursorPos = new CursorPos(undefined, undefined, undefined, undefined, 0);
 	}
 
-	get boxEnvs(): {[k: string]: [v: any]}[] {
+	get boxEnvs(): { [k: string]: [v: any] }[] {
 		return this._boxEnvs;
 	}
 
@@ -73,7 +73,7 @@ export class RTVSynthModel {
 		return this._cursorPos.node!;
 	}
 
-	public updateBoxContent(newEnvs: {[k: string] : [v: {[k1: string]: any}]}, init: boolean = false) {
+	public updateBoxContent(newEnvs: { [k: string]: [v: { [k1: string]: any }] }, init: boolean = false) {
 		this.updateBoxEnvs(newEnvs);
 		this.updateRowsValid();
 		this._commit(init);
@@ -97,7 +97,7 @@ export class RTVSynthModel {
 
 		this._prevEnvs = RTVSynthModel.createPreEnvs(this._allEnvs);
 	}
-	public static createPreEnvs(allEnvs: any[]){
+	public static createPreEnvs(allEnvs: any[]) {
 		let prevEnvs = new Map<number, any>();
 
 		for (const startEnv of allEnvs) {
@@ -130,7 +130,7 @@ export class RTVSynthModel {
 	 * Updates `boxEnvs' and builds `rows`
 	 * @param newEnvs
 	 */
-	public updateBoxEnvs(newEnvs: {[k: string] : [v: {[k1: string]: any}]}) {
+	public updateBoxEnvs(newEnvs: { [k: string]: [v: { [k1: string]: any }] }) {
 
 		let outVarNames: string[];
 		if (!this._outputVars) {
@@ -276,8 +276,8 @@ export class RTVSynthModel {
 	 *
 	 * @returns values for a synth requests
 	 */
-	public getValues() : {[k: string] : {[k1: string] : [v1: Object]}} {
-		let values: {[k: string] : {[k1: string] : [v1: Object]}} = {};
+	public getValues(): { [k: string]: { [k1: string]: [v1: Object] } } {
+		let values: { [k: string]: { [k1: string]: [v1: Object] } } = {};
 		for (let env of this._boxEnvs!) {
 			if (this._includedTimes.has(env['time'] as unknown as number)) {
 				values[`(${env['lineno']},${env['time']})`] = env;
@@ -291,22 +291,22 @@ export class RTVSynthModel {
 	 * @param env environment to get values from
 	 * @private
 	 */
-	private getInputsValues(env: any): {[k:string]: string}{
-		let input: {[k: string] : string} = {};
+	private getInputsValues(env: any): { [k: string]: string } {
+		let input: { [k: string]: string } = {};
 		for (let varName of this._boxVars!) {
 			let dontShowVars = ['$', 'rv', "#"];
-			if(dontShowVars.includes(varName)) {
+			if (dontShowVars.includes(varName)) {
 				continue;
 			}
-			else if(this._outputVars.includes(varName)) {
+			else if (this._outputVars.includes(varName)) {
 				let envTime = env['time'] as unknown as number;
 				let pastEnv = this._prevEnvs!.get(envTime);
 				if (pastEnv && pastEnv[varName]) {
 					input[varName] = pastEnv[varName] as unknown as string;
 				}
 			}
-			else{
-				if(Object.keys(env).includes(varName)) {
+			else {
+				if (Object.keys(env).includes(varName)) {
 					input[varName] = env[varName] as unknown as string;
 				}
 			}
@@ -319,8 +319,8 @@ export class RTVSynthModel {
 	 * @param env environment to get values from
 	 * @private
 	 */
-	private getOutputValues(env: any): {[k:string]: string}{
-		let output: {[k: string] : string} = {};
+	private getOutputValues(env: any): { [k: string]: string } {
+		let output: { [k: string]: string } = {};
 		for (let varName of this._outputVars!) {
 			output[varName] = env[varName] as unknown as string;
 		}
@@ -330,14 +330,14 @@ export class RTVSynthModel {
 	/** return the list of examples that are currently displayed. each example is formatted like this:
 	//{input: {var1: val1, var2: val2}, output: {var3: val3, var4: val4}}
 	 */
-	public getExamples() : example[] {
+	public getExamples(): example[] {
 		// @ts-ignore
-		let examples: [{inputs: {[k: string] : string}, outputs: {[k: string] : string}}] = [];
+		let examples: [{ inputs: { [k: string]: string }, outputs: { [k: string]: string } }] = [];
 		for (let env of this._boxEnvs!) {
 			if (this._includedTimes.has(env['time'] as unknown as number)) {
 				let input = this.getInputsValues(env);
 				let output = this.getOutputValues(env);
-				examples.push({inputs: input, outputs: output});
+				examples.push({ inputs: input, outputs: output });
 			}
 		}
 		return examples;
@@ -349,17 +349,17 @@ export class RTVSynthModel {
 	 * @param allEnvs
 	 * @returns
 	 */
-	public computeEnvs(allEnvs: {[k: string] : [v: {[k1: string]: any}]}) : {[k: string]: [v: any]}[]{
+	public computeEnvs(allEnvs: { [k: string]: [v: { [k1: string]: any }] }): { [k: string]: [v: any] }[] {
 		// Get all envs at this line number
 		let envs;
-		envs = allEnvs[this._lineNumber!-1];
+		envs = allEnvs[this._lineNumber! - 1];
 		envs = this.addMissingLines(envs);
 		return envs;
 	}
 
 
 	// helper function copied from `RTVDisplay.ts`
-	private addMissingLines(envs: {[k: string]: [v: any]}[]): {[k: string]: [v: any]}[] {
+	private addMissingLines(envs: { [k: string]: [v: any] }[]): { [k: string]: [v: any] }[] {
 		let last = function <T>(a: T[]): T { return a[a.length - 1]; };
 		let active_loop_iters: number[] = [];
 		let active_loop_ids: string[] = [];
@@ -435,7 +435,7 @@ export class RTVSynthModel {
 	}
 
 	// removes invalid times from _includedTimes and returns signal for whether to highlight a row
-	public removeInvalidTimes(idx: number, editable?: boolean) : boolean | undefined {
+	public removeInvalidTimes(idx: number, editable?: boolean): boolean | undefined {
 		const env = this._boxEnvs![idx];
 		const time = env['time'] as unknown as number;
 		let highlight = undefined;

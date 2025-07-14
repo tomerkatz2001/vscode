@@ -1,63 +1,61 @@
 // import {MarkdownRenderer} from "vs/editor/browser/core/markdownRenderer";
 // import {MarkdownString} from "vs/base/common/htmlContent";
-import {ICodeEditor} from "vs/editor/browser/editorBrowser";
-import {IModeService} from "vs/editor/common/services/modeService";
-import {IOpenerService} from "vs/platform/opener/common/opener";
-import {IThemeService} from "vs/platform/theme/common/themeService";
-import {RTVSynthView} from "vs/editor/contrib/rtv/RTVSynthView";
-import {CursorPos, example, getUtils, isHtmlEscape, removeHtmlEscape, TableElement} from "./RTVUtils";
-import {MarkdownRenderer} from "vs/editor/browser/core/markdownRenderer";
-import { MarkdownString } from 'vs/base/common/htmlContent';
+import { RTVSynthView } from "./RTVSynthView.js";
+import { CursorPos, example, isHtmlEscape, removeHtmlEscape, TableElement } from "./RTVUtils.js";
+import { MarkdownString } from '../../../base/common/htmlContent.js';
+import { IThemeService } from '../../../platform/theme/common/themeService.js';
+import { IOpenerService } from '../../../platform/opener/common/opener.js';
+import { ICodeEditor } from '../../browser/editorBrowser.js';
+import { ILanguageService } from '../../common/languages/language.js';
+import { renderMarkdown } from '../../../base/browser/markdownRenderer.js';
+import { DisposableStore } from '../../../base/common/lifecycle.js';
 
-export class RTVInputBox extends RTVSynthView{
+export class RTVInputBox extends RTVSynthView {
 
 	private varNames: string[];
-	private _boxEnv:any = {};
+	private _boxEnv: any = {};
 
 	private _cellElements?: Map<string, HTMLTableCellElement[]>;
 	private _cursorPos: CursorPos;
 
-	onEnterPressed?: ()=>void;
+	onEnterPressed?: () => void;
 	constructor(
 		_editor: ICodeEditor,
 		originalLineNode: HTMLElement,
 		originalBoxNode: HTMLElement,
-		modeService: IModeService,
+		languageService: ILanguageService,
 		openerService: IOpenerService,
 		lineNumber: number,
 		@IThemeService _themeService: IThemeService,
-		private inVarNames:string[],
-		private outVarNames:string[],
+		private inVarNames: string[],
+		private outVarNames: string[],
 		private _rows: TableElement[][],
-	){
-		super(_editor, originalLineNode, originalBoxNode, modeService, openerService, lineNumber, [], _themeService);
-		this.varNames = this.inVarNames.concat(this.outVarNames) ;
-		this._cursorPos = new CursorPos(undefined, undefined, undefined, undefined, 0 );
-		this.bindCellElementsChanged((cells)=>{this._cellElements = cells});
+	) {
+		super(_editor, originalLineNode, originalBoxNode, languageService, openerService, lineNumber, [], _themeService);
+		this.varNames = this.inVarNames.concat(this.outVarNames);
+		this._cursorPos = new CursorPos(undefined, undefined, undefined, undefined, 0);
+		this.bindCellElementsChanged((cells) => { this._cellElements = cells });
 		this.bindUpdateCursorPos(this.changeCursorPos);
 		this.bindRequestNextCell(this.findNextCell);
 		this.bindToggleElement(this.toggleElement);
 		this.bindToggleIfChanged(this.toggleIfChanged);
 	}
 
-	public getBoxAsExample(): example{
+	public getBoxAsExample(): example {
 		var inputs: { [key: string]: string; } = {};
 		var outputs: { [key: string]: string; } = {};
 		Object.entries(this._boxEnv).forEach(([key, value], index) => {
-			if(this.inVarNames.includes(key)){
+			if (this.inVarNames.includes(key)) {
 				inputs[key] = value as string;
-			}else{
+			} else {
 				outputs[key] = value as string;
 			}
 		});
-		return {inputs: inputs, outputs:outputs};
+		return { inputs: inputs, outputs: outputs };
 	}
-	public updateBoxContent(rows: TableElement[][], init: boolean = false) {
+	public override updateBoxContent(rows: TableElement[][], init: boolean = false) {
 		this._rows = rows
-		const renderer = new MarkdownRenderer(
-			{ 'editor': this._editor },
-			this._modeService,
-			this._openerService);
+
 
 		this._firstEditableCellId = undefined;
 		let cellElements = new Map<string, HTMLTableCellElement[]>();
@@ -91,7 +89,7 @@ export class RTVInputBox extends RTVSynthView{
 					if (rowIdx > 0) {
 						cell!.id = this.getCellId(elmt.vname!, rowIdx - 1);
 					}
-					this.addCellContentAndStyle(cell!, elmt, renderer, rowIdx == 0);
+					this.addCellContentAndStyle(cell!, elmt, rowIdx == 0);
 				}
 
 				// skip the headers
@@ -102,7 +100,7 @@ export class RTVInputBox extends RTVSynthView{
 					}
 					if (cell! !== null) {
 						if (!init) {
-							cell = this.updateCell(cell!, elmt, renderer);
+							cell = this.updateCell(cell!, elmt);
 						}
 						if (!this._firstEditableCellId && elmt.editable) {
 							this._firstEditableCellId = this.getCellId(vname, rowIdx - 1);
@@ -123,7 +121,7 @@ export class RTVInputBox extends RTVSynthView{
 		this.onCellElementsChanged!(cellElements);
 	}
 
-	protected updateCell(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, header: boolean = false): HTMLTableCellElement{
+	protected override updateCell(cell: HTMLTableCellElement, elmt: TableElement, header: boolean = false): HTMLTableCellElement {
 
 		let s = elmt.content;
 		let cellContent: HTMLElement;
@@ -138,8 +136,17 @@ export class RTVInputBox extends RTVSynthView{
 			cellContent = document.createElement('div');
 			cellContent.innerHTML = removeHtmlEscape(s);
 		} else {
-			let renderedText = r.render(new MarkdownString(s));
-			cellContent = renderedText.element;
+			const rendered = renderMarkdown(new MarkdownString(s), {
+				// optional opener service for links
+				actionHandler: {
+					callback: (content) => {
+						// handle link click, or pass this._openerService.open(...)
+					},
+					disposables: new DisposableStore()
+				}
+			});
+			cellContent = rendered.element;
+
 		}
 
 
@@ -162,7 +169,7 @@ export class RTVInputBox extends RTVSynthView{
 		return cell;
 	}
 
-	protected addListeners(cell: HTMLElement) {
+	protected override addListeners(cell: HTMLElement) {
 		if (cell.id) { // won't work for cells w/o id, i.e., the header cells
 			const [varname, idx] = cell.id.split('-').slice(1);
 
@@ -184,12 +191,12 @@ export class RTVInputBox extends RTVSynthView{
 
 				this.updateCursorPos!(range, cell);
 
-				switch(e.key) {
+				switch (e.key) {
 					case 'Enter':
 						e.preventDefault();
 
 						if (e.shiftKey) {
-							let utils = getUtils();
+							let utils = window.myUtils.getUtils();
 							let error = await utils.validate(cell.textContent!.trim());
 							if (error) {
 								this.addError(error, cell, 500);
@@ -273,7 +280,7 @@ export class RTVInputBox extends RTVSynthView{
 
 			nextCell = vcells[row];
 			if (nextCell.id === tmpCell.id) {
-				row =  0;
+				row = 0;
 				nextCell = vcells[row];
 				break;
 			}
@@ -286,10 +293,10 @@ export class RTVInputBox extends RTVSynthView{
 		console.log(`env[${varname}] = ${content}`);
 	}
 	private async toggleElement(idx: number, varname: string, cell: HTMLElement, force?: boolean, updateSynthBox: boolean = true): Promise<boolean> {
-		if(cell.textContent!.trim() == ''){
-			return  true;
+		if (cell.textContent!.trim() == '') {
+			return true;
 		}
-		let utils = getUtils();
+		let utils = window.myUtils.getUtils();
 		let error = await utils.validate(cell.textContent!.trim());
 		if (error) {
 			this.addError(error, cell, 500);
@@ -299,16 +306,11 @@ export class RTVInputBox extends RTVSynthView{
 
 		const varIdx = this.varNames.indexOf(varname);
 		let _cell = this._cellElements?.get(varname)![0]!; // assume only one line in inputBox
-		let elm = this._rows[idx+1][varIdx]; // rows contains headers.
+		let elm = this._rows[idx + 1][varIdx]; // rows contains headers.
 		elm.content = cell.innerText.trim();
 
-
-		const renderer = new MarkdownRenderer(
-		{ 'editor': this._editor },
-		this._modeService,
-		this._openerService);
-		this.updateCell(_cell, elm, renderer);
-			return true;
+		this.updateCell(_cell, elm);
+		return true;
 	}
 
 	private async toggleIfChanged(idx: number, varname: string, cell: HTMLElement, updateBoxContent: boolean = true): Promise<boolean> {
@@ -323,7 +325,7 @@ export class RTVInputBox extends RTVSynthView{
 
 		return success;
 	}
-	public selectFirstEditableCell() : boolean {
+	public override selectFirstEditableCell(): boolean {
 		try {
 			//this._currRow = +cellId; // already handled by this.select
 			let cell = document.getElementById(this._firstEditableCellId!);
@@ -336,7 +338,7 @@ export class RTVInputBox extends RTVSynthView{
 			return false;
 		}
 	}
-	public bindOnEnterPresses(handler: ()=> void){
+	public bindOnEnterPresses(handler: () => void) {
 
 		this.onEnterPressed = handler;
 	}

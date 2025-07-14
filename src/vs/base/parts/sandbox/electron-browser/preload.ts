@@ -3,8 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-/* eslint-disable no-restricted-globals */
 
+/* eslint-disable no-restricted-globals */
 (function () {
 
 	const { ipcRenderer, webFrame, contextBridge, webUtils } = require('electron');
@@ -245,13 +245,45 @@
 			}
 		}
 	};
-
+	console.log("dfgggfgfdgdfgd")
 	// Use `contextBridge` APIs to expose globals to VSCode
 	// only if context isolation is enabled, otherwise just
 	// add to the DOM global.
 	if (process.contextIsolated) {
 		try {
-			contextBridge.exposeInMainWorld('vscode', globals);
+			const path = require('path');
+
+			// Assuming preload.js is in `out/vs/base/parts/sandbox/electron-browser/`
+			const utilsPath = path.resolve(
+				__dirname,
+				'../../../editor/contrib/rtv/RTVUtils.js'
+			);
+
+			console.log('Resolved RTVUtils.js path:', utilsPath);
+
+			const { getUtils, isLoopy, getOSEnvVariable } = require('/vs/editor/contrib/rtv/RTVUtils.node.js'); // Adjust path as needed
+
+			// const utilsModule = require('/vs/editor/contrib/rtv/RTVUtils.node.js')
+			contextBridge.exposeInMainWorld('myUtils', {
+				getOSEnvVariable: getOSEnvVariable,
+				isLoopy: isLoopy,
+				getUtils: getUtils,
+				// If you want to expose the entire utils object methods, you can do this:
+				utils: (() => {
+					const utils = getUtils();
+
+					return {
+						EOL: utils.EOL,
+						logger: (editor: any) => utils.logger(editor),
+						runProgram: (program: string, cwd?: string, values?: any) => utils.runProgram(program, cwd, values),
+						runImgSummary: (program: string, line: number, varname: string) => utils.runImgSummary(program, line, varname),
+						runCommentsParser: (program: string) => utils.runCommentsParser(program),
+						validate: (input: string) => utils.validate(input),
+						synthesizer: () => utils.synthesizer(),
+						resynthesizer: () => utils.resynthesizer()
+					};
+				})()
+			});
 		} catch (error) {
 			console.error(error);
 		}

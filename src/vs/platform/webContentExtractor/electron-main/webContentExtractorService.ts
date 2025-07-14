@@ -44,7 +44,6 @@ export class NativeWebContentExtractorService implements IWebContentExtractorSer
 				return cached.content;
 			}
 		}
-
 		const win = new BrowserWindow({
 			width: 800,
 			height: 600,

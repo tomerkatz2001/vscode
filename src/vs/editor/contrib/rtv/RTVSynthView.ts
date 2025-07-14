@@ -1,18 +1,19 @@
-import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
-import { MarkdownRenderer } from 'vs/editor/browser/core/markdownRenderer';
-import { MarkdownString } from 'vs/base/common/htmlContent';
-import { DelayedRunAtMostOne } from 'vs/editor/contrib/rtv/RTVInterfaces';
-import { TableElement, isHtmlEscape, removeHtmlEscape } from 'vs/editor/contrib/rtv/RTVUtils';
-import { IModeService } from 'vs/editor/common/services/modeService';
-import { IOpenerService } from 'vs/platform/opener/common/opener';
-import { badgeBackground } from 'vs/platform/theme/common/colorRegistry';
-import { IThemeService } from 'vs/platform/theme/common/themeService';
+import { ICodeEditor } from 'vs/editor/browser/editorBrowser.js';
+import { MarkdownString } from '../../../base/common/htmlContent.js';
+import { DelayedRunAtMostOne } from './RTVInterfaces.js';
+import { TableElement, isHtmlEscape, removeHtmlEscape } from './RTVUtils.js';
+import { IOpenerService } from 'vs/platform/opener/common/opener.js';
+import { badgeBackground } from '../../../platform/theme/common/colorRegistry.js';
+import { IThemeService } from '../../../platform/theme/common/themeService.js';
+import { ILanguageService } from '../../common/languages/language.js';
+import { renderMarkdown } from '../../../base/browser/markdownRenderer.js';
+import { DisposableStore } from '../../../base/common/lifecycle.js';
 
 export class ErrorHoverManager {
 	private errorHover?: HTMLElement = undefined;
 	private addHoverTimer = new DelayedRunAtMostOne();
 
-	constructor(private editor: ICodeEditor) {}
+	constructor(private editor: ICodeEditor) { }
 
 	public remove() {
 		this.addHoverTimer.cancel();
@@ -20,7 +21,7 @@ export class ErrorHoverManager {
 		this.errorHover = undefined;
 	}
 
-	public add(element: HTMLElement, msg: string, timeout: number = 0, fadeout: number = 1000, onLeft: boolean = false,  left:number|undefined = undefined, top:number|undefined=undefined, hugeText: boolean = false) {
+	public add(element: HTMLElement, msg: string, timeout: number = 0, fadeout: number = 1000, onLeft: boolean = false, left: number | undefined = undefined, top: number | undefined = undefined, hugeText: boolean = false) {
 		this.addHoverTimer.run(timeout, async () => {
 			if (this.errorHover) {
 				this.errorHover.remove();
@@ -48,7 +49,7 @@ export class ErrorHoverManager {
 
 			const div = document.createElement('div');
 			const p = document.createElement('p');
-			if(hugeText) {
+			if (hugeText) {
 				p.style.fontSize = "20px";
 			}
 			p.innerText = msg;
@@ -62,15 +63,15 @@ export class ErrorHoverManager {
 			let position = element.getBoundingClientRect();
 			this.errorHover.style.position = 'fixed';
 
-			if(left && top){
+			if (left && top) {
 				this.errorHover.style.left = left + 'px';
 				this.errorHover.style.top = top + 'px';
 			}
-			else if(onLeft){
+			else if (onLeft) {
 				this.errorHover.style.bottom = position.top.toString() + 'px';
 				this.errorHover.style.left = position.left.toString() + 'px';
 			}
-			else{
+			else {
 				this.errorHover.style.top = position.top.toString() + 'px';
 				this.errorHover.style.left = position.right.toString() + 'px';
 			}
@@ -96,17 +97,17 @@ export class ErrorHoverManager {
 				}
 			}, fadeout);
 		})
-		.catch(err => {
-			if (err) {
-				console.error(err);
-			}
-		});
+			.catch(err => {
+				if (err) {
+					console.error(err);
+				}
+			});
 	}
 }
 
 export class RTVSynthView {
 
-	protected _modeService: IModeService;
+	protected _languageService: ILanguageService;
 	protected _openerService: IOpenerService;
 
 	// core elements
@@ -137,7 +138,7 @@ export class RTVSynthView {
 		protected readonly _editor: ICodeEditor,
 		protected readonly originalLineNode: HTMLElement,
 		protected readonly originalBoxNode: HTMLElement,
-		protected readonly modeService: IModeService,
+		protected readonly languageService: ILanguageService,
 		protected readonly openerService: IOpenerService,
 		protected readonly lineNumber: number,
 		protected readonly outputVars: string[],
@@ -145,7 +146,7 @@ export class RTVSynthView {
 	) {
 		this._box = originalBoxNode.cloneNode(true) as HTMLDivElement;
 		this._line = originalLineNode.cloneNode(true) as HTMLDivElement;
-		this._modeService = modeService;
+		this._languageService = languageService;
 		this._openerService = openerService;
 		this._box.id = 'rtv-synth-box';
 		this._box.style.opacity = '0';
@@ -279,10 +280,6 @@ export class RTVSynthView {
 	// ------------
 
 	public updateBoxContent(rows: TableElement[][], init: boolean = false) {
-		const renderer = new MarkdownRenderer(
-							{ 'editor': this._editor },
-							this._modeService,
-							this._openerService);
 		const outputVars = new Set(this.outputVars);
 
 		this._firstEditableCellId = undefined;
@@ -317,7 +314,7 @@ export class RTVSynthView {
 					if (rowIdx > 0) {
 						cell!.id = this.getCellId(elmt.vname!, rowIdx - 1);
 					}
-					this.addCellContentAndStyle(cell!, elmt, renderer, rowIdx == 0);
+					this.addCellContentAndStyle(cell!, elmt, rowIdx == 0);
 				}
 
 				// skip the headers
@@ -328,9 +325,9 @@ export class RTVSynthView {
 					}
 					if (cell! !== null) {
 						if (!init) {
-							cell = this.updateCell(cell!, elmt, renderer);
+							cell = this.updateCell(cell!, elmt);
 						}
-						if (!this._firstEditableCellId && (vname === this.outputVars[0])&& elmt.editable && elmt.content.trim() !== '') {
+						if (!this._firstEditableCellId && (vname === this.outputVars[0]) && elmt.editable && elmt.content.trim() !== '') {
 							this._firstEditableCellId = this.getCellId(vname, rowIdx - 1);
 						}
 
@@ -342,7 +339,7 @@ export class RTVSynthView {
 						}
 
 						// finally, re-highlight rows and remove highlight of rows that are no longer valid
-						if(this.resetHighlight) {
+						if (this.resetHighlight) {
 							this.resetHighlight!(rowIdx - 1, elmt.editable);
 						}
 					}
@@ -355,13 +352,13 @@ export class RTVSynthView {
 		this.onCellElementsChanged!(cellElements);
 	}
 
-	public addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, header: boolean = false) {
+	public addCellContentAndStyle(cell: HTMLTableCellElement, elmt: TableElement, header: boolean = false) {
 		if (elmt.leftBorder) {
 			cell.style.borderLeft = '1px solid #454545';
-		}else {
+		} else {
 			cell.style.borderLeft = this._cellStyle!.borderLeft;
 		}
-		if(header){
+		if (header) {
 			cell.style.borderBottom = '1px solid #454545';
 		}
 		cell.style.paddingLeft = this._cellStyle!.paddingLeft;
@@ -371,10 +368,10 @@ export class RTVSynthView {
 		cell.style.boxSizing = this._cellStyle!.boxSizing;
 		cell.align = 'center';
 
-		this.updateCell(cell, elmt, r, header);
+		this.updateCell(cell, elmt, header);
 	}
 
-	protected updateCell(cell: HTMLTableCellElement, elmt: TableElement, r: MarkdownRenderer, header: boolean = false): HTMLTableCellElement{
+	protected updateCell(cell: HTMLTableCellElement, elmt: TableElement, header: boolean = false): HTMLTableCellElement {
 
 		let s = elmt.content;
 		let cellContent: HTMLElement;
@@ -389,8 +386,17 @@ export class RTVSynthView {
 			cellContent = document.createElement('div');
 			cellContent.innerHTML = removeHtmlEscape(s);
 		} else {
-			let renderedText = r.render(new MarkdownString(s));
-			cellContent = renderedText.element;
+			const rendered = renderMarkdown(new MarkdownString(s), {
+				// optional opener service for links
+				actionHandler: {
+					callback: (content) => {
+						// handle link click, or pass this._openerService.open(...)
+					},
+					disposables: new DisposableStore()
+				}
+			});
+			cellContent = rendered.element;
+
 		}
 
 
@@ -461,7 +467,7 @@ export class RTVSynthView {
 
 				this.updateCursorPos!(range, cell);
 
-				switch(e.key) {
+				switch (e.key) {
 					case 'Enter':
 						e.preventDefault();
 
@@ -494,17 +500,17 @@ export class RTVSynthView {
 							e.preventDefault();
 							this.focusNextRow(cell, e.shiftKey);
 						}
-						// this._synthTimer.run(1000, async () => {
-						// 	const success = await this.requestSynth!(+idx, varname, cell, true, false, false);
-						// 	if (success) {
-						// 		this.synthesizeFragment(cell);
-						// 	}
-						// }).catch(err => {
-						// 	if (err) {
-						// 		console.error(err);
-						// 	}
-						// });
-						// break;
+					// this._synthTimer.run(1000, async () => {
+					// 	const success = await this.requestSynth!(+idx, varname, cell, true, false, false);
+					// 	if (success) {
+					// 		this.synthesizeFragment(cell);
+					// 	}
+					// }).catch(err => {
+					// 	if (err) {
+					// 		console.error(err);
+					// 	}
+					// });
+					// break;
 				}
 				return rs;
 			}; // end of onkeydown
@@ -599,7 +605,7 @@ export class RTVSynthView {
 	 * attempts to move the cursor to the first editable cell inside the table
 	 * @returns ... is successful
 	 */
-	public selectFirstEditableCell() : boolean {
+	public selectFirstEditableCell(): boolean {
 		const firstVar = this.outputVars[0];
 		try {
 			const cellVar = this._firstEditableCellId!.split('-')[1];

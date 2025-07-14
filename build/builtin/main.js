@@ -22,7 +22,7 @@ ipcMain.handle('pickdir', async () => {
 
 	return result.filePaths[0];
 });
-
+console.log("hiiiiii")
 app.once('ready', () => {
 	window = new BrowserWindow({
 		width: 800,

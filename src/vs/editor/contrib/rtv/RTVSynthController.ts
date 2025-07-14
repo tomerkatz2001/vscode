@@ -1,14 +1,12 @@
-import { Range as RangeClass } from 'vs/editor/common/core/range';
-import { Selection } from 'vs/editor/common/core/selection';
-import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
+import { Range as RangeClass } from '../../common/core/range.js';
+import { Selection } from '../../common/core/selection.js';
+import { ICodeEditor } from '../../browser/editorBrowser.js';
 import {
 	displayError,
 	firstNonCommentLine,
-	getUtils,
-	isLoopy,
 	replaceAll,
 	TableElement
-} from 'vs/editor/contrib/rtv/RTVUtils';
+} from './RTVUtils.js';
 import {
 	Utils,
 	RunResult,
@@ -19,12 +17,12 @@ import {
 	ViewMode,
 	SynthProcess,
 	ReSynthProcess
-} from './RTVInterfaces';
-import { IThemeService } from 'vs/platform/theme/common/themeService';
-import { RTVDisplayBox } from 'vs/editor/contrib/rtv/RTVDisplay';
-import {ErrorHoverManager, RTVSynthView} from 'vs/editor/contrib/rtv/RTVSynthView';
-import { RTVSynthModel } from 'vs/editor/contrib/rtv/RTVSynthModel';
-import {CommentsManager, ParsedComment} from "vs/editor/contrib/rtv/comments/index";
+} from './RTVInterfaces.js';
+import { IThemeService } from '../../../platform/theme/common/themeService.js';
+import { RTVDisplayBox } from './RTVDisplay.js';
+import { ErrorHoverManager, RTVSynthView } from './RTVSynthView.js';
+import { RTVSynthModel } from './RTVSynthModel.js';
+import { CommentsManager, ParsedComment } from "./comments/index.js";
 
 
 enum EditorState {
@@ -61,26 +59,26 @@ class EditorStateManager {
 	}
 
 	synthesizing() {
-		if (this._state === EditorState.Synthesizing) {return;}
+		if (this._state === EditorState.Synthesizing) { return; }
 		this._state = EditorState.Synthesizing;
 		this.insertFragment(this.SYNTHESIZING_INDICATOR);
 	}
 
 	resynthesizing(strartLine: number, endLine: number) {
-		if(this._state === EditorState.resynthesizing) {return;}
+		if (this._state === EditorState.resynthesizing) { return; }
 		this._state = EditorState.resynthesizing;
-		CommentsManager.removeCommentsAndCode(this.controller, this.editor, strartLine, endLine,this.SYNTHESIZING_INDICATOR);
+		CommentsManager.removeCommentsAndCode(this.controller, this.editor, strartLine, endLine, this.SYNTHESIZING_INDICATOR);
 	}
 
 	failed() {
-		if (this._state === EditorState.Failed) {return;}
+		if (this._state === EditorState.Failed) { return; }
 		this._state = EditorState.Failed;
 		this.insertFragment(this.SYNTH_FAILED_INDICATOR);
 	}
 
 	program(program: string) {
 		this._state = EditorState.HasProgram;
-		program = replaceAll(program, "\t","    "); // in the editor tab is 4 spaces. idk how to read the tab size :(.
+		program = replaceAll(program, "\t", "    "); // in the editor tab is 4 spaces. idk how to read the tab size :(.
 		this.insertFragment(program);
 	}
 
@@ -144,9 +142,9 @@ export class RTVSynthController {
 		private readonly editor: ICodeEditor,
 		private readonly RTVController: IRTVController,
 		@IThemeService readonly _themeService: IThemeService,
-		private readonly  commentsManager: CommentsManager
+		private readonly commentsManager: CommentsManager
 	) {
-		this.utils = getUtils();
+		this.utils = window.myUtils.getUtils();
 		this.logger = this.utils.logger(editor);
 		this.process = this.utils.synthesizer();
 		this.resynthProcess = this.utils.resynthesizer();
@@ -186,7 +184,7 @@ export class RTVSynthController {
 		this.enabled = false;
 	}
 
-	public isEnabled() : boolean {
+	public isEnabled(): boolean {
 		return this.enabled;
 	}
 	onBoxContentChanged = (rows: TableElement[][], init: boolean = false) => {
@@ -221,13 +219,13 @@ export class RTVSynthController {
 	}
 
 	handleRequestSynth = async (
-									idx: number,
-									varname: string,
-									cell: HTMLElement,
-									force?: boolean,
-									updateSynthBox?: boolean,
-									includeRow?: boolean
-								) => {
+		idx: number,
+		varname: string,
+		cell: HTMLElement,
+		force?: boolean,
+		updateSynthBox?: boolean,
+		includeRow?: boolean
+	) => {
 		let success = false;
 		if (!includeRow) {
 			if (!this._synthModel!.cellContentChanged(idx, varname, cell.innerText)) {
@@ -271,14 +269,14 @@ export class RTVSynthController {
 		return validInput;
 	}
 
-	private  moveLinenoBy(linesDelta: number) {
+	private moveLinenoBy(linesDelta: number) {
 		this.editorState!.moveLinenoBy(linesDelta);
 		this._synthModel!.moveLineoBy(linesDelta);
 	}
 	// -----------------------------------------------------------------------------------
 	// Interface
 	// -----------------------------------------------------------------------------------
-	public async getSpecificationAsJson(socpeIdx: number){
+	public async getSpecificationAsJson(socpeIdx: number) {
 		var s = await this.commentsManager.getScopeSpecification(socpeIdx);
 		var s2 = await this.commentsManager.getExamples();
 
@@ -354,7 +352,7 @@ export class RTVSynthController {
 		// Update the projection box with the new value
 		const runResults: any = await this.RTVController.updateBoxes();
 
-		let error: any = runResults? runResults[0] !== 0 : undefined;
+		let error: any = runResults ? runResults[0] !== 0 : undefined;
 		if (error) {
 			// TODO: inform user that updateBoxes failed with the default value
 			this.stopSynthesis();
@@ -365,19 +363,19 @@ export class RTVSynthController {
 		// Keep the view mode up to date.
 		this.RTVController.disable();
 
-		let oldBox : RTVDisplayBox = this.RTVController.getBox(lineno) as RTVDisplayBox;
+		let oldBox: RTVDisplayBox = this.RTVController.getBox(lineno) as RTVDisplayBox;
 		this._synthModel = new RTVSynthModel(varnames, lineno, oldBox.allVars());
 		this._synthModel.bindBoxContentChanged(this.onBoxContentChanged);
 
 		this._synthView = new RTVSynthView(
-							this.editor,
-							oldBox.getLine().getElement(),
-							oldBox.getElement(),
-							oldBox.getModeService(),
-							oldBox.getOpenerService(),
-							this.lineno!,
-							varnames!,
-							this._themeService);
+			this.editor,
+			oldBox.getLine().getElement(),
+			oldBox.getElement(),
+			oldBox.getLanguageService(),
+			oldBox.getOpenerService(),
+			this.lineno!,
+			varnames!,
+			this._themeService);
 		this._synthView.bindSynth(this.handleRequestSynth);
 		this._synthView.bindExitSynth(this.handleExitSynth);
 		this._synthView.bindValidateInput(this.handleValidateInput);
@@ -447,25 +445,25 @@ export class RTVSynthController {
 		const model = this.editor.getModel()!;
 		const scopeIdx = CommentsManager.getScopeIdx(lineno, model.getLinesContent())
 		let scopSpec = await this.commentsManager.getScopeSpecification(scopeIdx);
-		if(this.commentsManager.blockContainsConflict(scopeIdx)){ // if conflict is present no synth
+		if (this.commentsManager.blockContainsConflict(scopeIdx)) { // if conflict is present no synth
 			let errorManager = new ErrorHoverManager(this.editor);
-			let tmpBox:RTVDisplayBox = this.RTVController.getBox(lineno) as RTVDisplayBox
+			let tmpBox: RTVDisplayBox = this.RTVController.getBox(lineno) as RTVDisplayBox
 			tmpBox.updateLayout(0);
 			let currPos = this.RTVController.getCursorPos()!;
 			errorManager.add(tmpBox.getElement(), "Warning! Can't synthesize this scope: " +
 				"this scope or some\nof its nested scopes contain conflicting examples.\n" +
-				"Resolve them and try again.", 10, 2000, false, currPos.column*8+280, currPos.lineNumber*40 +55);
+				"Resolve them and try again.", 10, 2000, false, currPos.column * 8 + 280, currPos.lineNumber * 40 + 55);
 			return
 		}
 		// console.log(scopSpec);
 		// let sceps =  this.commentsManager.getExamples();
 		// console.log(sceps);
 
-		var parsedComment:ParsedComment = await this.commentsManager.getParsedComment(lineno - 1);
+		var parsedComment: ParsedComment = await this.commentsManager.getParsedComment(lineno - 1);
 
 		var linesBeforeResynth = this.RTVController.getModelForce().getLinesContent();
-		let commentIdx = CommentsManager.getScopeIdx(lineno-1, linesBeforeResynth)
-		if(commentIdx < 0){ // no resynth of func
+		let commentIdx = CommentsManager.getScopeIdx(lineno - 1, linesBeforeResynth)
+		if (commentIdx < 0) { // no resynth of func
 			return
 		}
 
@@ -477,10 +475,10 @@ export class RTVSynthController {
 		this._synthModel.boxEnvs = parsedComment.getEnvsToDisplay();
 		this._synthModel.prevEnvs = parsedComment.getPreEnvsToResynth()!;
 		this._synthModel.includedTimes = new Set<number>(this._synthModel.boxEnvs.map(env => env["time"] as unknown as number));
-		this._synthModel.bindBoxContentChanged(()=>{});
+		this._synthModel.bindBoxContentChanged(() => { });
 		this.RTVController.disable()
 
-		if(isLoopy()){
+		if (window.myUtils.isLoopy()) {
 			scopSpec.ignoreInnerSpecs();
 		}
 
@@ -513,7 +511,7 @@ export class RTVSynthController {
 				this.editorState!.failed();
 				this.RTVController.enable();
 				let range = new RangeClass(1, 1, linesBeforeResynth.length, 1000);
-				linesBeforeResynth = linesBeforeResynth.map(l=>l.replace("!!", ""))
+				linesBeforeResynth = linesBeforeResynth.map(l => l.replace("!!", ""))
 				this.editor.executeEdits(this.RTVController.getId(), [
 					{ range: range, text: linesBeforeResynth.join("\n") },
 				]);
@@ -531,7 +529,7 @@ export class RTVSynthController {
 				console.error(err);
 				this.editorState!.failed();
 				let range = new RangeClass(1, 1, linesBeforeResynth.length, 1000);
-				linesBeforeResynth = linesBeforeResynth.map(l=>l.replace("!!", ""))
+				linesBeforeResynth = linesBeforeResynth.map(l => l.replace("!!", ""))
 				this.editor.executeEdits(this.RTVController.getId(), [
 					{ range: range, text: linesBeforeResynth.join("\n") },
 				]);
@@ -584,7 +582,7 @@ export class RTVSynthController {
 
 			if (rs.success) {
 				//let box : RTVDisplayBox = this.RTVController.getBox(this.lineno!) as RTVDisplayBox;
-				let linesDelta= this.commentsManager.insertExamples(this._synthModel!);
+				let linesDelta = this.commentsManager.insertExamples(this._synthModel!);
 				this.moveLinenoBy(linesDelta);
 				this.editorState!.program(rs.program!);
 				await this.updateBoxContent(true);
@@ -618,14 +616,14 @@ export class RTVSynthController {
 		// Keep track of changes
 		let success = false;
 		// if (this._synthModel) {
-			// handle (the weird) situation where the onblur event is fired before stopSynth
-			if (cell) {
-				let valueChanged = this._synthModel?.cellContentChanged(idx, varname, cell.textContent!);
-				success = valueChanged ? await this.toggleElement(idx, varname, cell, true, updateBoxContent) : true;
-			} else {
-				console.error('toggleIfChanged called, but parent can\' be found: ');
-				console.error(cell);
-			}
+		// handle (the weird) situation where the onblur event is fired before stopSynth
+		if (cell) {
+			let valueChanged = this._synthModel?.cellContentChanged(idx, varname, cell.textContent!);
+			success = valueChanged ? await this.toggleElement(idx, varname, cell, true, updateBoxContent) : true;
+		} else {
+			console.error('toggleIfChanged called, but parent can\' be found: ');
+			console.error(cell);
+		}
 		// }
 		return success;
 	}
@@ -803,7 +801,7 @@ export class RTVSynthController {
 
 		// only create new boxes when `updateBoxContent` is true
 		if (updateSynthBox) {
-			const envs: {[k: string] : [v: {[k1: string]: any}]} = content[2];
+			const envs: { [k: string]: [v: { [k1: string]: any }] } = content[2];
 			this._synthModel!.updateBoxContent(envs, init);
 		}
 

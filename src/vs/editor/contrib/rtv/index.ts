@@ -1,5 +1,5 @@
-export {RTVSpecification} from "./RTVSpecification";
-export {RTVSynthView} from "./RTVSynthView";
-export {RTVInputBox} from "./RTVInputBox";
+export { RTVSpecification } from "./RTVSpecification.js";
+export { RTVSynthView } from "./RTVSynthView.js";
+export { RTVInputBox } from "./RTVInputBox.js";
 
 

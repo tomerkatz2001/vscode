@@ -652,6 +652,8 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 
 			// Create the browser window
 			mark('code/willCreateCodeBrowserWindow');
+			console.log("mmmmmmmmmmmmmmmmmmmm")
+			console.log(options)
 			this._win = new electron.BrowserWindow(options);
 			mark('code/didCreateCodeBrowserWindow');
 
