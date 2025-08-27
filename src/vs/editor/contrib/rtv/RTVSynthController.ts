@@ -2,17 +2,14 @@ import { Range as RangeClass } from '../../common/core/range.js';
 import { Selection } from '../../common/core/selection.js';
 import { ICodeEditor } from '../../browser/editorBrowser.js';
 import {
-	displayError,
 	firstNonCommentLine,
 	replaceAll,
 	TableElement
 } from './RTVUtils.js';
 import {
-	Utils,
 	RunResult,
 	SynthResult,
 	SynthProblem,
-	IRTVLogger,
 	IRTVController,
 	ViewMode,
 	SynthProcess,
@@ -20,9 +17,13 @@ import {
 } from './RTVInterfaces.js';
 import { IThemeService } from '../../../platform/theme/common/themeService.js';
 import { RTVDisplayBox } from './RTVDisplay.js';
-import { ErrorHoverManager, RTVSynthView } from './RTVSynthView.js';
+import { displayError, ErrorHoverManager, RTVSynthView } from './RTVSynthView.js';
 import { RTVSynthModel } from './RTVSynthModel.js';
-import { CommentsManager, ParsedComment } from "./comments/index.js";
+import { CommentsManager } from "./comments/RTVCommentsManager.js";
+import { ParsedComment } from './comments/RTVComment.js';
+import { IRTVLogger, IRTVLoggerService } from '../../../workbench/contrib/rtv/common/IRTVLogger.js';
+import { getScopeIdx } from './comments/RTVCommentsUtils.js';
+import { IRTVNodeUtils, IRTVNodeUtilsService } from '../../../workbench/contrib/rtv/common/IRTVNodeUtils.js';
 
 
 enum EditorState {
@@ -130,10 +131,8 @@ class EditorStateManager {
 export class RTVSynthController {
 	private _synthModel?: RTVSynthModel = undefined;
 	private _synthView?: RTVSynthView = undefined;
-	private logger: IRTVLogger;
 	enabled: boolean;
 	lineno?: number = undefined;
-	utils: Utils;
 	process: SynthProcess;
 	resynthProcess: ReSynthProcess;
 	editorState?: EditorStateManager = undefined;
@@ -141,13 +140,20 @@ export class RTVSynthController {
 	constructor(
 		private readonly editor: ICodeEditor,
 		private readonly RTVController: IRTVController,
+		private readonly commentsManager: CommentsManager,
 		@IThemeService readonly _themeService: IThemeService,
-		private readonly commentsManager: CommentsManager
+		@IRTVLoggerService private readonly logger: IRTVLogger,
+		@IRTVNodeUtilsService private readonly _nodeUtils: IRTVNodeUtils,
 	) {
-		this.utils = window.myUtils.getUtils();
-		this.logger = this.utils.logger(editor);
-		this.process = this.utils.synthesizer();
-		this.resynthProcess = this.utils.resynthesizer();
+		let p = null;
+		this._nodeUtils.synthesizer().then((process) => {
+			p = process;
+		});
+		this.process = p!;
+		this._nodeUtils.resynthesizer().then((process) => {
+			p = process;
+		});
+		this.resynthProcess = p!;
 		this.enabled = false;
 
 		// In case the user click's out of the boxes.
@@ -250,7 +256,7 @@ export class RTVSynthController {
 	}
 
 	handleValidateInput = async (input: string) => {
-		let error = await this.utils.validate(input);
+		let error = await this._nodeUtils.validate(input);
 		return error;
 	}
 
@@ -313,7 +319,8 @@ export class RTVSynthController {
 		}
 
 		if (!this.process.connected()) {
-			this.process = this.utils.synthesizer();
+
+			this.process = await this._nodeUtils.synthesizer();
 		}
 
 		// ------------------------------------------
@@ -443,7 +450,7 @@ export class RTVSynthController {
 		this.enabled = true;
 		//get the values from the comment
 		const model = this.editor.getModel()!;
-		const scopeIdx = CommentsManager.getScopeIdx(lineno, model.getLinesContent())
+		const scopeIdx = getScopeIdx(lineno, model.getLinesContent())
 		let scopSpec = await this.commentsManager.getScopeSpecification(scopeIdx);
 		if (this.commentsManager.blockContainsConflict(scopeIdx)) { // if conflict is present no synth
 			let errorManager = new ErrorHoverManager(this.editor);
@@ -462,7 +469,7 @@ export class RTVSynthController {
 		var parsedComment: ParsedComment = await this.commentsManager.getParsedComment(lineno - 1);
 
 		var linesBeforeResynth = this.RTVController.getModelForce().getLinesContent();
-		let commentIdx = CommentsManager.getScopeIdx(lineno - 1, linesBeforeResynth)
+		let commentIdx = getScopeIdx(lineno - 1, linesBeforeResynth)
 		if (commentIdx < 0) { // no resynth of func
 			return
 		}
@@ -478,7 +485,7 @@ export class RTVSynthController {
 		this._synthModel.bindBoxContentChanged(() => { });
 		this.RTVController.disable()
 
-		if (window.myUtils.isLoopy()) {
+		if (await this._nodeUtils.isLoopy()) {
 			scopSpec.ignoreInnerSpecs();
 		}
 
@@ -639,7 +646,7 @@ export class RTVSynthController {
 		let on = this._synthModel!.toggleOn(idx, force);
 
 		if (on) {
-			let error = await this.utils.validate(cell.textContent!);
+			let error = await this._nodeUtils.validate(cell.textContent!);
 			if (error) {
 				this._synthView!.addError(error, cell, 500);
 				return false;
@@ -752,7 +759,7 @@ export class RTVSynthController {
 	private async runProgram(): Promise<[string, string, any?]> {
 		let values = this._synthModel!.getValues();
 
-		const runResults: RunResult = await this.utils.runProgram(
+		const runResults: RunResult = await this._nodeUtils.runProgram(
 			this.RTVController.getProgram(),
 			undefined,
 			values);

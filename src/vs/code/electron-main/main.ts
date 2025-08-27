@@ -73,6 +73,7 @@ import { SaveStrategy, StateService } from '../../platform/state/node/stateServi
 import { FileUserDataProvider } from '../../platform/userData/common/fileUserDataProvider.js';
 import { addUNCHostToAllowlist, getUNCHost } from '../../base/node/unc.js';
 import { ThemeMainService } from '../../platform/theme/electron-main/themeMainServiceImpl.js';
+import { registerRTVServices } from '../../workbench/contrib/rtv/electon-main/RTV.main.js';
 
 /**
  * The main VS Code entry point.
@@ -142,6 +143,8 @@ class CodeMain {
 					configurationService.dispose();
 					evt.join('instanceLockfile', promises.unlink(environmentMainService.mainLockfile).catch(() => { /* ignored */ }));
 				});
+
+				registerRTVServices(instantiationService, mainProcessNodeIpcServer);
 
 				return instantiationService.createInstance(CodeApplication, mainProcessNodeIpcServer, instanceEnvironment).startup();
 			});

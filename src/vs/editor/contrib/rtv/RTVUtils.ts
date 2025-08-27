@@ -1,10 +1,6 @@
 
-
 // import { runAtThisOrScheduleAtNextAnimationFrame } from 'vs/base/browser/dom';
 // import { MainThreadFileSystem } from 'vs/workbench/api/browser/mainThreadFileSystem';
-import { ErrorHoverManager } from "./RTVSynthView.js";
-import { ICodeEditor } from '../../browser/editorBrowser.js';
-
 // Helper functions / class
 
 export function firstNonCommentLine(code: string[]): number {
@@ -19,26 +15,6 @@ export function firstNonCommentLine(code: string[]): number {
 export function getLineIndent(line: string): string {
 	let spaces = line.match("^\\s*");
 	return spaces ? spaces[0] : "";
-
-}
-
-export function displayError(errorMsg: string, editor: ICodeEditor) {
-	let errorManager = new ErrorHoverManager(editor);
-	let editor_div = editor.getDomNode();
-	let midScreenX;
-	let midScreenY;
-	if (!editor_div) {
-		midScreenX = 1000
-		midScreenY = 1000
-	}
-	else {
-		midScreenX = editor_div.getBoundingClientRect().width / 4
-		midScreenY = editor_div.getBoundingClientRect().height / 2
-	}
-	let tmpBox = document.createElement('div');
-	tmpBox.style.maxWidth = '1600px';
-	tmpBox.style.maxHeight = '400px';
-	errorManager.add(tmpBox, errorMsg, 5, 1000, true, midScreenX, midScreenY, true)
 
 }
 

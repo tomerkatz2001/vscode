@@ -418,5 +418,18 @@ import './contrib/inlineCompletions/browser/inlineCompletions.contribution.js';
 import './contrib/dropOrPasteInto/browser/dropOrPasteInto.contribution.js';
 
 
+// RTV
+import { IRTVNodeUtilsService } from './contrib/rtv/common/IRTVNodeUtils.js';
+import { RTVFrontendUtils } from '../editor/contrib/rtv/fronted/RTVFrontendUtils.js';
+import { IPythonParserService } from './contrib/rtv/common/Ipython_parse.js';
+import { RTVFrontendPythonParser } from '../editor/contrib/rtv/fronted/RTVFrontendPythonParser.js';
+import { RTVFRontendLogger } from '../editor/contrib/rtv/fronted/RTVFrontendLogger.js';
+import { IRTVLoggerService } from './contrib/rtv/common/IRTVLogger.js';
+registerSingleton(IRTVNodeUtilsService, RTVFrontendUtils, InstantiationType.Eager);
+registerSingleton(IPythonParserService, RTVFrontendPythonParser, InstantiationType.Eager);
+registerSingleton(IRTVLoggerService, RTVFRontendLogger, InstantiationType.Eager);
+
+
+
 
 //#endregion

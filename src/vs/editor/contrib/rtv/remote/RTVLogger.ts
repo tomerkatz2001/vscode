@@ -1,5 +1,4 @@
-import { ARTVLogger } from 'vs/editor/contrib/rtv/RTVInterfaces.js';
-import { ICodeEditor } from 'vs/editor/browser/editorBrowser.js';
+import { ARTVLogger } from '../../../../workbench/contrib/rtv/common/IRTVLogger.js';
 
 class LogEventData {
 	constructor(
@@ -33,8 +32,8 @@ function headers(contentType: string = 'application/json;charset=UTF-8'): Header
 export class RTVLogger extends ARTVLogger {
 	private logCounter: number;
 
-	constructor(editor: ICodeEditor) {
-		super(editor);
+	constructor() {
+		super();
 		this.logCounter = 0;
 	}
 

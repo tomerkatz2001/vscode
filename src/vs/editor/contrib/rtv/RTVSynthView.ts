@@ -640,3 +640,23 @@ export class RTVSynthView {
 	}
 
 }
+
+export function displayError(errorMsg: string, editor: ICodeEditor) {
+	let errorManager = new ErrorHoverManager(editor);
+	let editor_div = editor.getDomNode();
+	let midScreenX;
+	let midScreenY;
+	if (!editor_div) {
+		midScreenX = 1000
+		midScreenY = 1000
+	}
+	else {
+		midScreenX = editor_div.getBoundingClientRect().width / 4
+		midScreenY = editor_div.getBoundingClientRect().height / 2
+	}
+	let tmpBox = document.createElement('div');
+	tmpBox.style.maxWidth = '1600px';
+	tmpBox.style.maxHeight = '400px';
+	errorManager.add(tmpBox, errorMsg, 5, 1000, true, midScreenX, midScreenY, true)
+
+}

@@ -1,6 +1,3 @@
-
-
-
 enum env_status { pass, fail, live }
 /**
  * class that represents a block of examples, aka a comment, inserted automatically by the synth or manually by the user

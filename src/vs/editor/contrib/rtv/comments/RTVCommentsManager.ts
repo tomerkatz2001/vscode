@@ -1,14 +1,14 @@
 // eslint-disable-next-line code-import-patterns
-import { IRTVController, IRTVLogger, ViewMode, } from "../RTVInterfaces.js";
+import { IRTVController, ViewMode, } from "../RTVInterfaces.js";
 import { Range as RangeClass, Range } from '../../../common/core/range.js';
 import {
-	displayError,
 	example,
 	firstNonCommentLine,
 	getFunctionCode, getLineIndent,
 	makeEmptyTable,
 	TableElement
 } from '../RTVUtils.js';
+
 import { RTVSynthModel } from "..//RTVSynthModel.js";
 import { DecorationManager, DecorationType } from "../RTVDecorations.js";
 import { SpecificationsRangeProvider } from "./SpecificationsRangeProvider.js";
@@ -20,35 +20,42 @@ import { RTVInputBox } from '../RTVInputBox.js';
 import { FoldingController } from '../../folding/browser/folding.js';
 import { FoldingModelChangeEvent } from '../../folding/browser/foldingModel.js';
 import { IModelContentChangedEvent } from '../../../common/textModelEvents.js';
-import { Selection as MonacoSelection } from 'vs/editor/common/core/selection.js';
-import { languages } from 'vscode';
+import { Selection as MonacoSelection } from '../../../common/core/selection.js';
 import { SYNTHESIZED_COMMENT_END, SYNTHESIZED_COMMENT_START } from './RTVCommentsConsts.js';
-import { getUtils } from '../RTVUtils.node.js';
-import { IPythonParserService } from '../../../../workbench/contrib/rtv/common/python_parse.js';
-
+import { IPythonParserService } from '../../../../workbench/contrib/rtv/common/Ipython_parse.js';
+import { displayError } from '../RTVSynthView.js';
+import { IRTVLogger, IRTVLoggerService } from '../../../../workbench/contrib/rtv/common/IRTVLogger.js';
+import { getScopeIdx } from './RTVCommentsUtils.js';
+import { IRTVNodeUtils, IRTVNodeUtilsService } from '../../../../workbench/contrib/rtv/common/IRTVNodeUtils.js';
+import { ILanguageFeaturesService } from '../../../common/services/languageFeatures.js';
+import { IDisposable } from 'monaco-editor';
 
 //const FAKE_TIME = 100;
-
-
-
 
 
 // this class is in charge of all the comments in the editor.
 export class CommentsManager {
 
+	private _disposable: IDisposable;
 
 	get specifications(): RTVSpecification {
 		return this._specifications;
 	}
-	private logger: IRTVLogger;
 	private comments: { [index: number]: DecorationManager } = {}; // map from comment idx to the decorations ids
 	private _specifications: RTVSpecification;
 	private inputBox: RTVInputBox | undefined = undefined; // used to get user's input for more examples.
 	private _folded: { [index: number]: boolean } = {}
-	constructor(private readonly controller: RTVController, private readonly editor: ICodeEditor, @IPythonParserService private readonly parsePythonService: IPythonParserService) {
-		this.logger = getUtils().logger(editor);
+	constructor(private readonly controller: RTVController,
+		private readonly editor: ICodeEditor,
+		@IRTVLoggerService private readonly logger: IRTVLogger,
+		@IPythonParserService private readonly parsePythonService: IPythonParserService,
+		@IRTVNodeUtilsService private readonly RTVUtils: IRTVNodeUtils,
+		@ILanguageFeaturesService private readonly languageFeaturesService: ILanguageFeaturesService) {
 		this._specifications = new RTVSpecification();
-		languages.registerFoldingRangeProvider("*", new SpecificationsRangeProvider());
+		this._disposable = this.languageFeaturesService.foldingRangeProvider.register(
+            '*',
+            new SpecificationsRangeProvider()
+        );
 		const registerOnDidChangeFolding = () => {
 			const foldingController: FoldingController = FoldingController.get(editor)!;
 			foldingController.getFoldingModel()?.then(foldingModel => {
@@ -62,10 +69,14 @@ export class CommentsManager {
 		this.editor.onDidChangeModelContent((e) => { this.onDidChangeModelContent(e); });
 	}
 
+	dispose() {
+        this._disposable.dispose();
+    }
+
 	private onFold(e: FoldingModelChangeEvent) {
 		if (e.collapseStateChanged) {
 			let commentStartLineno = e.collapseStateChanged[0].startLineNumber
-			let scopeIdx = this.getScopeIdx(commentStartLineno);
+			let scopeIdx = this.getScopeIdxForLine(commentStartLineno);
 			let decorationManager = this.comments[scopeIdx];
 			if (e.collapseStateChanged[0].isCollapsed) {
 				decorationManager.fold();
@@ -83,44 +94,14 @@ export class CommentsManager {
 	 * @param lineno
 	 * @private
 	 */
-	private getScopeIdx(lineno: number) {
-		return CommentsManager.getScopeIdx(lineno, this.editor.getModel()!.getLinesContent());
-	}
-	static getScopeIdx(lineno: number, lines: string[]) {
-		let idx = 0
-		for (let i = lineno; i > 0; i--) {
-			const lineContent = lines[i];
-			if (lineContent?.includes(SYNTHESIZED_COMMENT_START)) {
-				idx++;
-			}
-		}
-		if (this.isFuncSpec(lineno, lines)) {
-			return -idx;
-		}
-		return idx;
+	private getScopeIdxForLine(lineno: number) {
+		return getScopeIdx(lineno, this.editor.getModel()!.getLinesContent());
 	}
 
-	/**
-	 * This function will check if the comment at lineno is a function comment or a scope comment
-	 * @param lineno - line number to start look from
-	 * @param lines - all the lines in the editor
-	 */
-	static isFuncSpec(lineno: number, lines: string[]) {
-		let startCount = 0
-		let endCount = 0
-		for (let line of lines.slice(lineno)) {
-			if (line.includes(SYNTHESIZED_COMMENT_START)) {
-				startCount++;
-			}
-			if (line.includes(SYNTHESIZED_COMMENT_END)) {
-				endCount++;
-			}
-			if (startCount === endCount) {
-				return false
-			}
-		}
-		return true //no end found - it is a function block
+	public getScopeIdx(lineno: number, lines: string[]): number {
+		return getScopeIdx(lineno, lines);
 	}
+
 	public async getScopeSpecification(scopeIdx: number) {
 		let model = this.controller.getModelForce();
 		await this._specifications.gatherComments(model.getLinesContent().join("\n"));
@@ -415,11 +396,8 @@ export class CommentsManager {
 	public async getParsedComment(lineno: number): Promise<ParsedComment> {
 		let model = this.controller.getModelForce();
 		let program = model.getLinesContent().slice(lineno);
-		let utils = getUtils();
-		let pythonProcess = utils.runCommentsParser(program.join(""));
-		let parsedComment = await pythonProcess;
-
-		parsedComment.scopeId = this.getScopeIdx(lineno);
+		let parsedComment = await this.RTVUtils.parseComment(program.join(""));
+		parsedComment.scopeId = this.getScopeIdxForLine(lineno);
 		parsedComment.lineno = lineno;
 		return parsedComment;
 	}
@@ -469,8 +447,8 @@ export class CommentsManager {
 		let lineno = cursorPos.lineNumber;
 		const lineContent = this.controller.getLineContent(lineno).trim();
 		if (lineContent === "#!" && !this.inputBox) {
-			let inputVarNames = this.getInputVars(lineno);
-			let outVarNames = this.getOutputVars(lineno);
+			let inputVarNames = await this.getInputVars(lineno);
+			let outVarNames = await this.getOutputVars(lineno);
 			this.setUpInputBox(inputVarNames, outVarNames, lineno, () => { this.onEnter(lineno) });
 			this.onExit(lineno);
 			this.setUpInputBox(inputVarNames, outVarNames, lineno, () => { this.onEnter(lineno) });
@@ -583,7 +561,7 @@ export class CommentsManager {
 		const lines = this.editor.getModel()?.getLinesContent()!;
 		for (let i = lineno; i > 0; i--) {
 			if (lines[i].includes(SYNTHESIZED_COMMENT_START)) {
-				return this._specifications.comments[this.getScopeIdx(i)];
+				return this._specifications.comments[this.getScopeIdxForLine(i)];
 			}
 		}
 		console.assert(false);

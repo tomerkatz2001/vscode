@@ -1,10 +1,9 @@
 import {
-	CommentsManager,
-	ParsedComment,
 	SYNTHESIZED_COMMENT_END,
-	SYNTHESIZED_COMMENT_START
-} from "vs/editor/contrib/rtv/comments/index.js";
-
+	SYNTHESIZED_COMMENT_START,
+} from "./comments/RTVCommentsConsts.js";
+import { ParsedComment } from './comments/RTVComment.js';
+import { getScopeIdx } from './comments/RTVCommentsUtils.js';
 enum BranchType {
 	T,
 	F,
@@ -143,7 +142,7 @@ export class RTVSpecification {
 				let utils = window.myUtils.getUtils();
 				let pythonProcess = utils.runCommentsParser(lines.slice(i).join('\n'));
 				let parsedComment = await pythonProcess;
-				parsedComment.scopeId = CommentsManager.getScopeIdx(i, lines);
+				parsedComment.scopeId = getScopeIdx(i, lines);
 				parsedComment.lineno = i + 1;
 				const parentId = scopeIds[scopeIds.length - 1];
 

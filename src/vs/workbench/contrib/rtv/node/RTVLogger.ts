@@ -1,9 +1,9 @@
 /* eslint-disable code-import-patterns */
 import * as fs from 'fs';
 import * as os from 'os';
-//import * as path from 'path';
-import { ARTVLogger } from './RTVInterfaces.js';
-import { ICodeEditor } from '../../browser/editorBrowser.js';
+import * as path from 'path';
+import { ARTVLogger, IRTVLoggerService } from '../common/IRTVLogger.js';
+import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 
 /*
  * Things to log:
@@ -14,23 +14,24 @@ import { ICodeEditor } from '../../browser/editorBrowser.js';
  *   - How many examples do they provide?
  */
 export class RTVLogger extends ARTVLogger {
+
 	// States for various things we need to log
 	private logDir: string;
 	private logCounter: number = 0;
 	private currentFileName: string = 'unknown';
 	private readonly logFile: string;
 
-	constructor(editor: ICodeEditor) {
-		super(editor);
+	constructor() {
+		super();
 
 		// Build output dir name
 		let dir = process.env['LOG_DIR'];
 
 		if (!dir) {
-			dir = os.tmpdir() //+ path.sep;
+			dir = os.tmpdir() + path.sep;
 		} else {
-			if (!dir.endsWith("s")) {//path.sep)) {
-				dir += "s"//path.sep;
+			if (!dir.endsWith(path.sep)) {
+				dir += path.sep;
 			}
 
 			if (!fs.existsSync(dir)) {
@@ -52,7 +53,7 @@ export class RTVLogger extends ARTVLogger {
 			}
 		}
 
-		this.logDir = dir! //+ path.sep;
+		this.logDir = dir! + path.sep;
 		fs.mkdirSync(this.logDir);
 		this.logFile = 'snippy_plus.log';
 	}
@@ -82,7 +83,8 @@ export class RTVLogger extends ARTVLogger {
 	}
 
 	private getCurrentFileName() {
-		let rs = this.editor.getModel()?.uri.toString();
+		// let rs = this.editor.getModel()?.uri.toString(); TODO: how to pass editor to ctor?
+		let rs: string = "";
 
 		if (rs) {
 			if (!rs.includes(this.currentFileName)) {
@@ -97,3 +99,7 @@ export class RTVLogger extends ARTVLogger {
 		return this.currentFileName;
 	}
 }
+
+
+registerSingleton(IRTVLoggerService, RTVLogger, InstantiationType.Eager);
+

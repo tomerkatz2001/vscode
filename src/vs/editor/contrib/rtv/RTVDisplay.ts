@@ -34,7 +34,7 @@ import {
 	widgetShadow
 } from '../../../platform/theme/common/colorRegistry.js';
 import { IIdentifiedSingleEditOperation, IModelDecorationOptions, ITextModel } from '../../common/model.js';
-import { DelayedRunAtMostOne, RunProcess, RunResult, IRTVController, IRTVLogger, ViewMode, RowColMode, IRTVDisplayBox, BoxUpdateEvent, Utils } from '../../contrib/rtv/RTVInterfaces.js';
+import { DelayedRunAtMostOne, RunProcess, RunResult, IRTVController, ViewMode, RowColMode, IRTVDisplayBox, BoxUpdateEvent } from '../../contrib/rtv/RTVInterfaces.js';
 import { isHtmlEscape, removeHtmlEscape, TableElement } from '../../contrib/rtv/RTVUtils.js';
 import { Button } from '../../../base/browser/ui/button/button.js';
 
@@ -43,7 +43,8 @@ import { buttonBackground, buttonForeground } from '../../../platform/theme/comm
 
 // import { RTVSynth } from './RTVSynth';
 import { RTVSynthController } from '../../contrib/rtv/RTVSynthController.js';
-import { CommentsManager, RTVTestResults, SYNTHESIZED_COMMENT_START } from '../../contrib/rtv/comments/index.js';
+import { CommentsManager, RTVTestResults } from '../../contrib/rtv/comments/RTVCommentsManager.js';
+import { SYNTHESIZED_COMMENT_START } from '../../contrib/rtv/comments/RTVCommentsConsts.js';
 import { Emitter, Event } from '../../../base/common/event.js';
 //import * as path from 'path';
 import { ICursorPositionChangedEvent } from '../../common/cursorEvents.js';
@@ -53,9 +54,12 @@ import { IModelContentChangedEvent } from '../../common/textModelEvents.js';
 import { renderMarkdown } from '../../../base/browser/markdownRenderer.js';
 import { MarkdownString } from '../../../base/common/htmlContent.js';
 import { DisposableStore } from '../../../base/common/lifecycle.js';
-import { getUtils } from './RTVUtils.node.js';
-import { IPythonParserService } from '../../../workbench/contrib/rtv/common/python_parse.js';
+import { IPythonParserService } from '../../../workbench/contrib/rtv/common/Ipython_parse.js';
 import { IInstantiationService } from '../../../platform/instantiation/common/instantiation.js';
+import { IRTVLogger, IRTVLoggerService } from '../../../workbench/contrib/rtv/common/IRTVLogger.js';
+import { IRTVNodeUtils, IRTVNodeUtilsService } from '../../../workbench/contrib/rtv/common/IRTVNodeUtils.js';
+import { ILanguageFeaturesService } from '../../common/services/languageFeatures.js';
+import * as dom from '../../../base/browser/dom.js';
 
 function indent(s: string): number {
 	return s.length - s.trimLeft().length;
@@ -242,7 +246,7 @@ class RTVOutputDisplayBox {
 		this._box.style.right = '14px';
 		this._box.style.height = 'auto';
 		this._box.style.width = '500px';
-		this._box.innerHTML = this._html;
+		dom.safeInnerHtml(this._box, this._html);
 		this._box.style.display = 'inline-block';
 		this._box.style.overflowY = 'scroll';
 		this._box.style.overflowX = 'auto';
@@ -1719,9 +1723,7 @@ export class RTVController implements IRTVController {
 	public changedLinesWhenOutOfDate?: Set<number> = undefined;
 	public _configBox: HTMLDivElement | null = null;
 	public tableCellsByLoop: MapLoopsToCells = {};
-	public logger: IRTVLogger;
 	public pythonProcess?: RunProcess = undefined;
-	public utils: Utils = getUtils();
 	public runProgramDelay: DelayedRunAtMostOne = new DelayedRunAtMostOne();
 	public modelUpdated: boolean = false;
 	private _eventEmitter: Emitter<BoxUpdateEvent> = new Emitter<BoxUpdateEvent>();
@@ -1758,7 +1760,12 @@ export class RTVController implements IRTVController {
 		@IConfigurationService configurationService: IConfigurationService,
 		@IContextMenuService public readonly contextMenuService: IContextMenuService,
 		@IThemeService readonly _themeService: IThemeService,
+		@IRTVNodeUtilsService readonly _nodeUtils: IRTVNodeUtils,
+		@IPythonParserService readonly pythonParserService: IPythonParserService,
+		@IRTVLoggerService readonly logger: IRTVLogger,
 		@IInstantiationService instantiationService: IInstantiationService,
+		@ILanguageFeaturesService private readonly languageFeaturesService: ILanguageFeaturesService
+
 		//@IModelService private readonly _modelService: IModelService,
 	) {
 		// let isReadOnly=undefined;
@@ -1779,11 +1786,8 @@ export class RTVController implements IRTVController {
 			fixedOverflowWidgets: true, // Prevent content from being rendered on the line numbers and glyph margin
 		});
 		//this._modelService.onModelModeChanged((e) => { console.log('BBBB');  })
-		const pythonParserService = instantiationService.invokeFunction(accessor =>
-			accessor.get(IPythonParserService)
-		); this.commentsManager = new CommentsManager(this, this._editor, pythonParserService);
-		this._synthesis = new RTVSynthController(_editor, this, this._themeService, this.commentsManager);
-		this.logger = this.utils.logger(this._editor);
+		this.commentsManager = new CommentsManager(this, this._editor, this.logger, this.pythonParserService, this._nodeUtils, this.languageFeaturesService);
+		this._synthesis = new RTVSynthController(_editor, this, this.commentsManager, this._themeService, this.logger, this._nodeUtils);
 
 		this.updateMaxPixelCol();
 
@@ -2704,8 +2708,11 @@ export class RTVController implements IRTVController {
 		let lineNumber = 0;
 		let colStart = 0;
 		let colEnd = 0;
-
-		let errorLines = errorMsg.split(this.utils.EOL);
+		let sep = "\n";
+		this._nodeUtils.getEOL().then((eol) => {
+			sep = eol;
+		});
+		let errorLines = errorMsg.split(sep);
 		errorLines.pop(); // last element is empty line
 
 		// The error description is always the last line
@@ -2805,9 +2812,8 @@ export class RTVController implements IRTVController {
 		}
 
 		this.logger.projectionBoxUpdateStart(program);
-		this.pythonProcess = this.utils.runProgram(program, this.getCWD());
+		let runResults: RunResult = await this._nodeUtils.runProgram(program, this.getCWD());
 
-		let runResults: RunResult = await this.pythonProcess;
 		const outputMsg = runResults.stdout;
 		const errorMsg = runResults.stderr;
 		const exitCode = runResults.exitCode;
@@ -3560,7 +3566,7 @@ export class RTVController implements IRTVController {
 	}
 }
 
-registerEditorContribution(RTVController.ID, RTVController, EditorContributionInstantiation.Lazy);
+registerEditorContribution(RTVController.ID, RTVController, EditorContributionInstantiation.Eager);
 
 const boxAlignsToTopOfLineKey = 'rtv.box.alignsToTopOfLine';
 const boxBorderKey = 'rtv.box.border';
